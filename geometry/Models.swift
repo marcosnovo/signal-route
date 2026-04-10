@@ -69,6 +69,39 @@ enum GameStatus: Equatable {
     case playing, won, lost
 }
 
+// MARK: - GameResult
+/// Snapshot of a completed game session.
+struct GameResult {
+    let success: Bool
+    let movesUsed: Int
+    let efficiency: Float   // movesLeft / maxMoves at moment of completion
+    let nodesActivated: Int
+    let totalNodes: Int
+
+    var efficiencyPercent: Int { Int(efficiency * 100) }
+    /// Number of filled blocks (0–5) for the 5-cell efficiency bar.
+    var filledBlocks: Int { max(0, min(5, Int((efficiency * 5).rounded()))) }
+
+    /// Wordle-style share text.
+    var shareText: String {
+        let dateStr: String = {
+            let f = DateFormatter()
+            f.dateFormat = "dd MMM yyyy"
+            return f.string(from: Date()).uppercased()
+        }()
+        let filled = max(0, min(5, Int((efficiency * 5).rounded())))
+        let bar = String(repeating: "█", count: filled)
+                + String(repeating: "░", count: 5 - filled)
+        return """
+        SIGNAL ROUTE · \(dateStr)
+        \(success ? "SUCCESS ✓" : "FAILURE ✗")
+        EFFICIENCY  \(bar)  \(efficiencyPercent)%
+        NODES  \(nodesActivated)/\(totalNodes)
+        MOVES  \(movesUsed)
+        """
+    }
+}
+
 // MARK: - LevelType
 /// Structural family of a level – controls source/target layout and path character.
 enum LevelType: String, CaseIterable {
@@ -129,5 +162,5 @@ struct Level: Identifiable {
     let numTargets: Int      // number of target nodes to energize
 
     var displayID: String   { String(format: "%02d", id) }
-    var displayName: String { "MISSION \(displayID)" }
+    var displayName: String { id == 0 ? "INTRO MISSION" : "MISSION \(displayID)" }
 }

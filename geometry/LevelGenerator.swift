@@ -26,6 +26,15 @@ struct LevelGenerator {
     // MARK: - Level catalogue (50 levels, genuinely varied)
     static let levels: [Level] = buildCatalogue()
 
+    // MARK: - Intro / tutorial level (id = 0, 3×3 handcrafted)
+    /// One-tap puzzle: source–relay–target in the middle row.
+    /// Relay starts rotated N+S; one tap aligns it E+W and completes the circuit.
+    static let introLevel = Level(
+        id: 0, seed: 0, maxMoves: 5,
+        difficulty: .easy, gridSize: 3,
+        levelType: .singlePath, numTargets: 1
+    )
+
     // MARK: - Daily challenge
     static var dailyLevel: Level {
         let c = Calendar.current
@@ -38,6 +47,7 @@ struct LevelGenerator {
     }
 
     // MARK: - Board building
+    /// Returns a pre-built intro board for id == 0, otherwise generates algorithmically.
     /// Generates a unique, solvable board for `level` using seeded randomness.
     ///
     /// Algorithm:
@@ -47,6 +57,7 @@ struct LevelGenerator {
     ///   4. Fill remaining cells with noise tiles
     ///   5. Scramble relay tiles (source/target orientation is fixed)
     static func buildBoard(for level: Level) -> [[Tile]] {
+        if level.id == 0 { return buildIntroBoard() }
         let gs = level.gridSize
         var rng = SeededRNG(seed: level.seed)
 
@@ -251,6 +262,44 @@ struct LevelGenerator {
             }
         }
         return catalogue
+    }
+
+    // MARK: - Intro board (handcrafted)
+
+    /// 3×3 tutorial board. Path is a single horizontal line across the middle row.
+    ///
+    ///   Row 0: decorative curves (N+E) — no path connections
+    ///   Row 1: [source E+W] [relay N+S ← scrambled] [target E+W]
+    ///   Row 2: decorative curves (S+W) — no path connections
+    ///
+    /// One tap on (1,1) rotates the relay to E+W → circuit closes → instant win.
+    private static func buildIntroBoard() -> [[Tile]] {
+        var board: [[Tile]] = (0..<3).map { _ in
+            (0..<3).map { _ in Tile(type: .curve, rotation: 0) } // N+E placeholder
+        }
+
+        // Row 0 — decorative (N+E curves, point away from path)
+        board[0][0] = Tile(type: .curve, rotation: 0)
+        board[0][1] = Tile(type: .curve, rotation: 0)
+        board[0][2] = Tile(type: .curve, rotation: 0)
+
+        // Row 1 — active path
+        var source = Tile(type: .straight, rotation: 1) // E+W solved
+        source.role = .source
+        board[1][0] = source
+
+        board[1][1] = Tile(type: .straight, rotation: 0) // N+S scrambled → 1 tap → E+W
+
+        var target = Tile(type: .straight, rotation: 1) // E+W solved
+        target.role = .target
+        board[1][2] = target
+
+        // Row 2 — decorative (S+W curves, point away from path)
+        board[2][0] = Tile(type: .curve, rotation: 2)
+        board[2][1] = Tile(type: .curve, rotation: 2)
+        board[2][2] = Tile(type: .curve, rotation: 2)
+
+        return board
     }
 
     /// Move budget: sized so a focused player can win with reasonable efficiency.

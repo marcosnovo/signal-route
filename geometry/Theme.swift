@@ -61,20 +61,25 @@ enum AppTheme {
 
 // MARK: - BackgroundGrid
 /// Subtle technical grid drawn in the background of panels.
+/// Drifts diagonally at ~1.4 px/s (one cell per 20 s) to suggest a live system.
 struct BackgroundGrid: View {
     var spacing: CGFloat = 28
     var opacity: Double  = 0.045
 
+    @State private var phase: CGFloat = 0
+
     var body: some View {
         Canvas { ctx, size in
             var path = Path()
-            var x: CGFloat = 0
+            // Start one cell before origin so the grid tiles seamlessly as phase increases
+            let start = phase.truncatingRemainder(dividingBy: spacing) - spacing
+            var x = start
             while x <= size.width {
                 path.move(to: CGPoint(x: x, y: 0))
                 path.addLine(to: CGPoint(x: x, y: size.height))
                 x += spacing
             }
-            var y: CGFloat = 0
+            var y = start
             while y <= size.height {
                 path.move(to: CGPoint(x: 0, y: y))
                 path.addLine(to: CGPoint(x: size.width, y: y))
@@ -84,6 +89,11 @@ struct BackgroundGrid: View {
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+        .onAppear {
+            withAnimation(.linear(duration: 20).repeatForever(autoreverses: false)) {
+                phase = spacing
+            }
+        }
     }
 }
 
@@ -93,6 +103,61 @@ struct TechDivider: View {
         Rectangle()
             .fill(AppTheme.stroke)
             .frame(height: 0.5)
+    }
+}
+
+// MARK: - BreathingCTA
+/// Combines a gentle scale pulse (1.0 → 1.04 → 1.0) with a soft colour glow.
+/// Full breath cycle ≈ 3 s. Designed for primary action buttons.
+struct BreathingCTA: ViewModifier {
+    let color: Color
+
+    @State private var expanded = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(expanded ? 1.04 : 1.0)
+            .shadow(color: color.opacity(expanded ? 0.45 : 0.10), radius: expanded ? 14 : 4)
+            .onAppear {
+                withAnimation(
+                    .easeInOut(duration: 1.5)
+                    .repeatForever(autoreverses: true)
+                ) {
+                    expanded = true
+                }
+            }
+    }
+}
+
+extension View {
+    func breathingCTA(color: Color = AppTheme.accentPrimary) -> some View {
+        modifier(BreathingCTA(color: color))
+    }
+}
+
+// MARK: - PulsingGlow
+/// Soft repeating shadow that breathes at a slow cadence.
+/// Pairs well with status dots, difficulty badges, and "ONLINE"-type indicators.
+struct PulsingGlow: ViewModifier {
+    let color: Color
+    var duration: Double = 1.8
+
+    @State private var bright = false
+
+    func body(content: Content) -> some View {
+        content
+            .shadow(color: color.opacity(bright ? 0.55 : 0.10), radius: bright ? 7 : 2)
+            .onAppear {
+                withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: true)) {
+                    bright = true
+                }
+            }
+    }
+}
+
+extension View {
+    func pulsingGlow(color: Color, duration: Double = 1.8) -> some View {
+        modifier(PulsingGlow(color: color, duration: duration))
     }
 }
 

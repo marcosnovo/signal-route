@@ -12,6 +12,11 @@ class GameViewModel: ObservableObject {
     @Published var status: GameStatus = .playing
     @Published var connectedPairs: Set<String> = []
 
+    // Cached energy counters — updated once per propagation, not recomputed per access
+    @Published private(set) var targetsOnline: Int = 0
+    @Published private(set) var activeNodes: Int = 0
+    private(set) var targetsTotal: Int = 0
+
     // MARK: Level info (read-only from outside)
     private(set) var currentLevel: Level
 
@@ -30,11 +35,16 @@ class GameViewModel: ObservableObject {
     // MARK: - Public API
 
     func setupLevel() {
-        tiles = LevelGenerator.buildBoard(for: currentLevel)
+        let board = LevelGenerator.buildBoard(for: currentLevel)
+        // Cache target count once — it never changes during play
+        targetsTotal = board.flatMap { $0 }.filter { $0.role == .target }.count
+        tiles = board
         movesLeft = currentLevel.maxMoves
         movesUsed = 0
         status = .playing
         connectedPairs = []
+        targetsOnline = 0
+        activeNodes = 0
         updateConnections()
     }
 
@@ -58,10 +68,11 @@ class GameViewModel: ObservableObject {
 
         if checkWin() {
             status = .won
-            HapticsManager.success()
+            saveResultIfDaily(success: true)
         } else if movesLeft == 0 {
             status = .lost
             HapticsManager.error()
+            saveResultIfDaily(success: false)
         } else if targetsOnline > prevTargets {
             // A target just came online — meaningful connection
             HapticsManager.medium()
@@ -75,24 +86,21 @@ class GameViewModel: ObservableObject {
         connectedPairs.contains(pairKey(row: row, col: col, direction: direction))
     }
 
+    /// Result snapshot available once the game is no longer in progress.
+    var gameResult: GameResult? {
+        guard status != .playing else { return nil }
+        return GameResult(
+            success:        status == .won,
+            movesUsed:      movesUsed,
+            efficiency:     Float(movesLeft) / Float(max(1, currentLevel.maxMoves)),
+            nodesActivated: activeNodes,
+            totalNodes:     gridSize * gridSize
+        )
+    }
+
     var score: Int {
         guard status == .won else { return 0 }
         return 1000 + movesLeft * 50
-    }
-
-    /// Targets that have received energy.
-    var targetsOnline: Int {
-        tiles.flatMap { $0 }.filter { $0.role == .target && $0.isEnergized }.count
-    }
-
-    /// Total target count for this level.
-    var targetsTotal: Int {
-        tiles.flatMap { $0 }.filter { $0.role == .target }.count
-    }
-
-    /// Number of tiles currently carrying energy.
-    var activeNodes: Int {
-        tiles.flatMap { $0 }.filter { $0.isEnergized }.count
     }
 
     /// True when every target is powered — the win state.
@@ -147,12 +155,12 @@ class GameViewModel: ObservableObject {
             }
         }
 
-        var visited = Set<String>()
+        // Int key (r * gridSize + c) avoids string interpolation overhead in the hot loop
+        var visited = Set<Int>()
         while !queue.isEmpty {
             let (r, c) = queue.removeFirst()
-            let key = "\(r),\(c)"
-            guard !visited.contains(key) else { continue }
-            visited.insert(key)
+            let key = r * gridSize + c
+            guard visited.insert(key).inserted else { continue }
             for dir in local[r][c].connections {
                 let (nr, nc) = neighborPos(row: r, col: c, dir: dir)
                 guard nr >= 0, nr < gridSize, nc >= 0, nc < gridSize else { continue }
@@ -162,15 +170,29 @@ class GameViewModel: ObservableObject {
                 queue.append((nr, nc))
             }
         }
+
+        // Update cached counters from local — single pass, no extra flatMap
+        var onlineTargets = 0
+        var onlineNodes = 0
+        for row in local {
+            for tile in row {
+                if tile.isEnergized {
+                    onlineNodes += 1
+                    if tile.role == .target { onlineTargets += 1 }
+                }
+            }
+        }
+        targetsOnline = onlineTargets
+        activeNodes   = onlineNodes
+
         withAnimation(.easeOut(duration: 0.15)) {
             tiles = local
         }
     }
 
-    /// Win: all target tiles energized. Falls back to full-grid check if no targets exist.
+    /// Win: all targets energized. Uses cached counters — no extra grid scan needed.
     private func checkWin() -> Bool {
-        let targets = tiles.flatMap { $0 }.filter { $0.role == .target }
-        if !targets.isEmpty { return targets.allSatisfy { $0.isEnergized } }
+        if targetsTotal > 0 { return targetsOnline == targetsTotal }
         return allConnectionsValid()
     }
 
@@ -194,6 +216,18 @@ class GameViewModel: ObservableObject {
         case .east:  return (row, col + 1)
         case .west:  return (row, col - 1)
         }
+    }
+
+    /// Saves the result only when playing the current daily level.
+    private func saveResultIfDaily(success: Bool) {
+        guard currentLevel.id == LevelGenerator.dailyLevel.id else { return }
+        DailyStore.save(GameResult(
+            success:        success,
+            movesUsed:      movesUsed,
+            efficiency:     Float(movesLeft) / Float(max(1, currentLevel.maxMoves)),
+            nodesActivated: activeNodes,
+            totalNodes:     gridSize * gridSize
+        ))
     }
 
     private func pairKey(row: Int, col: Int, direction: Direction) -> String {

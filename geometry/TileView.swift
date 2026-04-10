@@ -14,10 +14,13 @@ struct TileView: View {
     let connectedEast: Bool
     let connectedSouth: Bool
     let connectedWest: Bool
+    let winPulse: Bool
     let onTap: () -> Void
 
     @State private var tapScale: CGFloat = 1.0
     @State private var energyScale: CGFloat = 1.0
+    @State private var tapBounceTask: Task<Void, Never>? = nil
+    @State private var energyBounceTask: Task<Void, Never>? = nil
 
     var body: some View {
         ZStack {
@@ -97,18 +100,36 @@ struct TileView: View {
         .frame(width: size, height: size)
         .scaleEffect(tapScale * energyScale)
         .onTapGesture {
+            // Cancel any in-flight bounce so rapid taps don't accumulate
+            tapBounceTask?.cancel()
             withAnimation(.spring(response: 0.10, dampingFraction: 0.5)) { tapScale = 0.80 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
+            tapBounceTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                guard !Task.isCancelled else { return }
                 withAnimation(.spring(response: 0.22, dampingFraction: 0.65)) { tapScale = 1.0 }
             }
             onTap()
         }
         .onChange(of: tile.isEnergized) { _, isNowEnergized in
             guard isNowEnergized else { return }
+            energyBounceTask?.cancel()
             let pulse: CGFloat = tile.role == .target ? 1.10 : 1.04
             withAnimation(.spring(response: 0.10, dampingFraction: 0.4)) { energyScale = pulse }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
+            energyBounceTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                guard !Task.isCancelled else { return }
                 withAnimation(.spring(response: 0.18, dampingFraction: 0.7)) { energyScale = 1.0 }
+            }
+        }
+        .onChange(of: winPulse) { _, pulsing in
+            guard pulsing && tile.isEnergized else { return }
+            // Larger, slower pulse so player clearly sees the complete circuit before overlay
+            energyBounceTask?.cancel()
+            withAnimation(.spring(response: 0.14, dampingFraction: 0.35)) { energyScale = 1.20 }
+            energyBounceTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 160_000_000)
+                guard !Task.isCancelled else { return }
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) { energyScale = 1.0 }
             }
         }
     }
