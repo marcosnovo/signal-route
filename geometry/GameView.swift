@@ -49,8 +49,15 @@ struct GameView: View {
                             removal:   .opacity
                         )
                     )
-            } else if !isIntro && overlayVisible {
-                MissionOverlay(vm: vm, onRestart: { vm.setupLevel() }, onDismiss: onDismiss)
+            } else if !isIntro && overlayVisible && vm.status == .won {
+                VictoryTelemetryView(vm: vm,
+                                     onRestart: { vm.setupLevel() },
+                                     onDismiss: onDismiss)
+                    .transition(.opacity)
+            } else if !isIntro && overlayVisible && vm.status == .lost {
+                MissionOverlay(vm: vm,
+                               onRestart: { vm.setupLevel() },
+                               onDismiss: onDismiss)
                     .transition(
                         .asymmetric(
                             insertion: .opacity.combined(with: .scale(scale: 0.88)).combined(with: .offset(y: 24)),
@@ -69,8 +76,8 @@ struct GameView: View {
                     overlayVisible = true
                 }
             case .playing:
-                // Reset after restart
-                overlayVisible = false
+                // Reset — brief fade so the board isn't jarring
+                withAnimation(.easeOut(duration: 0.18)) { overlayVisible = false }
                 winPulse = false
                 boardSuccessOpacity = 0
             }
@@ -195,7 +202,7 @@ struct GameView: View {
             let tileSize         = available / CGFloat(vm.gridSize)
 
             VStack(spacing: 0) {
-                TechLabel(text: "GRID ANALYSIS")
+                TechLabel(text: "NETWORK ANALYSIS")
                     .padding(.bottom, 8)
 
                 VStack(spacing: gap) {
@@ -343,7 +350,7 @@ struct MissionOverlay: View {
                                   color: won ? AppTheme.success : AppTheme.danger)
                             .pulsingGlow(color: won ? AppTheme.success : AppTheme.danger,
                                          duration: 1.6)
-                        Text(won ? "MISSION COMPLETE" : "ROUTE FAILURE")
+                        Text(won ? "NETWORK RESTORED" : "SIGNAL LOST")
                             .font(AppTheme.mono(22, weight: .black))
                             .foregroundStyle(AppTheme.textPrimary)
                             .kerning(1)
@@ -418,7 +425,7 @@ struct MissionOverlay: View {
                     }
 
                     Button(action: onDismiss) {
-                        Text("RETURN TO HOME")
+                        Text("RETURN TO BASE")
                             .font(AppTheme.mono(11))
                             .foregroundStyle(AppTheme.textSecondary)
                             .kerning(1)
@@ -500,8 +507,8 @@ struct IntroWinOverlay: View {
 
                 // ── Body (staggered reveal) ──────────────────────────────
                 VStack(spacing: 4) {
-                    TechLabel(text: "MISSION MECHANICS UNDERSTOOD")
-                    TechLabel(text: "READY FOR DAILY MISSIONS",
+                    TechLabel(text: "SYSTEM CALIBRATION COMPLETE")
+                    TechLabel(text: "CLEARED FOR DEPLOYMENT",
                               color: AppTheme.accentPrimary)
                 }
                 .frame(maxWidth: .infinity)
@@ -515,7 +522,7 @@ struct IntroWinOverlay: View {
                 // ── CTA ──────────────────────────────────────────────────
                 Button(action: onComplete) {
                     HStack(spacing: 10) {
-                        Text("BEGIN MISSIONS")
+                        Text("ACCESS GRANTED")
                             .font(AppTheme.mono(12, weight: .bold))
                             .kerning(2)
                         Image(systemName: "arrow.right")

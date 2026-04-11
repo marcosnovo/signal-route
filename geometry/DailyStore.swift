@@ -23,7 +23,8 @@ enum DailyStore {
             "movesUsed":      result.movesUsed,
             "efficiency":     Double(result.efficiency),
             "nodesActivated": result.nodesActivated,
-            "totalNodes":     result.totalNodes
+            "totalNodes":     result.totalNodes,
+            "score":          result.score
         ]
         defaults.set(dict, forKey: todayKey)
     }
@@ -42,7 +43,8 @@ enum DailyStore {
             movesUsed:      movesUsed,
             efficiency:     Float(efficiency),
             nodesActivated: nodesActivated,
-            totalNodes:     totalNodes
+            totalNodes:     totalNodes,
+            score:          dict["score"] as? Int ?? 0   // 0 for records saved before v1.1
         )
     }
 }

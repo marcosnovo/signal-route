@@ -26,8 +26,13 @@ struct HomeView: View {
             VStack(spacing: 0) {
                 systemBar
                 Spacer()
-                titleSection.padding(.bottom, 48)
+                titleSection.padding(.bottom, 32)
                 missionSection.padding(.horizontal, 24)
+                if introCompleted {
+                    AstronautProgressCard(profile: profile)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 10)
+                }
                 Spacer()
                 statusStrip.padding(.bottom, 32)
             }
@@ -67,7 +72,7 @@ struct HomeView: View {
 
             VStack(spacing: 7) {
                 GeoTitle()
-                Text("CONNECT THE GRID")
+                Text("RESTORE THE NETWORK")
                     .font(AppTheme.mono(9))
                     .foregroundStyle(AppTheme.textSecondary)
                     .kerning(3)
@@ -77,6 +82,7 @@ struct HomeView: View {
 
     private var todayResult: GameResult? { DailyStore.todayResult }
     private var introCompleted: Bool { OnboardingStore.hasCompletedIntro }
+    private var profile: AstronautProfile { ProgressionStore.profile }
 
     // MARK: Mission section — adapts to player state
     private var missionSection: some View {
@@ -114,7 +120,7 @@ struct HomeView: View {
                     // Daily mission not yet played
                     Button(action: { onPlay(LevelGenerator.dailyLevel) }) {
                         HStack(spacing: 10) {
-                            Text("INITIALIZE MISSION")
+                            Text("RESTORE NETWORK")
                                 .font(AppTheme.mono(12, weight: .bold))
                                 .kerning(2)
                             Image(systemName: "arrow.right")
@@ -134,7 +140,7 @@ struct HomeView: View {
 
                 Button(action: { onPlay(LevelGenerator.introLevel) }) {
                     HStack(spacing: 10) {
-                        Text("INITIALIZE FIRST MISSION")
+                        Text("INITIALIZE TRAINING")
                             .font(AppTheme.mono(12, weight: .bold))
                             .kerning(2)
                         Image(systemName: "arrow.right")
@@ -432,6 +438,144 @@ private struct UIViewControllerRepresentableWrapper: UIViewControllerRepresentab
     let viewController: UIViewController
     func makeUIViewController(context: Context) -> UIViewController { viewController }
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+
+// MARK: - AstronautProgressCard
+/// Compact progression block shown on Home for returning players.
+/// Shows level, rank, current/next planet, segmented level bar, and stat readouts.
+struct AstronautProgressCard: View {
+    let profile: AstronautProfile
+
+    private var rule: ProgressionRule { profile.progressionRule }
+    private var planet: Planet { profile.currentPlanet }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // ── Header ────────────────────────────────────────────────
+            HStack(spacing: 8) {
+                Rectangle()
+                    .fill(planet.color)
+                    .frame(width: 2, height: 14)
+                TechLabel(text: "ASTRONAUT PROFILE")
+                Spacer()
+                TechLabel(text: profile.rankTitle, color: planet.color)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+
+            TechDivider()
+
+            // ── Level + Destination row ───────────────────────────────
+            HStack(spacing: 0) {
+                // Left: big level number
+                VStack(alignment: .leading, spacing: 3) {
+                    TechLabel(text: "LEVEL")
+                    Text("\(profile.level)")
+                        .font(AppTheme.mono(40, weight: .black))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .monospacedDigit()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+
+                Rectangle().fill(AppTheme.stroke).frame(width: 0.5, height: 56)
+
+                // Right: current + next planet
+                VStack(alignment: .leading, spacing: 8) {
+                    // Current destination
+                    VStack(alignment: .leading, spacing: 2) {
+                        TechLabel(text: "DESTINATION")
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(planet.color)
+                                .frame(width: 5, height: 5)
+                                .pulsingGlow(color: planet.color, duration: 2.2)
+                            Text(planet.name)
+                                .font(AppTheme.mono(10, weight: .bold))
+                                .foregroundStyle(planet.color)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                    }
+                    // Next target
+                    if let next = profile.nextPlanet {
+                        VStack(alignment: .leading, spacing: 2) {
+                            TechLabel(text: "NEXT TARGET")
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 7, weight: .bold))
+                                    .foregroundStyle(AppTheme.textSecondary)
+                                Text(next.name)
+                                    .font(AppTheme.mono(9))
+                                    .foregroundStyle(AppTheme.textSecondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+            }
+
+            TechDivider()
+
+            // ── Progress ──────────────────────────────────────────────
+            VStack(spacing: 8) {
+                // Segmented bar
+                HStack(spacing: 3) {
+                    ForEach(0..<10, id: \.self) { i in
+                        let filled = CGFloat(i) < CGFloat(profile.levelProgress) * 10
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(filled ? planet.color : AppTheme.stroke)
+                            .frame(height: 3)
+                    }
+                }
+
+                // Mission + efficiency readouts
+                HStack(spacing: 0) {
+                    // Missions
+                    VStack(alignment: .leading, spacing: 1) {
+                        TechLabel(text: "MISSIONS")
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text("\(profile.completedMissions)")
+                                .font(AppTheme.mono(16, weight: .bold))
+                                .foregroundStyle(AppTheme.textPrimary)
+                                .monospacedDigit()
+                            Text("/ \(rule.requiredMissions)")
+                                .font(AppTheme.mono(9))
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                    }
+                    Spacer()
+                    // Efficiency
+                    VStack(alignment: .trailing, spacing: 1) {
+                        TechLabel(text: "AVG EFFICIENCY")
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text("\(profile.averageEfficiencyPercent)%")
+                                .font(AppTheme.mono(16, weight: .bold))
+                                .foregroundStyle(
+                                    profile.averageEfficiency >= rule.requiredAvgEfficiency
+                                    ? AppTheme.success : AppTheme.textPrimary
+                                )
+                                .monospacedDigit()
+                            Text("/ \(rule.requiredEfficiencyPercent)% req")
+                                .font(AppTheme.mono(9))
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+        }
+        .background(AppTheme.surface)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                .strokeBorder(planet.color.opacity(0.22), lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+    }
 }
 
 // MARK: - GeoTitle

@@ -69,6 +69,9 @@ class GameViewModel: ObservableObject {
         if checkWin() {
             status = .won
             saveResultIfDaily(success: true)
+            if let result = gameResult {
+                ProgressionStore.record(result)
+            }
         } else if movesLeft == 0 {
             status = .lost
             HapticsManager.error()
@@ -94,7 +97,8 @@ class GameViewModel: ObservableObject {
             movesUsed:      movesUsed,
             efficiency:     Float(movesLeft) / Float(max(1, currentLevel.maxMoves)),
             nodesActivated: activeNodes,
-            totalNodes:     gridSize * gridSize
+            totalNodes:     gridSize * gridSize,
+            score:          score
         )
     }
 
@@ -226,7 +230,8 @@ class GameViewModel: ObservableObject {
             movesUsed:      movesUsed,
             efficiency:     Float(movesLeft) / Float(max(1, currentLevel.maxMoves)),
             nodesActivated: activeNodes,
-            totalNodes:     gridSize * gridSize
+            totalNodes:     gridSize * gridSize,
+            score:          score
         ))
     }
 
