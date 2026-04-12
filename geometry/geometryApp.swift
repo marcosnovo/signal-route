@@ -8,7 +8,10 @@ struct geometryApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(gcManager)
-                .task { gcManager.authenticate() }
+                .task {
+                    gcManager.authenticate()
+                    await SoundManager.prepare()
+                }
         }
     }
 }

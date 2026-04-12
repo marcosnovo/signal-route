@@ -11,6 +11,8 @@ struct VictoryTelemetryView: View {
     @ObservedObject var vm: GameViewModel
     let onRestart: () -> Void
     let onDismiss: () -> Void
+    var onNextMission: (() -> Void)? = nil
+    var onMissions: (() -> Void)?    = nil
 
     // ── Animation state ────────────────────────────────────────────────────
     @State private var panelVisible   = false
@@ -83,13 +85,13 @@ struct VictoryTelemetryView: View {
                 HStack(spacing: 5) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 10, weight: .bold))
-                    TechLabel(text: "HOME")
+                    TechLabel(text: "HOME", color: AppTheme.sage)
                 }
-                .foregroundStyle(AppTheme.textSecondary)
+                .foregroundStyle(AppTheme.sage)
             }
             Spacer()
             TechLabel(text: vm.currentLevel.displayName,
-                      color: AppTheme.textSecondary)
+                      color: AppTheme.sage.opacity(0.75))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -106,7 +108,7 @@ struct VictoryTelemetryView: View {
             // Decorative corner icon (mirrors reference's dotted-circle)
             Image(systemName: "circle.dotted")
                 .font(.system(size: 13, weight: .ultraLight))
-                .foregroundStyle(AppTheme.textSecondary)
+                .foregroundStyle(AppTheme.sage.opacity(0.65))
                 .padding(.leading, 14)
                 .padding(.top, 16)
                 .padding(.bottom, 12)
@@ -125,13 +127,13 @@ struct VictoryTelemetryView: View {
                             var p = Path()
                             p.move(to: CGPoint(x: 0, y: y))
                             p.addLine(to: CGPoint(x: size.width, y: y))
-                            ctx.stroke(p, with: .color(.white.opacity(0.07)), lineWidth: 0.5)
+                            ctx.stroke(p, with: .color(Color(hex: "C7D7C6").opacity(0.12)), lineWidth: 0.5)
                         }
                         // Baseline
                         var bl = Path()
                         bl.move(to: CGPoint(x: 0, y: size.height))
                         bl.addLine(to: CGPoint(x: size.width, y: size.height))
-                        ctx.stroke(bl, with: .color(.white.opacity(0.22)), lineWidth: 0.5)
+                        ctx.stroke(bl, with: .color(Color(hex: "C7D7C6").opacity(0.30)), lineWidth: 0.5)
                     }
                     .frame(maxWidth: .infinity, minHeight: Self.chartH, maxHeight: Self.chartH)
 
@@ -163,7 +165,7 @@ struct VictoryTelemetryView: View {
                     Text("0").frame(maxWidth: .infinity)
                 }
                 .font(AppTheme.mono(6))
-                .foregroundStyle(AppTheme.textSecondary)
+                .foregroundStyle(AppTheme.sage.opacity(0.60))
                 .frame(width: 22, height: Self.chartH)
             }
             .padding(.horizontal, 10)
@@ -174,7 +176,7 @@ struct VictoryTelemetryView: View {
                 ForEach(Array(xLabels.enumerated()), id: \.offset) { idx, lbl in
                     Text(lbl)
                         .font(AppTheme.mono(6, weight: idx == 7 ? .bold : .regular))
-                        .foregroundStyle(idx == 7 ? AppTheme.accentPrimary : AppTheme.textSecondary)
+                        .foregroundStyle(idx == 7 ? AppTheme.accentPrimary : AppTheme.sage.opacity(0.55))
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -188,7 +190,7 @@ struct VictoryTelemetryView: View {
         .background(AppTheme.backgroundPrimary)
         // Right edge separator between panels
         .overlay(alignment: .trailing) {
-            Rectangle().fill(AppTheme.stroke).frame(width: 0.5)
+            Rectangle().fill(AppTheme.sage.opacity(0.20)).frame(width: 0.5)
         }
     }
 
@@ -221,29 +223,28 @@ struct VictoryTelemetryView: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 16)
 
-            // ── Huge KPI + inline descriptor ────────────────────────────
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                // Number + %
+            // ── Huge KPI ─────────────────────────────────────────────
+            // VStack layout guarantees "100%" never wraps regardless of
+            // panel width — the number gets the full row to itself.
+            VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 0) {
                     Text("\(displayedPct)")
-                        .font(.system(size: 60, weight: .black))
+                        .font(.system(size: 56, weight: .black))
                         .foregroundStyle(sageInk)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                         .contentTransition(.numericText())
                     Text("%")
-                        .font(.system(size: 24, weight: .black))
+                        .font(.system(size: 22, weight: .black))
                         .foregroundStyle(AppTheme.accentPrimary)
-                        .offset(y: -4)
+                        .lineLimit(1)
+                        .offset(y: -3)
                 }
-                // Descriptor beside the number (like "Successful\nLaunches Rate")
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("NETWORK")
-                    Text("EFFICIENCY")
-                }
-                .font(.system(size: 9, weight: .semibold))
-                .tracking(0.4)
-                .foregroundStyle(sageMid)
-                .offset(y: 4)
+                Text("MISSION QUALITY")
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(1.5)
+                    .foregroundStyle(sageMid)
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 14)
@@ -255,6 +256,22 @@ struct VictoryTelemetryView: View {
                 .padding(.horizontal, 14)
                 .padding(.bottom, 12)
 
+            // ── Route rating + message ───────────────────────────────────
+            if let result = vm.gameResult {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(result.routeRating)
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .foregroundStyle(result.isOptimalRoute ? sageInk : sageMid)
+                        .tracking(2.0)
+                    Text(result.routeMessage)
+                        .font(.system(size: 10, weight: .regular))
+                        .foregroundStyle(sageMid)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
+            }
+
             Spacer(minLength: 0)
 
             // ── Bottom metrics row ───────────────────────────────────────
@@ -263,28 +280,22 @@ struct VictoryTelemetryView: View {
 
                 HStack(spacing: 0) {
                     SageMetric(
-                        icon:     "scope",
-                        label:    "SCORE",
-                        value:    "\(vm.score)",
-                        ink:      sageInk,
-                        sub:      sageFaint
+                        icon:  "scope",
+                        label: "SCORE",
+                        value: "\(vm.score)",
+                        ink:   sageInk,
+                        sub:   sageFaint
                     )
                     Rectangle().fill(sageDivider).frame(width: 0.5)
                     SageMetric(
-                        icon:     "cpu",
-                        label:    "NODES",
-                        value:    "\(vm.activeNodes)",
-                        ink:      sageInk,
-                        sub:      sageFaint
+                        icon:  "waveform",
+                        label: "USED / MIN",
+                        value: "\(vm.movesUsed)/\(vm.currentLevel.minimumRequiredMoves)",
+                        ink:   sageInk,
+                        sub:   sageFaint
                     )
                     Rectangle().fill(sageDivider).frame(width: 0.5)
-                    SageMetric(
-                        icon:     "waveform",
-                        label:    "MOVES",
-                        value:    "\(vm.movesUsed)",
-                        ink:      sageInk,
-                        sub:      sageFaint
-                    )
+                    objectiveMetric
                 }
             }
             .opacity(metricsVisible ? 1 : 0)
@@ -295,57 +306,132 @@ struct VictoryTelemetryView: View {
         .background(sageBg)
     }
 
+    // ── Objective-specific third metric ─────────────────────────────────
+
+    @ViewBuilder
+    private var objectiveMetric: some View {
+        switch vm.currentLevel.objectiveType {
+        case .maxCoverage:
+            SageMetric(
+                icon:  "bolt.fill",
+                label: "COVERAGE",
+                value: "\(vm.gridCoveragePercent)%",
+                ink:   sageInk,
+                sub:   sageFaint
+            )
+        case .energySaving:
+            SageMetric(
+                icon:  "leaf.fill",
+                label: "WASTE",
+                value: "\(vm.energyWaste)",
+                ink:   sageInk,
+                sub:   sageFaint
+            )
+        case .normal:
+            SageMetric(
+                icon:  "cpu",
+                label: "NODES",
+                value: "\(vm.activeNodes)",
+                ink:   sageInk,
+                sub:   sageFaint
+            )
+        }
+    }
+
     // ══════════════════════════════════════════════════════════════════════
     // MARK: - CTA strip
     // ══════════════════════════════════════════════════════════════════════
 
+    /// The level immediately after the one just completed.
+    private var nextMission: Level? {
+        guard onNextMission != nil else { return nil }
+        let levels = LevelGenerator.levels
+        guard let idx = levels.firstIndex(where: { $0.id == vm.currentLevel.id }),
+              idx + 1 < levels.count else { return nil }
+        return levels[idx + 1]
+    }
+
     private var ctaStrip: some View {
-        HStack(spacing: 0) {
-            Button(action: onRestart) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("RETRY")
-                        .font(AppTheme.mono(11, weight: .bold))
-                        .kerning(1.5)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .background(AppTheme.success)
-                .foregroundStyle(.white)
-            }
+        VStack(spacing: 0) {
 
-            Rectangle()
-                .fill(AppTheme.stroke)
-                .frame(width: 0.5, height: 24)
-
-            Button(action: shareTicket) {
-                HStack(spacing: 5) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("SHARE")
-                        .font(AppTheme.mono(10, weight: .bold))
-                        .kerning(1)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 48)
-                .foregroundStyle(AppTheme.textPrimary)
-            }
-
-            Rectangle()
-                .fill(AppTheme.stroke)
-                .frame(width: 0.5, height: 24)
-
-            Button(action: onDismiss) {
-                Text("HOME")
-                    .font(AppTheme.mono(10))
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .kerning(1)
+            // ── Primary: NEXT MISSION ──────────────────────────────────
+            if let next = nextMission {
+                Button(action: { onNextMission?() }) {
+                    HStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("MISSION \(next.displayID)")
+                                .font(AppTheme.mono(9, weight: .regular))
+                                .foregroundStyle(.white.opacity(0.55))
+                                .kerning(2)
+                            Text("NEXT MISSION")
+                                .font(AppTheme.mono(16, weight: .black))
+                                .foregroundStyle(.white)
+                                .kerning(1)
+                        }
+                        .padding(.leading, 20)
+                        Spacer()
+                        ZStack {
+                            Color.black.opacity(0.16).frame(width: 56)
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                    .frame(height: 60)
+                    .background(AppTheme.accentPrimary)
+                }
+                .breathingCTA()
+
+                TechDivider()
             }
+
+            // ── Secondary row: RETRY / SHARE / MAP / HOME ──────────────
+            HStack(spacing: 0) {
+                Button(action: onRestart) {
+                    secondaryButton(icon: "arrow.counterclockwise", label: "RETRY",
+                                    color: AppTheme.textPrimary)
+                }
+
+                Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
+
+                Button(action: shareTicket) {
+                    secondaryButton(icon: "square.and.arrow.up", label: "SHARE",
+                                    color: AppTheme.textSecondary)
+                }
+
+                if onMissions != nil {
+                    Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
+
+                    Button(action: { onMissions?() }) {
+                        secondaryButton(icon: "map", label: "MAP",
+                                        color: AppTheme.sage.opacity(0.75))
+                    }
+                }
+
+                Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
+
+                Button(action: onDismiss) {
+                    secondaryButton(icon: "house", label: "HOME",
+                                    color: AppTheme.sage.opacity(0.55))
+                }
+            }
+            .background(AppTheme.surface)
         }
-        .background(AppTheme.surface)
+    }
+
+    @ViewBuilder
+    private func secondaryButton(icon: String, label: String, color: Color) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+            Text(label)
+                .font(AppTheme.mono(8, weight: .bold))
+                .kerning(1)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 48)
+        .foregroundStyle(color)
     }
 
     // ══════════════════════════════════════════════════════════════════════

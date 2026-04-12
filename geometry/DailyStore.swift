@@ -19,12 +19,16 @@ enum DailyStore {
 
     static func save(_ result: GameResult) {
         let dict: [String: Any] = [
+            "levelId":        result.levelId,
             "success":        result.success,
             "movesUsed":      result.movesUsed,
             "efficiency":     Double(result.efficiency),
             "nodesActivated": result.nodesActivated,
             "totalNodes":     result.totalNodes,
-            "score":          result.score
+            "score":          result.score,
+            "moveRating":     Double(result.moveRating),
+            "energyRating":   Double(result.energyRating),
+            "timeRating":     Double(result.timeRating)
         ]
         defaults.set(dict, forKey: todayKey)
     }
@@ -38,13 +42,19 @@ enum DailyStore {
             let nodesActivated = dict["nodesActivated"] as? Int,
             let totalNodes     = dict["totalNodes"]     as? Int
         else { return nil }
+        // levelId defaults to the current daily level ID for entries saved before this field was added
+        let levelId = dict["levelId"] as? Int ?? LevelGenerator.dailyLevel.id
         return GameResult(
+            levelId:        levelId,
             success:        success,
             movesUsed:      movesUsed,
             efficiency:     Float(efficiency),
             nodesActivated: nodesActivated,
             totalNodes:     totalNodes,
-            score:          dict["score"] as? Int ?? 0   // 0 for records saved before v1.1
+            score:          dict["score"] as? Int ?? 0,
+            moveRating:     Float(dict["moveRating"]   as? Double ?? 0),
+            energyRating:   Float(dict["energyRating"] as? Double ?? 0),
+            timeRating:     Float(dict["timeRating"]   as? Double ?? 1)
         )
     }
 }

@@ -22,7 +22,8 @@ enum AppTheme {
     static let surface             = Color(hex: "222222")
     static let surfaceElevated     = Color(hex: "2B2B2B")
     static let accentPrimary       = Color(hex: "FF6A3D")   // orange
-    static let accentSecondary     = Color(hex: "D9E7D8")   // sage
+    static let accentSecondary     = Color(hex: "D9E7D8")   // sage (light)
+    static let sage                = Color(hex: "C7D7C6")   // muted sage — functional labels & data guides
     static let textPrimary         = Color(hex: "F0EDE8")   // off-white
     static let textSecondary       = Color(hex: "5E5E5E")   // technical gray
     static let stroke              = Color.white.opacity(0.08)
@@ -101,7 +102,7 @@ struct BackgroundGrid: View {
 struct TechDivider: View {
     var body: some View {
         Rectangle()
-            .fill(AppTheme.stroke)
+            .fill(AppTheme.sage.opacity(0.14))
             .frame(height: 0.5)
     }
 }
@@ -117,7 +118,9 @@ struct BreathingCTA: ViewModifier {
     func body(content: Content) -> some View {
         content
             .scaleEffect(expanded ? 1.04 : 1.0)
-            .shadow(color: color.opacity(expanded ? 0.45 : 0.10), radius: expanded ? 14 : 4)
+            // Fixed radius — animating radius forces a shadow re-blur every frame.
+            // Only the color opacity animates, which is a cheap blend operation.
+            .shadow(color: color.opacity(expanded ? 0.42 : 0.06), radius: 10)
             .onAppear {
                 withAnimation(
                     .easeInOut(duration: 1.5)
@@ -146,7 +149,8 @@ struct PulsingGlow: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .shadow(color: color.opacity(bright ? 0.55 : 0.10), radius: bright ? 7 : 2)
+            // Fixed radius — only opacity animates. Avoids shadow re-blur every frame.
+            .shadow(color: color.opacity(bright ? 0.52 : 0.06), radius: 5)
             .onAppear {
                 withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: true)) {
                     bright = true

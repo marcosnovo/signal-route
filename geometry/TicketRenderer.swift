@@ -10,9 +10,18 @@ enum TicketRenderer {
     // MARK: - Public API
 
     /// Renders a 1080×1080 UIImage ticket for the given pass and player profile.
+    ///
+    /// `format.scale = 1.0` forces pixel-accurate output: the CGContext coordinates
+    /// map 1-to-1 to pixels regardless of the device's display scale factor.
+    /// Without this, the default screen scale (2× or 3×) causes the image to be
+    /// 2160 or 3240 pixels wide while all drawing coordinates still assume 1080 —
+    /// producing a clipped, undersized composition in the share sheet.
     static func render(pass: PlanetPass, profile: AstronautProfile) -> UIImage {
         let size = CGSize(width: 1080, height: 1080)
-        let renderer = UIGraphicsImageRenderer(size: size)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale  = 1.0    // pixel-accurate: 1080 pt == 1080 px
+        format.opaque = true   // no alpha channel needed; avoids premultiplied artefacts
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
         return renderer.image { _ in
             drawTicket(pass: pass, profile: profile, in: size)
         }

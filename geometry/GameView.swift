@@ -6,6 +6,8 @@ struct GameView: View {
     let isIntro: Bool
     let onDismiss: () -> Void
     let onIntroComplete: (() -> Void)?
+    let onNextMission: (() -> Void)?
+    let onMissions: (() -> Void)?
 
     /// Controls when the overlay actually appears — decoupled from vm.status
     /// so we can show the winning path before covering the board.
@@ -14,14 +16,21 @@ struct GameView: View {
     @State private var winPulse: Bool = false
     /// Success ring opacity for the board container flash on win.
     @State private var boardSuccessOpacity: Double = 0
+    /// Position of the moving signal front during the win sweep animation.
+    @State private var signalFrontRow: Int = -1
+    @State private var signalFrontCol: Int = -1
 
     init(level: Level,
          isIntro: Bool = false,
          onDismiss: @escaping () -> Void,
-         onIntroComplete: (() -> Void)? = nil) {
+         onIntroComplete: (() -> Void)? = nil,
+         onNextMission: (() -> Void)? = nil,
+         onMissions: (() -> Void)? = nil) {
         self.isIntro          = isIntro
         self.onDismiss        = onDismiss
         self.onIntroComplete  = onIntroComplete
+        self.onNextMission    = onNextMission
+        self.onMissions       = onMissions
         _vm = StateObject(wrappedValue: GameViewModel(level: level))
     }
 
@@ -33,6 +42,7 @@ struct GameView: View {
             VStack(spacing: 0) {
                 header
                 movesBar
+                timerBar
                 objectiveSection
                 boardSection
                     .padding(.vertical, 6)
@@ -52,7 +62,9 @@ struct GameView: View {
             } else if !isIntro && overlayVisible && vm.status == .won {
                 VictoryTelemetryView(vm: vm,
                                      onRestart: { vm.setupLevel() },
-                                     onDismiss: onDismiss)
+                                     onDismiss: onDismiss,
+                                     onNextMission: onNextMission,
+                                     onMissions: onMissions)
                     .transition(.opacity)
             } else if !isIntro && overlayVisible && vm.status == .lost {
                 MissionOverlay(vm: vm,
@@ -64,6 +76,16 @@ struct GameView: View {
                             removal:   .opacity.combined(with: .scale(scale: 0.95))
                         )
                     )
+            }
+
+            // Mechanic unlock announcement — shown once on first encounter
+            if let mechanic = vm.pendingMechanicAnnouncement {
+                MechanicUnlockView(mechanic: mechanic) {
+                    MechanicUnlockStore.markAnnounced(mechanic)
+                    vm.pendingMechanicAnnouncement = nil
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.93)))
+                .onAppear { SoundManager.play(.mechanicUnlock) }
             }
         }
         .onChange(of: vm.status) { _, newStatus in
@@ -80,20 +102,63 @@ struct GameView: View {
                 withAnimation(.easeOut(duration: 0.18)) { overlayVisible = false }
                 winPulse = false
                 boardSuccessOpacity = 0
+                signalFrontRow = -1
+                signalFrontCol = -1
             }
         }
     }
 
     // MARK: - Win sequence
-    /// 1. Energized tiles pulse (winPulse → TileView).
-    /// 2. Success ring flashes around the board container.
-    /// 3. After ~750 ms the player has seen the complete circuit → overlay appears.
+    /// 1. Sound + success ring flash (immediate feedback).
+    /// 2. Signal sweeps through the circuit in BFS order — each tile flashes briefly.
+    /// 3. winPulse: cascade scale across all energized tiles.
+    /// 4. Overlay appears.
     private func playWinSequence() {
-        winPulse = true
+        SoundManager.play(.win)
         withAnimation(.easeOut(duration: 0.20)) { boardSuccessOpacity = 0.75 }
         withAnimation(.easeOut(duration: 0.55).delay(0.28)) { boardSuccessOpacity = 0 }
+
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 750_000_000)
+            // Brief pause — let the player see the completed board
+            try? await Task.sleep(nanoseconds: 180_000_000)
+
+            // ── Signal sweep through circuit path ─────────────────────
+            let path = vm.signalPath
+            guard !path.isEmpty else {
+                // Fallback: no path data → skip to winPulse immediately
+                winPulse = true
+                HapticsManager.medium()
+                try? await Task.sleep(nanoseconds: 450_000_000)
+                withAnimation(.spring(response: 0.44, dampingFraction: 0.80)) { overlayVisible = true }
+                return
+            }
+
+            // Step interval scales with path length; capped between 40 ms and 110 ms
+            let stepMs = min(110, max(40, 900 / path.count))
+            let stepNs = UInt64(stepMs) * 1_000_000
+
+            for (i, pos) in path.enumerated() {
+                signalFrontRow = pos.0
+                signalFrontCol = pos.1
+
+                // Haptic on target tiles so player feels each connection
+                if vm.tiles[pos.0][pos.1].role == .target {
+                    HapticsManager.light()
+                }
+
+                try? await Task.sleep(nanoseconds: stepNs)
+            }
+
+            // Clear the moving front
+            signalFrontRow = -1
+            signalFrontCol = -1
+
+            // ── Cascade scale pulse across all energized tiles ─────────
+            winPulse = true
+            HapticsManager.success()
+
+            // Let the pulse settle before covering the board
+            try? await Task.sleep(nanoseconds: 380_000_000)
             withAnimation(.spring(response: 0.44, dampingFraction: 0.80)) {
                 overlayVisible = true
             }
@@ -143,7 +208,7 @@ struct GameView: View {
     private var movesBar: some View {
         HStack(alignment: .bottom, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                TechLabel(text: "MOVES REMAINING")
+                TechLabel(text: "MOVES REMAINING", color: AppTheme.sage)
                 Text("\(vm.movesLeft)")
                     .font(AppTheme.mono(38, weight: .black))
                     .foregroundStyle(movesColor)
@@ -153,10 +218,10 @@ struct GameView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                TechLabel(text: "USED")
+                TechLabel(text: "USED", color: AppTheme.sage)
                 Text("\(vm.movesUsed)")
                     .font(AppTheme.mono(22, weight: .bold))
-                    .foregroundStyle(AppTheme.textSecondary)
+                    .foregroundStyle(AppTheme.sage.opacity(0.55))
                     .monospacedDigit()
             }
         }
@@ -172,25 +237,141 @@ struct GameView: View {
         return AppTheme.danger
     }
 
+    // MARK: - Timer bar (only shown on timed levels)
+    @ViewBuilder
+    private var timerBar: some View {
+        if let remaining = vm.timeRemaining, let limit = vm.currentLevel.timeLimit {
+            let ratio = Double(remaining) / Double(max(1, limit))
+            let timerColor: Color = ratio > 0.4 ? AppTheme.success
+                                  : ratio > 0.2 ? AppTheme.accentPrimary
+                                  : AppTheme.danger
+
+            HStack(alignment: .bottom, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
+                    TechLabel(text: "TIME REMAINING", color: AppTheme.sage)
+                    Text(timeString(remaining))
+                        .font(AppTheme.mono(28, weight: .black))
+                        .foregroundStyle(timerColor)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.spring(response: 0.25), value: remaining)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 4) {
+                    TechLabel(text: "ELAPSED", color: AppTheme.sage)
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            Rectangle()
+                                .fill(AppTheme.stroke)
+                                .frame(height: 3)
+                            Rectangle()
+                                .fill(timerColor)
+                                .frame(width: g.size.width * ratio, height: 3)
+                                .animation(.linear(duration: 1.0), value: remaining)
+                        }
+                    }
+                    .frame(width: 80, height: 3)
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .overlay(alignment: .bottom) { TechDivider() }
+        }
+    }
+
+    private func timeString(_ seconds: Int) -> String {
+        let m = seconds / 60
+        let s = seconds % 60
+        return m > 0 ? String(format: "%d:%02d", m, s) : String(format: "0:%02d", s)
+    }
+
     // MARK: - Objective banner
     private var objectiveSection: some View {
-        HStack(spacing: 10) {
-            Rectangle()
-                .fill(AppTheme.accentPrimary)
-                .frame(width: 2, height: 14)
-            TechLabel(text: "OBJECTIVE")
-            Text("→")
-                .font(AppTheme.mono(9))
-                .foregroundStyle(AppTheme.textSecondary)
-            Text(vm.objectiveText)
-                .font(AppTheme.mono(10, weight: .semibold))
-                .foregroundStyle(AppTheme.textPrimary)
-                .kerning(0.5)
-            Spacer()
+        let objType = vm.currentLevel.objectiveType
+        let accentColor = objType.accentColor
+
+        return VStack(spacing: 0) {
+            // Primary row: objective label
+            HStack(spacing: 10) {
+                Rectangle()
+                    .fill(accentColor)
+                    .frame(width: 2, height: 14)
+                Image(systemName: objType.iconName)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(accentColor)
+                TechLabel(text: "OBJECTIVE", color: AppTheme.sage)
+                Text("→")
+                    .font(AppTheme.mono(9))
+                    .foregroundStyle(AppTheme.sage.opacity(0.65))
+                Text(vm.objectiveText)
+                    .font(AppTheme.mono(10, weight: .semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .kerning(0.5)
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 9)
+
+            // Secondary row: live objective metric
+            objectiveMetricRow
+                .padding(.horizontal, 20)
+                .padding(.bottom, 9)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 9)
         .overlay(alignment: .bottom) { TechDivider() }
+    }
+
+    @ViewBuilder
+    private var objectiveMetricRow: some View {
+        switch vm.currentLevel.objectiveType {
+        case .normal:
+            EmptyView()
+
+        case .maxCoverage:
+            // Live coverage bar
+            HStack(spacing: 8) {
+                TechLabel(text: "GRID COVERAGE")
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 1).fill(AppTheme.stroke).frame(height: 3)
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(Color(hex: "FFB800"))
+                            .frame(width: g.size.width * CGFloat(vm.gridCoveragePercent) / 100, height: 3)
+                            .animation(.easeOut(duration: 0.15), value: vm.gridCoveragePercent)
+                    }
+                }
+                .frame(height: 3)
+                TechLabel(text: "\(vm.gridCoveragePercent)%", color: Color(hex: "FFB800"))
+                    .monospacedDigit()
+                    .animation(.easeInOut(duration: 0.15), value: vm.gridCoveragePercent)
+            }
+            .padding(.top, 6)
+
+        case .energySaving:
+            // Live waste counter
+            let waste = vm.energyWaste
+            let exceeded = vm.energyWasteExceeded
+            let wasteColor: Color = exceeded ? AppTheme.danger : AppTheme.success
+            HStack(spacing: 8) {
+                TechLabel(text: "EXTRA NODES")
+                HStack(spacing: 3) {
+                    ForEach(0..<3, id: \.self) { i in
+                        RoundedRectangle(cornerRadius: 1)
+                            .fill(i < waste ? (exceeded ? AppTheme.danger : Color(hex: "FFB800")) : AppTheme.stroke)
+                            .frame(width: 18, height: 3)
+                            .animation(.easeOut(duration: 0.15), value: waste)
+                    }
+                }
+                TechLabel(text: "\(waste)/2",
+                          color: wasteColor)
+                    .monospacedDigit()
+                    .animation(.easeInOut(duration: 0.15), value: waste)
+                if exceeded {
+                    TechLabel(text: "· REDUCE NETWORK", color: AppTheme.danger)
+                }
+                Spacer()
+            }
+            .padding(.top, 6)
+        }
     }
 
     // MARK: - Board
@@ -202,9 +383,6 @@ struct GameView: View {
             let tileSize         = available / CGFloat(vm.gridSize)
 
             VStack(spacing: 0) {
-                TechLabel(text: "NETWORK ANALYSIS")
-                    .padding(.bottom, 8)
-
                 VStack(spacing: gap) {
                     ForEach(0..<vm.gridSize, id: \.self) { row in
                         HStack(spacing: gap) {
@@ -212,11 +390,9 @@ struct GameView: View {
                                 TileView(
                                     tile:            vm.tiles[row][col],
                                     size:            tileSize,
-                                    connectedNorth:  vm.isConnected(row: row, col: col, direction: .north),
-                                    connectedEast:   vm.isConnected(row: row, col: col, direction: .east),
-                                    connectedSouth:  vm.isConnected(row: row, col: col, direction: .south),
-                                    connectedWest:   vm.isConnected(row: row, col: col, direction: .west),
                                     winPulse:        winPulse,
+                                    animationDelay:  Double(row + col) * 0.038,
+                                    signalHighlight: signalFrontRow == row && signalFrontCol == col,
                                     onTap:           { vm.tap(row: row, col: col) }
                                 )
                             }
@@ -227,7 +403,7 @@ struct GameView: View {
                 .background(AppTheme.backgroundSecondary)
                 .overlay(
                     RoundedRectangle(cornerRadius: AppTheme.cardRadius)
-                        .strokeBorder(AppTheme.stroke, lineWidth: 0.5)
+                        .strokeBorder(AppTheme.sage.opacity(0.18), lineWidth: 0.5)
                 )
                 // Success ring — flashes when the circuit closes, fades before overlay
                 .overlay(
@@ -242,7 +418,7 @@ struct GameView: View {
         .padding(.horizontal, 16)
     }
 
-    // MARK: - Status panel (replaces abstract integrity bar)
+    // MARK: - Status panel
     private var statusPanel: some View {
         VStack(spacing: 0) {
             TechDivider()
@@ -253,36 +429,62 @@ struct GameView: View {
                     value: "\(vm.targetsOnline)/\(vm.targetsTotal)",
                     valueColor: vm.networkOnline ? AppTheme.accentSecondary : AppTheme.textPrimary
                 )
-                .animation(.easeInOut(duration: 0.2), value: vm.targetsOnline)
+                .animation(.easeInOut(duration: 0.20), value: vm.targetsOnline)
 
                 metricDivider
 
-                // 2. Active nodes
-                HUDMetric(
-                    label: "ACTIVE NODES",
-                    value: "\(vm.activeNodes)",
-                    valueColor: AppTheme.textPrimary
-                )
-                .animation(.easeInOut(duration: 0.15), value: vm.activeNodes)
+                // 2. Objective-specific middle metric
+                objectiveHUDMetric
 
                 metricDivider
 
-                // 3. Network status — the clearest readout of win state
+                // 3. Network status
                 HUDMetric(
                     label: "NETWORK",
                     value: vm.networkOnline ? "ONLINE" : "OFFLINE",
-                    valueColor: vm.networkOnline ? AppTheme.success : AppTheme.textSecondary
+                    valueColor: vm.networkOnline ? AppTheme.success : AppTheme.accentPrimary
                 )
-                .pulsingGlow(color: AppTheme.success)
-                .animation(.easeInOut(duration: 0.2), value: vm.networkOnline)
+                .pulsingGlow(color: vm.networkOnline ? AppTheme.success : AppTheme.accentPrimary,
+                             duration: vm.networkOnline ? 1.8 : 1.1)
+                .animation(.easeInOut(duration: 0.30), value: vm.networkOnline)
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 14)
+            .background(AppTheme.backgroundSecondary.opacity(0.6))
+        }
+    }
+
+    @ViewBuilder
+    private var objectiveHUDMetric: some View {
+        switch vm.currentLevel.objectiveType {
+        case .normal:
+            HUDMetric(
+                label: "ACTIVE NODES",
+                value: "\(vm.activeNodes)",
+                valueColor: AppTheme.textPrimary
+            )
+            .animation(.easeInOut(duration: 0.15), value: vm.activeNodes)
+
+        case .maxCoverage:
+            HUDMetric(
+                label: "COVERAGE",
+                value: "\(vm.gridCoveragePercent)%",
+                valueColor: Color(hex: "FFB800")
+            )
+            .animation(.easeInOut(duration: 0.15), value: vm.gridCoveragePercent)
+
+        case .energySaving:
+            HUDMetric(
+                label: "WASTE",
+                value: "\(vm.energyWaste)/2",
+                valueColor: vm.energyWasteExceeded ? AppTheme.danger : AppTheme.success
+            )
+            .animation(.easeInOut(duration: 0.15), value: vm.energyWaste)
         }
     }
 
     private var metricDivider: some View {
         Rectangle()
-            .fill(AppTheme.stroke)
+            .fill(AppTheme.sage.opacity(0.22))
             .frame(width: 0.5, height: 28)
     }
 
@@ -293,10 +495,10 @@ struct GameView: View {
                 VStack(spacing: 5) {
                     TechLabel(text: "ROTATE TILES TO ROUTE THE SIGNAL",
                               color: AppTheme.accentPrimary)
-                    TechLabel(text: "TAP ANY TILE TO ROTATE IT")
+                    TechLabel(text: "TAP ANY TILE TO ROTATE IT", color: AppTheme.sage)
                 }
             } else {
-                TechLabel(text: "TAP TILE TO ROTATE")
+                TechLabel(text: "TAP TILE TO ROTATE", color: AppTheme.sage)
             }
         }
         .padding(.bottom, 20)
@@ -311,14 +513,15 @@ private struct HUDMetric: View {
     let valueColor: Color
 
     var body: some View {
-        VStack(spacing: 3) {
-            TechLabel(text: label)
+        VStack(spacing: 4) {
+            TechLabel(text: label, color: AppTheme.sage.opacity(0.80))
             Text(value)
-                .font(AppTheme.mono(13, weight: .bold))
+                .font(AppTheme.mono(14, weight: .bold))
                 .foregroundStyle(valueColor)
                 .monospacedDigit()
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
+                .contentTransition(.opacity)
         }
         .frame(maxWidth: .infinity)
     }
@@ -459,7 +662,7 @@ struct MissionOverlay: View {
     @ViewBuilder
     private func efficiencyRow(result: GameResult) -> some View {
         HStack(spacing: 10) {
-            TechLabel(text: "EFFICIENCY")
+            TechLabel(text: "EFFICIENCY", color: AppTheme.sage)
             HStack(spacing: 3) {
                 ForEach(0..<5, id: \.self) { i in
                     RoundedRectangle(cornerRadius: 1)
@@ -566,8 +769,87 @@ struct OverlayStatCell: View {
                 .font(AppTheme.mono(20, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
                 .monospacedDigit()
-            TechLabel(text: label)
+            TechLabel(text: label, color: AppTheme.sage)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - MechanicUnlockView
+/// Full-screen announcement shown the first time the player encounters a new mechanic.
+/// Dismissed by tapping "UNDERSTOOD" — the mechanic is then marked announced in UserDefaults.
+struct MechanicUnlockView: View {
+    let mechanic: MechanicType
+    let onDismiss: () -> Void
+
+    @State private var bodyRevealed = false
+
+    private let amber = Color(hex: "FFB800")
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.84).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // ── Header ───────────────────────────────────────────────
+                VStack(spacing: 10) {
+                    Image(systemName: mechanic.iconName)
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(amber)
+                        .pulsingGlow(color: amber, duration: 1.3)
+
+                    TechLabel(text: "NEW MECHANIC UNLOCKED", color: amber)
+
+                    Text(mechanic.unlockTitle)
+                        .font(AppTheme.mono(20, weight: .black))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .kerning(1)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+                .padding(.horizontal, 20)
+                .background(AppTheme.surface)
+
+                TechDivider()
+
+                // ── Message (staggered reveal) ────────────────────────────
+                Text(mechanic.unlockMessage)
+                    .font(AppTheme.mono(11))
+                    .foregroundStyle(AppTheme.textPrimary.opacity(0.85))
+                    .lineSpacing(5)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 22)
+                    .frame(maxWidth: .infinity)
+                    .background(AppTheme.backgroundSecondary)
+                    .opacity(bodyRevealed ? 1 : 0)
+                    .offset(y: bodyRevealed ? 0 : 8)
+
+                TechDivider()
+
+                // ── CTA ──────────────────────────────────────────────────
+                Button(action: onDismiss) {
+                    Text("UNDERSTOOD")
+                        .font(AppTheme.mono(12, weight: .bold))
+                        .kerning(2)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(amber)
+                        .foregroundStyle(Color.black)
+                }
+            }
+            .background(AppTheme.backgroundPrimary)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                    .strokeBorder(amber.opacity(0.55), lineWidth: 1.0)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+            .padding(.horizontal, 24)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.82).delay(0.20)) {
+                bodyRevealed = true
+            }
+        }
     }
 }

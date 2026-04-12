@@ -24,13 +24,18 @@ struct ContentView: View {
                 )
                 .transition(.opacity)
             } else if let level = activeLevel {
-                GameView(level: level, onDismiss: { activeLevel = nil })
+                GameView(
+                    level: level,
+                    onDismiss: { activeLevel = nil },
+                    onNextMission: { activeLevel = ProgressionStore.profile.nextMission },
+                    onMissions: { activeLevel = nil; showingLevelSelect = true }
+                )
                     .transition(.asymmetric(
                         insertion: .move(edge: .trailing),
                         removal:   .move(edge: .trailing)
                     ))
             } else if showingLevelSelect {
-                LevelSelectView(
+                MissionMapView(
                     onSelect: { level in
                         showingLevelSelect = false
                         activeLevel = level
@@ -43,8 +48,8 @@ struct ContentView: View {
                 ))
             } else {
                 HomeView(
-                    onPlay:        { level in activeLevel = level },
-                    onSecretMenu:  { showingLevelSelect = true }
+                    onPlay:     { level in activeLevel = level },
+                    onMissions: { showingLevelSelect = true }
                 )
                 .transition(.asymmetric(
                     insertion: .move(edge: .leading),

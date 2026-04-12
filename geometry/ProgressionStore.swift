@@ -32,7 +32,10 @@ enum ProgressionStore {
     // MARK: - Recording a mission
 
     /// Call this after every successful mission win.
-    /// Accumulates stats, runs the level-up loop, and persists the result.
+    ///
+    /// Only the **best** efficiency per unique level ID contributes to progression.
+    /// Replaying the same level a hundred times does not inflate the quality count —
+    /// the stored entry is updated only when the new score strictly improves on the best.
     ///
     /// - Returns: A `LevelUpEvent` if the player advanced one or more levels,
     ///            or `nil` if no level boundary was crossed.
@@ -42,13 +45,17 @@ enum ProgressionStore {
 
         var p = profile
 
-        // Accumulate
-        p.completedMissions += 1
-        p.totalEfficiency   += result.efficiency
-        p.totalScore        += result.score
+        // Always accumulate lifetime score (not used for level-up gating)
+        p.totalScore += result.score
 
-        // Level-up loop — handles edge cases where a single mission
-        // bridges more than one threshold (very unlikely but safe).
+        // Best-per-level dedup: only store if this result beats the previous best
+        let key = String(result.levelId)
+        let previousBest = p.bestEfficiencyByLevel[key] ?? 0
+        if result.efficiency > previousBest {
+            p.bestEfficiencyByLevel[key] = result.efficiency
+        }
+
+        // Level-up loop — handles the rare case where one result crosses multiple thresholds
         var levelsGained = 0
         let prevPlanetIndex = p.currentPlanetIndex
         while p.canLevelUp {
