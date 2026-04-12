@@ -45,33 +45,42 @@ enum SoundManager {
     // MARK: - Public API
 
     /// Call once at app launch from an async context.
-    /// PCM synthesis runs on a background thread — the main thread is never blocked.
+    /// All heavy work (PCM synthesis + AVAudioPlayer creation) runs on a background thread
+    /// so the main thread is never blocked. Only the final pool assignment and music start
+    /// happen on the caller's actor context, and those are trivially fast.
     static func prepare() async {
         configureSession()
 
-        // Synthesise PCM and pack WAV entirely on a background thread —
-        // all Float→Int16 conversion stays off the main thread.
-        let (sfxDataList, droneData): ([Data], Data) =
-            await Task.detached(priority: .utility) {
-                let sfx = SFX.allCases.map { wavData(samples: synthesizeMono($0), channels: 1) }
-                let drone = wavData(samples: synthesizeDroneInterleaved(), channels: 2)
-                return (sfx, drone)
+        // Synthesise PCM, pack WAV, and build the player pool entirely off the main actor.
+        // Priority: .userInitiated — needs to complete before the player opens the first level.
+        typealias PoolResult = ([SFX: [AVAudioPlayer]], AVAudioPlayer?)
+        let (readyPools, readyDrone): PoolResult =
+            await Task.detached(priority: .userInitiated) {
+                let sfxDataList = SFX.allCases.map { wavData(samples: synthesizeMono($0), channels: 1) }
+                let droneData   = wavData(samples: synthesizeDroneInterleaved(), channels: 2)
+
+                // Create and prepareToPlay on the background thread — safe for AVAudioPlayer.
+                var pools: [SFX: [AVAudioPlayer]] = [:]
+                for (sfx, data) in zip(SFX.allCases, sfxDataList) {
+                    pools[sfx] = (0..<3).compactMap { _ in
+                        guard let p = try? AVAudioPlayer(data: data, fileTypeHint: nil) else { return nil }
+                        p.volume = 1.0
+                        p.prepareToPlay()
+                        return p
+                    }
+                }
+
+                let drone = try? AVAudioPlayer(data: droneData, fileTypeHint: nil)
+                drone?.numberOfLoops = -1
+                drone?.volume        = 0.15
+                drone?.prepareToPlay()
+
+                return (pools, drone)
             }.value
 
-        // Back on MainActor: create AVAudioPlayer instances from ready-made Data
-        for (sfx, data) in zip(SFX.allCases, sfxDataList) {
-            pools[sfx] = (0..<3).compactMap { _ in
-                guard let p = try? AVAudioPlayer(data: data, fileTypeHint: nil)
-                else { return nil }
-                p.volume = 1.0
-                p.prepareToPlay()
-                return p
-            }
-        }
-
-        musicPlayer = try? AVAudioPlayer(data: droneData, fileTypeHint: nil)
-        musicPlayer?.numberOfLoops = -1
-        musicPlayer?.volume = 0.15
+        // Back on caller's actor: only trivially-fast assignments + music start.
+        pools = readyPools
+        musicPlayer = readyDrone
         if musicEnabled { musicPlayer?.play() }
     }
 

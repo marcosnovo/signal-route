@@ -1,6 +1,19 @@
 import Foundation
 import Combine
 
+// MARK: - AppLanguage
+enum AppLanguage: String, CaseIterable, Codable {
+    case en, es, fr
+
+    var displayName: String {
+        switch self {
+        case .en: return "English"
+        case .es: return "Español"
+        case .fr: return "Français"
+        }
+    }
+}
+
 // MARK: - SettingsStore
 /// Persistent user preferences. Observable singleton — access via `SettingsStore.shared`.
 /// Wraps SoundManager's existing UserDefaults keys so all persistence stays consistent.
@@ -20,6 +33,9 @@ final class SettingsStore: ObservableObject {
     @Published var reducedMotion: Bool {
         didSet { UserDefaults.standard.set(reducedMotion, forKey: "reducedMotion") }
     }
+    @Published var language: AppLanguage {
+        didSet { UserDefaults.standard.set(language.rawValue, forKey: "language") }
+    }
 
     private init() {
         // Mirror SoundManager's existing UserDefaults keys for sfx + music
@@ -27,5 +43,10 @@ final class SettingsStore: ObservableObject {
         musicEnabled   = UserDefaults.standard.object(forKey: "musicEnabled")   as? Bool ?? true
         hapticsEnabled = UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool ?? true
         reducedMotion  = UserDefaults.standard.object(forKey: "reducedMotion")  as? Bool ?? false
+
+        // Language — prefer saved preference, fall back to system locale, then English
+        let savedCode  = UserDefaults.standard.string(forKey: "language")
+        let systemCode = Locale.current.language.languageCode?.identifier ?? "en"
+        language = AppLanguage(rawValue: savedCode ?? systemCode) ?? .en
     }
 }

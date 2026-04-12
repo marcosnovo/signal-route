@@ -7,6 +7,8 @@ struct HomeView: View {
     let onMissions: () -> Void
 
     @EnvironmentObject private var gcManager: GameCenterManager
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
     @State private var secretTaps          = 0
     @State private var lastTapTime         = Date.distantPast
     @State private var showingPlanetTicket = false
@@ -34,7 +36,7 @@ struct HomeView: View {
                 if introCompleted {
                     AstronautProgressCard(profile: profile)
                         .padding(.horizontal, 24)
-                        .padding(.top, 10)
+                        .padding(.top, 16)
                         .onTapGesture { showingPlanetTicket = true }
                 }
                 Spacer()
@@ -56,6 +58,12 @@ struct HomeView: View {
                 onDismiss: { showingDevMenu = false }
             )
         }
+        // Pre-warm the ticket cache while the user is on the home screen so that
+        // opening the planet pass sheet is instant instead of showing a spinner.
+        .task(id: ticketCacheKey) {
+            guard introCompleted else { return }
+            await warmTicketCache()
+        }
     }
 
     // MARK: Subviews
@@ -67,14 +75,24 @@ struct HomeView: View {
             HStack(spacing: 5) {
                 Circle().fill(AppTheme.success).frame(width: 5, height: 5)
                     .pulsingGlow(color: AppTheme.success, duration: 2.0)
-                TechLabel(text: "NODE ACTIVE")
+                TechLabel(text: S.nodeActive)
             }
             Spacer()
             Button(action: { showingSettings = true }) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(AppTheme.sage.opacity(0.65))
-                    .frame(width: 32, height: 32)
+                HStack(spacing: 5) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 11, weight: .semibold))
+                    TechLabel(text: S.config, color: AppTheme.sage)
+                }
+                .foregroundStyle(AppTheme.sage)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AppTheme.backgroundSecondary)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .strokeBorder(AppTheme.sage.opacity(0.40), lineWidth: 0.5)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
         }
         .padding(.horizontal, 20)
@@ -84,27 +102,13 @@ struct HomeView: View {
     }
 
     private var titleSection: some View {
-        VStack(spacing: 18) {
-            // Logo (secret menu trigger: tap 5× within 2 s)
-            ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(AppTheme.accentPrimary.opacity(0.35), lineWidth: 1)
-                    .frame(width: 72, height: 72)
-                Image("AppLogo")
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 68, height: 68)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-            }
-            .onTapGesture { handleSecretTap() }
-
-            VStack(spacing: 7) {
-                GeoTitle()
-                Text("RESTORE THE NETWORK")
-                    .font(AppTheme.mono(9))
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .kerning(3)
-            }
+        VStack(spacing: 10) {
+            GeoTitle()
+                .onTapGesture { handleSecretTap() }
+            Text(S.restoreTheNetwork)
+                .font(AppTheme.mono(9))
+                .foregroundStyle(AppTheme.sage.opacity(0.82))
+                .kerning(3)
         }
     }
 
@@ -113,7 +117,7 @@ struct HomeView: View {
 
     // MARK: Mission section — adapts to player state
     private var missionSection: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 14) {
             if introCompleted {
                 if let next = profile.nextMission {
                     // Next sequential mission
@@ -123,11 +127,11 @@ struct HomeView: View {
                         HStack(spacing: 0) {
                             // Left: mission context + action verb
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("MISSION \(next.displayID)")
+                                Text(S.nextMissionLabel(next.displayID))
                                     .font(AppTheme.mono(9, weight: .regular))
                                     .foregroundStyle(.white.opacity(0.55))
                                     .kerning(2)
-                                Text("LAUNCH")
+                                Text(S.launch)
                                     .font(AppTheme.mono(17, weight: .black))
                                     .foregroundStyle(.white)
                                     .kerning(1)
@@ -161,7 +165,7 @@ struct HomeView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "map")
                             .font(.system(size: 11, weight: .semibold))
-                        Text("MISSION MAP")
+                        Text(S.missionMap)
                             .font(AppTheme.mono(11, weight: .bold))
                             .kerning(2)
                         Spacer()
@@ -174,7 +178,7 @@ struct HomeView: View {
                     .frame(height: 46)
                     .padding(.horizontal, 16)
                     .background(AppTheme.backgroundSecondary)
-                    .foregroundStyle(AppTheme.sage.opacity(0.75))
+                    .foregroundStyle(AppTheme.sage.opacity(0.88))
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     .overlay(
                         RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
@@ -187,7 +191,7 @@ struct HomeView: View {
 
                 Button(action: { onPlay(LevelGenerator.introLevel) }) {
                     HStack(spacing: 10) {
-                        Text("INITIALIZE TRAINING")
+                        Text(S.initializeTraining)
                             .font(AppTheme.mono(12, weight: .bold))
                             .kerning(2)
                         Image(systemName: "arrow.right")
@@ -213,7 +217,7 @@ struct HomeView: View {
                 HStack(spacing: 5) {
                     Circle().fill(AppTheme.success).frame(width: 4, height: 4)
                         .pulsingGlow(color: AppTheme.success, duration: 1.8)
-                    TechLabel(text: "SIGNAL  ·  ACTIVE", color: AppTheme.sage.opacity(0.70))
+                    TechLabel(text: S.signalActive, color: AppTheme.sage.opacity(0.82))
                 }
                 .frame(maxWidth: .infinity)
 
@@ -221,19 +225,51 @@ struct HomeView: View {
 
                 // Mission progress
                 TechLabel(
-                    text: "MISSIONS  ·  \(profile.uniqueCompletions)/\(LevelGenerator.levels.count)",
-                    color: AppTheme.sage.opacity(0.70)
+                    text: "\(S.missions)  ·  \(profile.uniqueCompletions)/\(LevelGenerator.levels.count)",
+                    color: AppTheme.sage.opacity(0.82)
                 )
                 .frame(maxWidth: .infinity)
 
                 Rectangle().fill(AppTheme.sage.opacity(0.14)).frame(width: 0.5, height: 18)
 
                 // System version
-                TechLabel(text: "SYS  ·  v1.0", color: AppTheme.sage.opacity(0.50))
+                TechLabel(text: "SYS  ·  v1.0", color: AppTheme.sage.opacity(0.78))
                     .frame(maxWidth: .infinity)
             }
             .padding(.vertical, 14)
         }
+    }
+
+    // MARK: Ticket cache pre-warming
+
+    /// Composite key matching TicketCache's cacheKey — re-fires the task only when ticket data changes.
+    private var ticketCacheKey: String {
+        let prof = profile
+        let planet = prof.currentPlanet
+        let eff = Int((prof.averageEfficiency * 100).rounded())
+        return "\(planet.id)-\(prof.level)-\(prof.completedMissions)-\(eff)"
+    }
+
+    /// Renders the planet pass image at background priority while the user is on the home screen.
+    /// By the time they tap "TAP TO VIEW PLANET PASS", the image is already cached.
+    private func warmTicketCache() async {
+        let prof = profile
+        let planet = prof.currentPlanet
+        let p = PassStore.all.first(where: { $0.planetIndex == planet.id })
+            ?? PlanetPass(
+                id:              UUID(),
+                planetName:      planet.name,
+                planetIndex:     planet.id,
+                levelReached:    prof.level,
+                efficiencyScore: prof.averageEfficiency,
+                missionCount:    prof.completedMissions,
+                timestamp:       Date()
+            )
+        guard TicketCache.shared.image(for: p) == nil else { return }
+        let image = await Task.detached(priority: .background) {
+            TicketRenderer.render(pass: p, profile: prof)
+        }.value
+        TicketCache.shared.cache(image, for: p)
     }
 
     // MARK: Secret trigger
@@ -341,14 +377,22 @@ struct MissionCard: View {
 struct NextMissionCard: View {
     let level: Level
 
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
+    private let bg    = Color(hex: "C7D7C6")
+    private let dark  = Color(hex: "141414")
+    private let muted = Color.black.opacity(0.52)
+    private let sep   = Color.black.opacity(0.10)
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    TechLabel(text: "NEXT MISSION", color: AppTheme.accentPrimary)
+                    TechLabel(text: S.nextMission, color: AppTheme.accentPrimary)
                     Text(level.displayName)
                         .font(AppTheme.mono(18, weight: .bold))
-                        .foregroundStyle(AppTheme.textPrimary)
+                        .foregroundStyle(dark)
                 }
                 Spacer()
                 Text(level.difficulty.fullLabel)
@@ -359,27 +403,30 @@ struct NextMissionCard: View {
                     .padding(.vertical, 4)
                     .overlay(
                         RoundedRectangle(cornerRadius: 2)
-                            .strokeBorder(level.difficulty.color.opacity(0.45), lineWidth: 0.5)
+                            .strokeBorder(level.difficulty.color.opacity(0.55), lineWidth: 0.5)
                     )
                     .pulsingGlow(color: level.difficulty.color, duration: 1.5)
             }
             .padding(16)
 
-            TechDivider()
+            Rectangle().fill(sep).frame(height: 0.5)
 
             HStack(spacing: 0) {
-                MiniStatCell(label: "GRID", value: "\(level.gridSize) × \(level.gridSize)")
-                Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 24)
-                MiniStatCell(label: "OBJECTIVE", value: level.objectiveType.hudLabel)
-                Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 24)
-                MiniStatCell(label: "TARGETS", value: "\(level.numTargets)")
+                MiniStatCell(label: S.gridLabel, value: "\(level.gridSize) × \(level.gridSize)",
+                             labelColor: muted, valueColor: dark)
+                Rectangle().fill(sep).frame(width: 0.5, height: 24)
+                MiniStatCell(label: S.objectiveLabel, value: S.hudLabel(level.objectiveType),
+                             labelColor: muted, valueColor: dark)
+                Rectangle().fill(sep).frame(width: 0.5, height: 24)
+                MiniStatCell(label: S.targetsLabel, value: "\(level.numTargets)",
+                             labelColor: muted, valueColor: dark)
             }
             .padding(.vertical, 12)
         }
-        .background(AppTheme.surface)
+        .background(bg)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.cardRadius)
-                .strokeBorder(AppTheme.accentPrimary.opacity(0.3), lineWidth: 0.5)
+                .strokeBorder(AppTheme.accentPrimary.opacity(0.22), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
     }
@@ -388,25 +435,28 @@ struct NextMissionCard: View {
 // MARK: - AllClearCard
 /// Shown when the player has completed every mission in the catalogue.
 struct AllClearCard: View {
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: "checkmark.seal.fill")
                 .font(.system(size: 28))
                 .foregroundStyle(AppTheme.success)
-            Text("ALL MISSIONS CLEARED")
+            Text(S.allMissionsCleared)
                 .font(AppTheme.mono(13, weight: .bold))
-                .foregroundStyle(AppTheme.textPrimary)
+                .foregroundStyle(Color(hex: "141414"))
                 .kerning(2)
-            Text("You've completed all \(LevelGenerator.levels.count) missions.")
+            Text(S.allMissionsClearedSub(count: LevelGenerator.levels.count))
                 .font(AppTheme.mono(10))
-                .foregroundStyle(AppTheme.sage.opacity(0.65))
+                .foregroundStyle(.black.opacity(0.48))
         }
         .frame(maxWidth: .infinity)
         .padding(20)
-        .background(AppTheme.surface)
+        .background(Color(hex: "C7D7C6"))
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.cardRadius)
-                .strokeBorder(AppTheme.success.opacity(0.3), lineWidth: 0.5)
+                .strokeBorder(AppTheme.success.opacity(0.45), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
     }
@@ -415,17 +465,25 @@ struct AllClearCard: View {
 // MARK: - TrainingCard
 /// Mission card variant shown to players who haven't completed the intro yet.
 struct TrainingCard: View {
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
+    private let bg    = Color(hex: "C7D7C6")
+    private let dark  = Color(hex: "141414")
+    private let muted = Color.black.opacity(0.52)
+    private let sep   = Color.black.opacity(0.10)
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 5) {
-                    TechLabel(text: "SYSTEM CALIBRATION", color: AppTheme.accentPrimary)
-                    Text("TRAINING MISSION")
+                    TechLabel(text: S.systemCalibration, color: AppTheme.accentPrimary)
+                    Text(S.trainingMission)
                         .font(AppTheme.mono(18, weight: .bold))
-                        .foregroundStyle(AppTheme.textPrimary)
+                        .foregroundStyle(dark)
                 }
                 Spacer()
-                Text("REQUIRED")
+                Text(S.required)
                     .font(AppTheme.mono(8, weight: .bold))
                     .foregroundStyle(AppTheme.accentPrimary)
                     .kerning(1)
@@ -433,24 +491,27 @@ struct TrainingCard: View {
                     .padding(.vertical, 4)
                     .overlay(
                         RoundedRectangle(cornerRadius: 2)
-                            .strokeBorder(AppTheme.accentPrimary.opacity(0.45), lineWidth: 0.5)
+                            .strokeBorder(AppTheme.accentPrimary.opacity(0.55), lineWidth: 0.5)
                     )
                     .pulsingGlow(color: AppTheme.accentPrimary)
             }
             .padding(16)
 
-            TechDivider()
+            Rectangle().fill(sep).frame(height: 0.5)
 
             HStack(spacing: 0) {
-                MiniStatCell(label: "GRID", value: "3 × 3")
-                Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 24)
-                MiniStatCell(label: "MOVES", value: "5")
-                Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 24)
-                MiniStatCell(label: "SIGNAL", value: "READY", accent: true)
+                MiniStatCell(label: S.gridLabel, value: "3 × 3",
+                             labelColor: muted, valueColor: dark)
+                Rectangle().fill(sep).frame(width: 0.5, height: 24)
+                MiniStatCell(label: S.movesLabel, value: "5",
+                             labelColor: muted, valueColor: dark)
+                Rectangle().fill(sep).frame(width: 0.5, height: 24)
+                MiniStatCell(label: S.signalLabel, value: S.readyValue, accent: true,
+                             labelColor: muted, valueColor: dark)
             }
             .padding(.vertical, 12)
         }
-        .background(AppTheme.surface)
+        .background(bg)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.cardRadius)
                 .strokeBorder(AppTheme.accentPrimary.opacity(0.22), lineWidth: 0.5)
@@ -464,13 +525,15 @@ struct MiniStatCell: View {
     let label: String
     let value: String
     var accent: Bool = false
+    var labelColor: Color = AppTheme.sage.opacity(0.80)
+    var valueColor: Color = AppTheme.textPrimary
 
     var body: some View {
         VStack(spacing: 3) {
-            TechLabel(text: label, color: AppTheme.sage.opacity(0.80))
+            TechLabel(text: label, color: labelColor)
             Text(value)
                 .font(AppTheme.mono(12, weight: .semibold))
-                .foregroundStyle(accent ? AppTheme.success : AppTheme.textPrimary)
+                .foregroundStyle(accent ? AppTheme.success : valueColor)
         }
         .frame(maxWidth: .infinity)
     }
@@ -571,6 +634,9 @@ private struct UIViewControllerRepresentableWrapper: UIViewControllerRepresentab
 struct AstronautProgressCard: View {
     let profile: AstronautProfile
 
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
     private var rule: ProgressionRule { profile.progressionRule }
     private var planet: Planet { profile.currentPlanet }
     private var qualityCount: Int {
@@ -578,40 +644,44 @@ struct AstronautProgressCard: View {
     }
 
     var body: some View {
+        let sep   = Color.black.opacity(0.09)
+        let dark  = Color(hex: "141414")
+        let muted = Color.black.opacity(0.52)
+
         VStack(spacing: 0) {
             // ── Header ────────────────────────────────────────────────
             HStack(spacing: 8) {
                 Rectangle()
                     .fill(planet.color)
                     .frame(width: 2, height: 14)
-                TechLabel(text: "ASTRONAUT PROFILE", color: AppTheme.sage)
+                TechLabel(text: S.astronautProfile, color: muted)
                 Spacer()
-                TechLabel(text: profile.rankTitle, color: planet.color)
+                TechLabel(text: S.rankTitle(profile.level), color: planet.color)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
 
-            TechDivider()
+            Rectangle().fill(sep).frame(height: 0.5)
 
             // ── Level + Destination row ───────────────────────────────
             HStack(spacing: 0) {
                 // Left: big level number
                 VStack(alignment: .leading, spacing: 3) {
-                    TechLabel(text: "LEVEL", color: AppTheme.sage)
+                    TechLabel(text: S.levelLabel, color: muted)
                     Text("\(profile.level)")
                         .font(AppTheme.mono(40, weight: .black))
-                        .foregroundStyle(AppTheme.textPrimary)
+                        .foregroundStyle(dark)
                         .monospacedDigit()
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
 
-                Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 56)
+                Rectangle().fill(sep).frame(width: 0.5, height: 56)
 
                 // Right: current + next planet
                 VStack(alignment: .leading, spacing: 8) {
                     VStack(alignment: .leading, spacing: 2) {
-                        TechLabel(text: "DESTINATION", color: AppTheme.sage)
+                        TechLabel(text: S.destination, color: muted)
                         HStack(spacing: 5) {
                             Circle()
                                 .fill(planet.color)
@@ -626,14 +696,14 @@ struct AstronautProgressCard: View {
                     }
                     if let next = profile.nextPlanet {
                         VStack(alignment: .leading, spacing: 2) {
-                            TechLabel(text: "NEXT TARGET", color: AppTheme.sage)
+                            TechLabel(text: S.nextTarget, color: muted)
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.up.right")
                                     .font(.system(size: 7, weight: .bold))
-                                    .foregroundStyle(AppTheme.textSecondary)
+                                    .foregroundStyle(dark.opacity(0.62))
                                 Text(next.name)
                                     .font(AppTheme.mono(9))
-                                    .foregroundStyle(AppTheme.textSecondary)
+                                    .foregroundStyle(dark.opacity(0.65))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.7)
                             }
@@ -644,20 +714,20 @@ struct AstronautProgressCard: View {
                 .padding(14)
             }
 
-            TechDivider()
+            Rectangle().fill(sep).frame(height: 0.5)
 
             // ── Progress to next level ────────────────────────────────
             VStack(spacing: 9) {
                 // Label row: section header + quality threshold badge
                 HStack {
-                    TechLabel(text: "PROGRESS TO LEVEL \(profile.level + 1)", color: AppTheme.sage)
+                    TechLabel(text: S.progressToLevel(profile.level + 1), color: muted)
                     Spacer()
                     // Badge showing the efficiency bar required for a mission to count
                     HStack(spacing: 3) {
                         Image(systemName: "bolt.fill")
                             .font(.system(size: 6, weight: .bold))
                             .foregroundStyle(AppTheme.accentPrimary)
-                        Text("≥\(rule.requiredEfficiencyPercent)% TO QUALIFY")
+                        Text(S.toQualify(pct: rule.requiredEfficiencyPercent))
                             .font(AppTheme.mono(7, weight: .bold))
                             .foregroundStyle(AppTheme.accentPrimary)
                             .kerning(0.5)
@@ -675,7 +745,7 @@ struct AstronautProgressCard: View {
                     ForEach(0..<10, id: \.self) { i in
                         let filled = CGFloat(i) < CGFloat(profile.levelProgress) * 10
                         RoundedRectangle(cornerRadius: 1)
-                            .fill(filled ? planet.color : AppTheme.stroke)
+                            .fill(filled ? planet.color : sep)
                             .frame(height: 4)
                             .animation(.easeOut(duration: 0.3), value: profile.levelProgress)
                     }
@@ -685,15 +755,15 @@ struct AstronautProgressCard: View {
                 HStack(spacing: 0) {
                     // Qualified missions (unique levels at threshold)
                     VStack(alignment: .leading, spacing: 1) {
-                        TechLabel(text: "QUALIFIED", color: AppTheme.sage)
+                        TechLabel(text: S.qualified, color: muted)
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text("\(qualityCount)")
                                 .font(AppTheme.mono(16, weight: .bold))
-                                .foregroundStyle(AppTheme.textPrimary)
+                                .foregroundStyle(dark)
                                 .monospacedDigit()
                             Text("/ \(rule.requiredMissions)")
                                 .font(AppTheme.mono(8))
-                                .foregroundStyle(AppTheme.textSecondary)
+                                .foregroundStyle(dark.opacity(0.62))
                         }
                     }
 
@@ -702,7 +772,7 @@ struct AstronautProgressCard: View {
                     // Missions still needed (centre column)
                     if profile.missionsRemaining > 0 {
                         VStack(alignment: .center, spacing: 1) {
-                            TechLabel(text: "REMAINING", color: AppTheme.sage)
+                            TechLabel(text: S.remaining, color: muted)
                             Text("\(profile.missionsRemaining)")
                                 .font(AppTheme.mono(16, weight: .bold))
                                 .foregroundStyle(AppTheme.accentPrimary)
@@ -710,8 +780,8 @@ struct AstronautProgressCard: View {
                         }
                     } else {
                         VStack(alignment: .center, spacing: 1) {
-                            TechLabel(text: "STATUS", color: AppTheme.sage)
-                            Text("READY")
+                            TechLabel(text: S.statusLabel, color: muted)
+                            Text(S.ready)
                                 .font(AppTheme.mono(11, weight: .bold))
                                 .foregroundStyle(AppTheme.success)
                                 .pulsingGlow(color: AppTheme.success)
@@ -722,12 +792,12 @@ struct AstronautProgressCard: View {
 
                     // Average efficiency (trailing)
                     VStack(alignment: .trailing, spacing: 1) {
-                        TechLabel(text: "AVG EFF", color: AppTheme.sage)
+                        TechLabel(text: S.avgEff, color: muted)
                         Text("\(profile.averageEfficiencyPercent)%")
                             .font(AppTheme.mono(16, weight: .bold))
                             .foregroundStyle(
                                 profile.averageEfficiency >= rule.requiredAvgEfficiency
-                                ? AppTheme.success : AppTheme.textPrimary
+                                ? AppTheme.success : dark
                             )
                             .monospacedDigit()
                     }
@@ -736,15 +806,15 @@ struct AstronautProgressCard: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
 
-            TechDivider()
+            Rectangle().fill(sep).frame(height: 0.5)
 
             // ── Tap affordance footer ─────────────────────────────────
             HStack {
-                TechLabel(text: "TAP TO VIEW PLANET PASS")
+                TechLabel(text: S.tapToViewPlanetPass, color: muted)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(AppTheme.textSecondary)
+                    .foregroundStyle(muted)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -752,16 +822,16 @@ struct AstronautProgressCard: View {
         .background(
             // Astronaut silhouette floats behind the card content, top-right corner
             ZStack(alignment: .topTrailing) {
-                AppTheme.surface
+                AppTheme.sage
                 AstronautSilhouette(color: planet.color, size: 78)
-                    .opacity(0.16)
+                    .opacity(0.14)
                     .offset(x: 6, y: -8)
                     .allowsHitTesting(false)
             }
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.cardRadius)
-                .strokeBorder(planet.color.opacity(0.22), lineWidth: 0.5)
+                .strokeBorder(planet.color.opacity(0.30), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
     }
@@ -769,20 +839,32 @@ struct AstronautProgressCard: View {
 
 // MARK: - PlanetTicketView
 /// Modal sheet that renders and displays the player's current planet pass.
-/// Tapping "SHARE PASS" exports the ticket via the system share sheet.
+/// Plays a scan-reveal animation on first display, then activates the share button.
 ///
 /// Shows the persisted PlanetPass if one exists for the current planet,
 /// otherwise synthesises a pass from the live profile state.
 struct PlanetTicketView: View {
     let profile: AstronautProfile
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
 
-    @State private var ticketImage: UIImage? = nil
+    @State private var ticketImage:   UIImage? = nil
+    /// 0 = scan not started, 1 = scan complete (image fully revealed)
+    @State private var scanFraction:  CGFloat  = 0
+    /// True once the scan animation finishes — enables share + activates share button color
+    @State private var revealed:      Bool     = false
+    /// Drives the arc spinner rotation in the loading state
+    @State private var spinAngle:     Double   = 0
+    /// Cycles 0-2 to rotate loading copy text
+    @State private var loadingPhase:  Int      = 0
+    /// True while the export is being prepared — tells PlanetPass3DView to settle and flash.
+    @State private var isExporting:   Bool     = false
+
+    private var planet: Planet { profile.currentPlanet }
 
     private var pass: PlanetPass {
-        let planet = profile.currentPlanet
-        // Use real pass if issued; else create a live-stats snapshot
-        return PassStore.all.first(where: { $0.planetIndex == planet.id })
+        PassStore.all.first(where: { $0.planetIndex == planet.id })
             ?? PlanetPass(
                 id:              UUID(),
                 planetName:      planet.name,
@@ -799,24 +881,22 @@ struct PlanetTicketView: View {
             AppTheme.backgroundPrimary.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // ── Nav strip ─────────────────────────────────────────
+                // ── Nav strip ────────────────────────────────────────
                 HStack {
                     Button(action: { dismiss() }) {
                         HStack(spacing: 5) {
                             Image(systemName: "xmark")
                                 .font(.system(size: 10, weight: .bold))
-                            TechLabel(text: "CLOSE")
+                            TechLabel(text: S.close)
                         }
                         .foregroundStyle(AppTheme.textSecondary)
                     }
                     Spacer()
-                    TechLabel(text: "PLANET PASS",
-                              color: profile.currentPlanet.color)
+                    TechLabel(text: S.planetPass, color: planet.color)
                     Spacer()
-                    // Balance spacer — invisible mirror of close button
                     HStack(spacing: 5) {
                         Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
-                        TechLabel(text: "CLOSE")
+                        TechLabel(text: S.close)
                     }
                     .opacity(0)
                 }
@@ -824,77 +904,164 @@ struct PlanetTicketView: View {
                 .padding(.vertical, 14)
                 .overlay(alignment: .bottom) { TechDivider() }
 
-                // ── Ticket image ─────────────────────────────────────
-                if let img = ticketImage {
-                    Image(uiImage: img)
-                        .resizable()
-                        .scaledToFit()
-                        .padding(16)
-                } else {
-                    // Placeholder while rendering
-                    RoundedRectangle(cornerRadius: AppTheme.cardRadius)
-                        .fill(AppTheme.surface)
-                        .aspectRatio(1, contentMode: .fit)
-                        .overlay(
-                            VStack(spacing: 8) {
-                                ProgressView()
-                                    .tint(AppTheme.textSecondary)
-                                TechLabel(text: "RENDERING PASS…")
-                            }
-                        )
-                        .padding(16)
-                }
+                // ── Ticket area ──────────────────────────────────────
+                ticketArea
 
                 Spacer(minLength: 0)
-
                 TechDivider()
 
-                // ── Share button ──────────────────────────────────────
+                // ── Share button — activates after reveal ─────────────
                 Button(action: sharePass) {
                     HStack(spacing: 8) {
                         Image(systemName: "square.and.arrow.up")
                             .font(.system(size: 11, weight: .bold))
-                        Text("SHARE PASS")
+                        Text(S.sharePass)
                             .font(AppTheme.mono(12, weight: .bold))
                             .kerning(2)
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
-                    .background(profile.currentPlanet.color)
-                    .foregroundStyle(.black.opacity(0.85))
+                    // Dims slightly while the export border flash plays
+                    .background(
+                        (revealed ? planet.color : AppTheme.backgroundSecondary)
+                            .opacity(isExporting ? 0.55 : 1.0)
+                    )
+                    .foregroundStyle(revealed ? .black.opacity(0.85) : AppTheme.textSecondary)
+                    .animation(.easeOut(duration: 0.4), value: revealed)
+                    .animation(.easeOut(duration: 0.15), value: isExporting)
                 }
-                .disabled(ticketImage == nil)
+                .disabled(!revealed || isExporting)
             }
         }
         .task {
-            // UIGraphicsImageRenderer runs on MainActor (UIKit requirement).
-            // The render is ~30ms for 1080×1080, acceptable on a appearing modal sheet.
-            ticketImage = TicketRenderer.render(pass: pass, profile: profile)
+            let p    = pass
+            let prof = profile
+
+            // Cache hit → show immediately, no animation needed
+            if let cached = TicketCache.shared.image(for: p) {
+                ticketImage = cached
+                revealed    = true
+                return
+            }
+
+            // Cache miss → cycle loading copy while rendering off-thread
+            let phaseTask = Task { @MainActor in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 1_400_000_000)
+                    if !Task.isCancelled { loadingPhase += 1 }
+                }
+            }
+
+            // Render on a background thread — doesn't block the UI
+            let image = await Task.detached(priority: .userInitiated) {
+                TicketRenderer.render(pass: p, profile: prof)
+            }.value
+
+            phaseTask.cancel()
+
+            // Store so subsequent opens are instant
+            TicketCache.shared.cache(image, for: p)
+            ticketImage = image
+
+            // Scan reveal animation
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            HapticsManager.light()
+            withAnimation(.linear(duration: 0.65)) { scanFraction = 1 }
+            try? await Task.sleep(nanoseconds: 750_000_000)
+            revealed = true
+            HapticsManager.medium()
         }
     }
 
+    // MARK: Ticket area
+
+    @ViewBuilder
+    private var ticketArea: some View {
+        if let img = ticketImage {
+            PlanetPass3DView(
+                image:        img,
+                scanFraction: scanFraction,
+                revealed:     revealed,
+                accentColor:  planet.color,
+                isExporting:  isExporting
+            )
+            .padding(16)
+        } else {
+            // Loading state — shown while rendering in background (first open only)
+            let copies = [S.preparingPass, S.renderingPass, S.generatingCredential]
+            RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                .fill(AppTheme.surface)
+                .aspectRatio(1, contentMode: .fit)
+                .overlay(
+                    VStack(spacing: 14) {
+                        // Arc spinner — open circle, rotates continuously
+                        Circle()
+                            .trim(from: 0, to: 0.72)
+                            .stroke(
+                                AppTheme.accentPrimary.opacity(0.82),
+                                style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
+                            )
+                            .frame(width: 28, height: 28)
+                            .rotationEffect(.degrees(spinAngle))
+                            .onAppear {
+                                withAnimation(
+                                    .linear(duration: 1.1).repeatForever(autoreverses: false)
+                                ) { spinAngle = 360 }
+                            }
+
+                        // Cycling copy — advances every 1.4 s via loadingPhase
+                        TechLabel(
+                            text:  copies[loadingPhase % copies.count],
+                            color: AppTheme.textSecondary
+                        )
+
+                        // Thin accent rule
+                        Rectangle()
+                            .fill(AppTheme.accentPrimary.opacity(0.22))
+                            .frame(width: 80, height: 0.5)
+                    }
+                )
+                .padding(16)
+        }
+    }
+
+    // MARK: Share
+
     private func sharePass() {
+        // Always export the raw CGContext-rendered UIImage — never the SwiftUI 3D view.
+        // This guarantees a clean 1080×1080 result regardless of the current tilt or drag state.
         guard let image = ticketImage else { return }
 
-        let vc = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+        // Signal the 3D view to settle and flash its export-border cue.
+        isExporting = true
+        HapticsManager.medium()
 
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive }),
-              let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
-        else { return }
+        Task { @MainActor in
+            // Brief pause: lets the border flash play and idle settle before the sheet opens.
+            try? await Task.sleep(nanoseconds: 300_000_000)
 
-        // Present from the sheet's own presented VC if available
-        let presenter = rootVC.presentedViewController ?? rootVC
-        vc.popoverPresentationController?.sourceView = presenter.view
-        vc.popoverPresentationController?.sourceRect = CGRect(
-            x: presenter.view.bounds.midX,
-            y: presenter.view.bounds.maxY - 80,
-            width: 0, height: 0
-        )
+            let vc = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+            guard let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }),
+                  let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
+            else {
+                isExporting = false
+                return
+            }
+            let presenter = rootVC.presentedViewController ?? rootVC
+            vc.popoverPresentationController?.sourceView = presenter.view
+            vc.popoverPresentationController?.sourceRect = CGRect(
+                x: presenter.view.bounds.midX,
+                y: presenter.view.bounds.maxY - 80,
+                width: 0, height: 0
+            )
+            presenter.present(vc, animated: true)
 
-        presenter.present(vc, animated: true)
-        HapticsManager.light()
+            // Return to interactive mode once the share sheet has fully appeared.
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            isExporting = false
+        }
     }
 }
 

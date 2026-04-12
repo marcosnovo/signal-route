@@ -3,6 +3,8 @@ import SwiftUI
 // MARK: - GameView  (telemetry dashboard)
 struct GameView: View {
     @StateObject private var vm: GameViewModel
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
     let isIntro: Bool
     let onDismiss: () -> Void
     let onIntroComplete: (() -> Void)?
@@ -172,7 +174,7 @@ struct GameView: View {
                 HStack(spacing: 6) {
                     Image(systemName: isIntro ? "forward.fill" : "chevron.left")
                         .font(.system(size: 11, weight: .bold))
-                    TechLabel(text: isIntro ? "SKIP" : "HOME")
+                    TechLabel(text: isIntro ? S.skip : S.home)
                 }
                 .foregroundStyle(AppTheme.textSecondary)
             }
@@ -194,7 +196,7 @@ struct GameView: View {
             HStack(spacing: 6) {
                 Image(systemName: isIntro ? "forward.fill" : "chevron.left")
                     .font(.system(size: 11, weight: .bold))
-                TechLabel(text: isIntro ? "SKIP" : "HOME")
+                TechLabel(text: isIntro ? S.skip : S.home)
             }
             .opacity(0)
         }
@@ -208,7 +210,7 @@ struct GameView: View {
     private var movesBar: some View {
         HStack(alignment: .bottom, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                TechLabel(text: "MOVES REMAINING", color: AppTheme.sage)
+                TechLabel(text: S.movesRemaining, color: AppTheme.sage)
                 Text("\(vm.movesLeft)")
                     .font(AppTheme.mono(38, weight: .black))
                     .foregroundStyle(movesColor)
@@ -218,7 +220,7 @@ struct GameView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                TechLabel(text: "USED", color: AppTheme.sage)
+                TechLabel(text: S.usedLabel, color: AppTheme.sage)
                 Text("\(vm.movesUsed)")
                     .font(AppTheme.mono(22, weight: .bold))
                     .foregroundStyle(AppTheme.sage.opacity(0.55))
@@ -248,7 +250,7 @@ struct GameView: View {
 
             HStack(alignment: .bottom, spacing: 0) {
                 VStack(alignment: .leading, spacing: 2) {
-                    TechLabel(text: "TIME REMAINING", color: AppTheme.sage)
+                    TechLabel(text: S.timeRemaining, color: AppTheme.sage)
                     Text(timeString(remaining))
                         .font(AppTheme.mono(28, weight: .black))
                         .foregroundStyle(timerColor)
@@ -258,7 +260,7 @@ struct GameView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
-                    TechLabel(text: "ELAPSED", color: AppTheme.sage)
+                    TechLabel(text: S.elapsed, color: AppTheme.sage)
                     GeometryReader { g in
                         ZStack(alignment: .leading) {
                             Rectangle()
@@ -299,11 +301,11 @@ struct GameView: View {
                 Image(systemName: objType.iconName)
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(accentColor)
-                TechLabel(text: "OBJECTIVE", color: AppTheme.sage)
+                TechLabel(text: S.objectiveHUD, color: AppTheme.sage)
                 Text("→")
                     .font(AppTheme.mono(9))
                     .foregroundStyle(AppTheme.sage.opacity(0.65))
-                Text(vm.objectiveText)
+                Text(S.objectiveText(type: vm.currentLevel.objectiveType, targets: vm.targetsTotal))
                     .font(AppTheme.mono(10, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .kerning(0.5)
@@ -329,7 +331,7 @@ struct GameView: View {
         case .maxCoverage:
             // Live coverage bar
             HStack(spacing: 8) {
-                TechLabel(text: "GRID COVERAGE")
+                TechLabel(text: S.gridCoverage)
                 GeometryReader { g in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 1).fill(AppTheme.stroke).frame(height: 3)
@@ -352,7 +354,7 @@ struct GameView: View {
             let exceeded = vm.energyWasteExceeded
             let wasteColor: Color = exceeded ? AppTheme.danger : AppTheme.success
             HStack(spacing: 8) {
-                TechLabel(text: "EXTRA NODES")
+                TechLabel(text: S.extraNodes)
                 HStack(spacing: 3) {
                     ForEach(0..<3, id: \.self) { i in
                         RoundedRectangle(cornerRadius: 1)
@@ -366,7 +368,7 @@ struct GameView: View {
                     .monospacedDigit()
                     .animation(.easeInOut(duration: 0.15), value: waste)
                 if exceeded {
-                    TechLabel(text: "· REDUCE NETWORK", color: AppTheme.danger)
+                    TechLabel(text: S.reduceNetwork, color: AppTheme.danger)
                 }
                 Spacer()
             }
@@ -425,7 +427,7 @@ struct GameView: View {
             HStack(spacing: 0) {
                 // 1. Targets online
                 HUDMetric(
-                    label: "TARGETS ONLINE",
+                    label: S.targetsOnline,
                     value: "\(vm.targetsOnline)/\(vm.targetsTotal)",
                     valueColor: vm.networkOnline ? AppTheme.accentSecondary : AppTheme.textPrimary
                 )
@@ -440,8 +442,8 @@ struct GameView: View {
 
                 // 3. Network status
                 HUDMetric(
-                    label: "NETWORK",
-                    value: vm.networkOnline ? "ONLINE" : "OFFLINE",
+                    label: S.network,
+                    value: vm.networkOnline ? S.online : S.offline,
                     valueColor: vm.networkOnline ? AppTheme.success : AppTheme.accentPrimary
                 )
                 .pulsingGlow(color: vm.networkOnline ? AppTheme.success : AppTheme.accentPrimary,
@@ -458,7 +460,7 @@ struct GameView: View {
         switch vm.currentLevel.objectiveType {
         case .normal:
             HUDMetric(
-                label: "ACTIVE NODES",
+                label: S.activeNodes,
                 value: "\(vm.activeNodes)",
                 valueColor: AppTheme.textPrimary
             )
@@ -466,7 +468,7 @@ struct GameView: View {
 
         case .maxCoverage:
             HUDMetric(
-                label: "COVERAGE",
+                label: S.coverage,
                 value: "\(vm.gridCoveragePercent)%",
                 valueColor: Color(hex: "FFB800")
             )
@@ -474,7 +476,7 @@ struct GameView: View {
 
         case .energySaving:
             HUDMetric(
-                label: "WASTE",
+                label: S.waste,
                 value: "\(vm.energyWaste)/2",
                 valueColor: vm.energyWasteExceeded ? AppTheme.danger : AppTheme.success
             )
@@ -493,12 +495,12 @@ struct GameView: View {
         Group {
             if isIntro {
                 VStack(spacing: 5) {
-                    TechLabel(text: "ROTATE TILES TO ROUTE THE SIGNAL",
+                    TechLabel(text: S.rotateTilesToRouteSignal,
                               color: AppTheme.accentPrimary)
-                    TechLabel(text: "TAP ANY TILE TO ROTATE IT", color: AppTheme.sage)
+                    TechLabel(text: S.tapAnyTileToRotate, color: AppTheme.sage)
                 }
             } else {
-                TechLabel(text: "TAP TILE TO ROTATE", color: AppTheme.sage)
+                TechLabel(text: S.tapTileToRotate, color: AppTheme.sage)
             }
         }
         .padding(.bottom, 20)
@@ -532,6 +534,8 @@ struct MissionOverlay: View {
     @ObservedObject var vm: GameViewModel
     let onRestart: () -> Void
     let onDismiss: () -> Void
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
 
     /// Drives staggered reveal of the stats block on win.
     @State private var statsRevealed = false
@@ -549,11 +553,11 @@ struct MissionOverlay: View {
                         .fill(won ? AppTheme.success : AppTheme.danger)
                         .frame(width: 3)
                     VStack(alignment: .leading, spacing: 4) {
-                        TechLabel(text: won ? "STATUS: SUCCESS" : "STATUS: FAILURE",
+                        TechLabel(text: won ? S.statusSuccess : S.statusFailure,
                                   color: won ? AppTheme.success : AppTheme.danger)
                             .pulsingGlow(color: won ? AppTheme.success : AppTheme.danger,
                                          duration: 1.6)
-                        Text(won ? "NETWORK RESTORED" : "SIGNAL LOST")
+                        Text(won ? S.networkRestored : S.signalLost)
                             .font(AppTheme.mono(22, weight: .black))
                             .foregroundStyle(AppTheme.textPrimary)
                             .kerning(1)
@@ -570,11 +574,11 @@ struct MissionOverlay: View {
                 if won {
                     VStack(spacing: 0) {
                         HStack(spacing: 0) {
-                            OverlayStatCell(label: "SCORE",     value: "\(vm.score)")
+                            OverlayStatCell(label: S.score,            value: "\(vm.score)")
                             Rectangle().fill(AppTheme.stroke).frame(width: 0.5, height: 32)
-                            OverlayStatCell(label: "MOVES",     value: "\(vm.movesUsed)")
+                            OverlayStatCell(label: S.movesOverlay,     value: "\(vm.movesUsed)")
                             Rectangle().fill(AppTheme.stroke).frame(width: 0.5, height: 32)
-                            OverlayStatCell(label: "REMAINING", value: "\(vm.movesLeft)")
+                            OverlayStatCell(label: S.remainingOverlay, value: "\(vm.movesLeft)")
                         }
                         .padding(.vertical, 14)
 
@@ -598,7 +602,7 @@ struct MissionOverlay: View {
                         HStack(spacing: 8) {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.system(size: 11, weight: .bold))
-                            Text(won ? "RETRY LEVEL" : "TRY AGAIN")
+                            Text(won ? S.retryLevel : S.tryAgain)
                                 .font(AppTheme.mono(12, weight: .bold))
                                 .kerning(1.5)
                         }
@@ -615,7 +619,7 @@ struct MissionOverlay: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 11, weight: .bold))
-                                Text("SHARE RESULT")
+                                Text(S.shareResult)
                                     .font(AppTheme.mono(11, weight: .bold))
                                     .kerning(1.5)
                             }
@@ -628,7 +632,7 @@ struct MissionOverlay: View {
                     }
 
                     Button(action: onDismiss) {
-                        Text("RETURN TO BASE")
+                        Text(S.returnToBase)
                             .font(AppTheme.mono(11))
                             .foregroundStyle(AppTheme.textSecondary)
                             .kerning(1)
@@ -662,7 +666,7 @@ struct MissionOverlay: View {
     @ViewBuilder
     private func efficiencyRow(result: GameResult) -> some View {
         HStack(spacing: 10) {
-            TechLabel(text: "EFFICIENCY", color: AppTheme.sage)
+            TechLabel(text: S.efficiencyBar, color: AppTheme.sage)
             HStack(spacing: 3) {
                 ForEach(0..<5, id: \.self) { i in
                     RoundedRectangle(cornerRadius: 1)
@@ -685,6 +689,8 @@ struct MissionOverlay: View {
 struct IntroWinOverlay: View {
     let onComplete: () -> Void
 
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
     @State private var bodyRevealed = false
 
     var body: some View {
@@ -694,13 +700,13 @@ struct IntroWinOverlay: View {
             VStack(spacing: 0) {
                 // ── Header ──────────────────────────────────────────────
                 VStack(spacing: 6) {
-                    TechLabel(text: "STATUS: SUCCESS", color: AppTheme.success)
+                    TechLabel(text: S.statusSuccess, color: AppTheme.success)
                         .pulsingGlow(color: AppTheme.success, duration: 1.6)
-                    Text("SIGNAL ROUTED")
+                    Text(S.signalRouted)
                         .font(AppTheme.mono(24, weight: .black))
                         .foregroundStyle(AppTheme.textPrimary)
                         .kerning(1)
-                    TechLabel(text: "NETWORK ONLINE", color: AppTheme.accentSecondary)
+                    TechLabel(text: S.networkOnline, color: AppTheme.accentSecondary)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(24)
@@ -710,8 +716,8 @@ struct IntroWinOverlay: View {
 
                 // ── Body (staggered reveal) ──────────────────────────────
                 VStack(spacing: 4) {
-                    TechLabel(text: "SYSTEM CALIBRATION COMPLETE")
-                    TechLabel(text: "CLEARED FOR DEPLOYMENT",
+                    TechLabel(text: S.systemCalibrationComplete)
+                    TechLabel(text: S.clearedForDeployment,
                               color: AppTheme.accentPrimary)
                 }
                 .frame(maxWidth: .infinity)
@@ -725,7 +731,7 @@ struct IntroWinOverlay: View {
                 // ── CTA ──────────────────────────────────────────────────
                 Button(action: onComplete) {
                     HStack(spacing: 10) {
-                        Text("ACCESS GRANTED")
+                        Text(S.accessGranted)
                             .font(AppTheme.mono(12, weight: .bold))
                             .kerning(2)
                         Image(systemName: "arrow.right")
@@ -782,6 +788,8 @@ struct MechanicUnlockView: View {
     let mechanic: MechanicType
     let onDismiss: () -> Void
 
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
     @State private var bodyRevealed = false
 
     private let amber = Color(hex: "FFB800")
@@ -798,9 +806,9 @@ struct MechanicUnlockView: View {
                         .foregroundStyle(amber)
                         .pulsingGlow(color: amber, duration: 1.3)
 
-                    TechLabel(text: "NEW MECHANIC UNLOCKED", color: amber)
+                    TechLabel(text: S.newMechanicUnlocked, color: amber)
 
-                    Text(mechanic.unlockTitle)
+                    Text(S.mechanicTitle(mechanic))
                         .font(AppTheme.mono(20, weight: .black))
                         .foregroundStyle(AppTheme.textPrimary)
                         .kerning(1)
@@ -813,7 +821,7 @@ struct MechanicUnlockView: View {
                 TechDivider()
 
                 // ── Message (staggered reveal) ────────────────────────────
-                Text(mechanic.unlockMessage)
+                Text(S.mechanicMessage(mechanic))
                     .font(AppTheme.mono(11))
                     .foregroundStyle(AppTheme.textPrimary.opacity(0.85))
                     .lineSpacing(5)
@@ -829,7 +837,7 @@ struct MechanicUnlockView: View {
 
                 // ── CTA ──────────────────────────────────────────────────
                 Button(action: onDismiss) {
-                    Text("UNDERSTOOD")
+                    Text(S.understood)
                         .font(AppTheme.mono(12, weight: .bold))
                         .kerning(2)
                         .frame(maxWidth: .infinity)

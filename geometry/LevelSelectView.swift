@@ -1,16 +1,19 @@
 import SwiftUI
 
 // MARK: - MissionMapView
-/// The primary level-select screen. Displays all 180 missions grouped into
-/// 8 spatial regions that unlock progressively with the player's astronaut level.
-/// Missions unlock sequentially: completing level N unlocks level N+1.
+/// Campaign-style mission map. Sectors scroll vertically; only the active sector
+/// shows its level grid. Completed sectors are compact with an optional expand toggle.
+/// Locked sectors show unlock requirements only.
 struct MissionMapView: View {
     let onSelect: (Level) -> Void
     let onDismiss: () -> Void
 
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
     private var profile: AstronautProfile { ProgressionStore.profile }
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 5)
+    @State private var appeared = false
 
     #if DEBUG
     @State private var auditRunning = false
@@ -20,24 +23,42 @@ struct MissionMapView: View {
         ZStack {
             AppTheme.backgroundPrimary.ignoresSafeArea()
             BackgroundGrid()
+            StarMapBackground()      // subtle twinkling star layer
 
             VStack(spacing: 0) {
                 header
+                    .opacity(appeared ? 1 : 0)
+                    .offset(y: appeared ? 0 : -10)
+                    .animation(.easeOut(duration: 0.35).delay(0.04), value: appeared)
+
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(SpatialRegion.catalog) { region in
-                                regionSection(region)
+                            ForEach(Array(SpatialRegion.catalog.enumerated()), id: \.element.id) { idx, region in
+                                SectorCard(
+                                    region: region,
+                                    profile: profile,
+                                    onSelect: onSelect,
+                                    appearDelay: Double(idx) * 0.055
+                                )
+                                .id("region-\(region.id)")
+
+                                // Journey connector between sectors
+                                if idx < SpatialRegion.catalog.count - 1 {
+                                    let nextRegion = SpatialRegion.catalog[idx + 1]
+                                    RouteConnector(dimmed: !nextRegion.isUnlocked(for: profile))
+                                }
                             }
                         }
                         .padding(.bottom, 40)
                     }
                     .onAppear {
-                        scrollToNextMission(proxy: proxy)
+                        scrollToActiveSector(proxy: proxy)
                     }
                 }
             }
         }
+        .onAppear { appeared = true }
     }
 
     // MARK: - Header
@@ -47,7 +68,7 @@ struct MissionMapView: View {
             Button(action: onDismiss) {
                 HStack(spacing: 6) {
                     Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold))
-                    TechLabel(text: "BACK")
+                    TechLabel(text: S.back)
                 }
                 .foregroundStyle(AppTheme.textSecondary)
             }
@@ -55,12 +76,12 @@ struct MissionMapView: View {
             Spacer()
 
             VStack(spacing: 2) {
-                Text("MISSION MAP")
+                Text(S.missionMapTitle)
                     .font(AppTheme.mono(13, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .kerning(2)
                 TechLabel(
-                    text: "\(profile.uniqueCompletions) / \(LevelGenerator.levels.count) COMPLETE",
+                    text: S.missionsComplete(done: profile.uniqueCompletions, total: LevelGenerator.levels.count),
                     color: AppTheme.accentPrimary
                 )
             }
@@ -91,163 +112,18 @@ struct MissionMapView: View {
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
+        .background(AppTheme.backgroundSecondary)
         .overlay(alignment: .bottom) { TechDivider() }
-    }
-
-    // MARK: - Region section
-
-    private func regionSection(_ region: SpatialRegion) -> some View {
-        let isUnlocked  = region.isUnlocked(for: profile)
-        let completed   = region.completedCount(in: profile)
-        let total       = region.levels.count
-        let progress    = total > 0 ? Float(completed) / Float(total) : 0
-
-        return VStack(spacing: 0) {
-            regionHeader(region,
-                         isUnlocked: isUnlocked,
-                         completed: completed,
-                         total: total,
-                         progress: progress)
-
-            if isUnlocked {
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(region.levels) { level in
-                        MissionCell(
-                            level: level,
-                            state: cellState(for: level)
-                        ) {
-                            onSelect(level)
-                        }
-                        .id(level.id)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 16)
-            } else {
-                lockedRegionBody(region)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 20)
-            }
-
-            TechDivider()
-        }
-        .id("region-\(region.id)")
-    }
-
-    private func regionHeader(_ region: SpatialRegion,
-                               isUnlocked: Bool,
-                               completed: Int,
-                               total: Int,
-                               progress: Float) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                // Left accent bar
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(isUnlocked
-                          ? region.accentColor
-                          : AppTheme.textSecondary.opacity(0.25))
-                    .frame(width: 3, height: 38)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(region.name)
-                        .font(AppTheme.mono(14, weight: .bold))
-                        .foregroundStyle(isUnlocked
-                                         ? AppTheme.textPrimary
-                                         : AppTheme.textSecondary.opacity(0.4))
-                        .kerning(1)
-                    Text(region.subtitle)
-                        .font(AppTheme.mono(9, weight: .regular))
-                        .foregroundStyle(isUnlocked
-                                         ? region.accentColor.opacity(0.65)
-                                         : AppTheme.textSecondary.opacity(0.25))
-                        .kerning(2)
-                }
-
-                Spacer()
-
-                if isUnlocked {
-                    VStack(alignment: .trailing, spacing: 3) {
-                        Text("\(completed)/\(total)")
-                            .font(AppTheme.mono(13, weight: .bold))
-                            .foregroundStyle(completed == total ? AppTheme.success : AppTheme.textPrimary)
-                        Text("MISSIONS")
-                            .font(AppTheme.mono(8))
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .kerning(1)
-                    }
-                } else {
-                    HStack(spacing: 5) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 9, weight: .bold))
-                        Text("LVL \(region.requiredPlayerLevel)")
-                            .font(AppTheme.mono(10, weight: .bold))
-                            .kerning(1)
-                    }
-                    .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 3)
-                            .strokeBorder(AppTheme.stroke.opacity(0.5), lineWidth: 0.5)
-                    )
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-
-            // Completion progress bar (unlocked regions only)
-            if isUnlocked {
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Rectangle().fill(AppTheme.backgroundSecondary)
-                        Rectangle()
-                            .fill(progress >= 1 ? AppTheme.success : region.accentColor)
-                            .frame(width: geo.size.width * CGFloat(progress))
-                            .animation(.easeOut(duration: 0.4), value: progress)
-                    }
-                }
-                .frame(height: 2)
-            }
-        }
-        .background(AppTheme.backgroundSecondary.opacity(0.35))
-    }
-
-    private func lockedRegionBody(_ region: SpatialRegion) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 18))
-                .foregroundStyle(AppTheme.textSecondary.opacity(0.2))
-            VStack(alignment: .leading, spacing: 4) {
-                Text("LOCKED  ·  \(region.levels.count) MISSIONS")
-                    .font(AppTheme.mono(11, weight: .bold))
-                    .foregroundStyle(AppTheme.textSecondary.opacity(0.35))
-                    .kerning(1)
-                Text("REACH ASTRONAUT LEVEL \(region.requiredPlayerLevel) TO UNLOCK")
-                    .font(AppTheme.mono(8))
-                    .foregroundStyle(AppTheme.textSecondary.opacity(0.25))
-                    .kerning(1)
-            }
-            Spacer()
-        }
-    }
-
-    // MARK: - Cell state helper
-
-    private func cellState(for level: Level) -> MissionCell.CellState {
-        if profile.hasCompleted(levelId: level.id) { return .completed }
-        if !profile.isLevelUnlocked(level.id)      { return .locked }
-        if level.id == profile.nextMission?.id      { return .next }
-        return .available
     }
 
     // MARK: - Auto-scroll
 
-    private func scrollToNextMission(proxy: ScrollViewProxy) {
+    private func scrollToActiveSector(proxy: ScrollViewProxy) {
         guard let next = profile.nextMission else { return }
         let region = SpatialRegion.catalog.first { $0.levelRange.contains(next.id) }
         guard let region else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.82)) {
                 proxy.scrollTo("region-\(region.id)", anchor: .top)
             }
         }
@@ -265,9 +141,386 @@ struct MissionMapView: View {
     #endif
 }
 
+// MARK: - StarMapBackground
+/// Very subtle twinkling star field layered behind the mission map content.
+/// Uses a TimelineView at 8 fps for minimal CPU cost.
+private struct StarMapBackground: View {
+
+    private struct StarSpec {
+        let x, y, r: CGFloat
+        let phase: Double
+        let speed: Double
+    }
+
+    // Deterministic positions via a simple LCG — no randomness on each launch.
+    private static let specs: [StarSpec] = {
+        var seed: UInt64 = 0xA7_B3_C1_D9
+        func rnd() -> Double {
+            seed = seed &* 6364136223846793005 &+ 1442695040888963407
+            return Double(seed >> 33) / Double(1 << 31)
+        }
+        return (0..<50).map { _ in
+            StarSpec(
+                x:     CGFloat(rnd()),
+                y:     CGFloat(rnd()),
+                r:     CGFloat(0.5 + rnd() * 1.1),
+                phase: rnd() * .pi * 2,
+                speed: 0.4 + rnd() * 0.9
+            )
+        }
+    }()
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1.0 / 8.0)) { timeline in
+            Canvas { ctx, size in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                for star in Self.specs {
+                    let opacity = 0.05 + 0.045 * sin(t * star.speed + star.phase)
+                    ctx.fill(
+                        Path(ellipseIn: CGRect(
+                            x: star.x * size.width  - star.r,
+                            y: star.y * size.height - star.r,
+                            width:  star.r * 2,
+                            height: star.r * 2
+                        )),
+                        with: .color(.white.opacity(max(0, opacity)))
+                    )
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .ignoresSafeArea()
+    }
+}
+
+// MARK: - RouteConnector
+/// A vertical journey separator between sector cards.
+/// Active (unlocked next sector): dashed orange line with a travelling pulse dot.
+/// Dimmed (locked next sector): very faint grey line only.
+private struct RouteConnector: View {
+    let dimmed: Bool
+
+    @State private var dotY: CGFloat = -16
+
+    private static let height: CGFloat = 36
+
+    var body: some View {
+        ZStack {
+            // Dashed centre line
+            Canvas { ctx, size in
+                let x = size.width / 2
+                var path = Path()
+                path.move(to:    CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: size.height))
+                let color: Color = dimmed
+                    ? AppTheme.textSecondary.opacity(0.14)
+                    : AppTheme.accentPrimary.opacity(0.28)
+                ctx.stroke(
+                    path,
+                    with: .color(color),
+                    style: StrokeStyle(lineWidth: 0.5, dash: [2, 4])
+                )
+            }
+
+            // Travelling pulse dot — active connectors only
+            if !dimmed {
+                Circle()
+                    .fill(AppTheme.accentPrimary.opacity(0.70))
+                    .frame(width: 4, height: 4)
+                    .offset(y: dotY)
+            }
+        }
+        .frame(height: Self.height)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 2)
+        .task {
+            guard !dimmed else { return }
+            await runPulse()
+        }
+    }
+
+    private func runPulse() async {
+        let half = Self.height / 2
+        while !Task.isCancelled {
+            dotY = -half
+            withAnimation(.easeInOut(duration: 1.3)) { dotY = half }
+            try? await Task.sleep(nanoseconds: 2_300_000_000)
+        }
+    }
+}
+
+// MARK: - SectorCard
+/// A campaign block representing one spatial region.
+/// Animates in from below with an index-based stagger delay.
+private struct SectorCard: View {
+    let region:      SpatialRegion
+    let profile:     AstronautProfile
+    let onSelect:    (Level) -> Void
+    let appearDelay: Double
+
+    @EnvironmentObject private var settings: SettingsStore
+
+    @State private var appeared     = false
+    @State private var gridExpanded = false
+
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
+    private enum DisplayState { case active, completed, locked }
+
+    private var displayState: DisplayState {
+        let isUnlocked = region.isUnlocked(for: profile)
+        let total      = region.levels.count
+        let completed  = region.completedCount(in: profile)
+        let isActive   = region.levels.contains { $0.id == profile.nextMission?.id }
+
+        if isActive                                  { return .active }
+        if isUnlocked && completed == total && total > 0 { return .completed }
+        return .locked
+    }
+
+    /// Average best efficiency across all completed levels in this sector.
+    private var avgEfficiency: Float? {
+        let effs = region.levels.compactMap { profile.bestEfficiencyByLevel[String($0.id)] }
+        guard !effs.isEmpty else { return nil }
+        return effs.reduce(0, +) / Float(effs.count)
+    }
+
+    private var accentColor: Color {
+        switch displayState {
+        case .active:    return AppTheme.accentPrimary
+        case .completed: return AppTheme.success
+        case .locked:    return AppTheme.textSecondary.opacity(0.45)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            cardHeader
+            if displayState == .active || (displayState == .completed && gridExpanded) {
+                levelGrid
+            }
+            if displayState == .completed {
+                expandToggle
+            }
+        }
+        .background(cardBackground)
+        .overlay(alignment: .leading) { leftAccentBar }
+        // Entrance animation — slides up and fades in with stagger
+        .opacity(appeared ? 1 : 0)
+        .offset(y: appeared ? 0 : 16)
+        .animation(.easeOut(duration: 0.42).delay(appearDelay), value: appeared)
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                appeared = true
+            }
+        }
+    }
+
+    // MARK: Card header
+
+    private var cardHeader: some View {
+        VStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 5) {
+                    statusBadge
+                    Text(region.name)
+                        .font(AppTheme.mono(18, weight: .black))
+                        .foregroundStyle(displayState == .locked
+                                         ? AppTheme.textSecondary.opacity(0.60)
+                                         : AppTheme.textPrimary)
+                        .kerning(1)
+                    Text(region.subtitle)
+                        .font(AppTheme.mono(9, weight: .regular))
+                        .foregroundStyle(displayState == .locked
+                                         ? AppTheme.textSecondary.opacity(0.45)
+                                         : region.accentColor.opacity(0.72))
+                        .kerning(2)
+                }
+
+                Spacer()
+
+                rightInfo
+            }
+
+            if displayState == .active {
+                activeProgressBar
+            }
+        }
+        .padding(.leading, 28)    // space for the left accent bar
+        .padding(.trailing, 20)
+        .padding(.vertical, 18)
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        switch displayState {
+        case .active:
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(AppTheme.accentPrimary)
+                    .frame(width: 5, height: 5)
+                    .pulsingGlow(color: AppTheme.accentPrimary, duration: 1.4)
+                TechLabel(text: S.activeSector, color: AppTheme.accentPrimary)
+            }
+        case .completed:
+            TechLabel(text: S.sectorComplete, color: AppTheme.success)
+        case .locked:
+            TechLabel(text: S.lockedLabel, color: AppTheme.textSecondary.opacity(0.70))
+        }
+    }
+
+    @ViewBuilder
+    private var rightInfo: some View {
+        let total     = region.levels.count
+        let completed = region.completedCount(in: profile)
+
+        switch displayState {
+        case .active:
+            VStack(alignment: .trailing, spacing: 3) {
+                Text("\(completed)/\(total)")
+                    .font(AppTheme.mono(18, weight: .black))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .monospacedDigit()
+                TechLabel(text: S.missionsLabel, color: AppTheme.textSecondary)
+            }
+
+        case .completed:
+            VStack(alignment: .trailing, spacing: 3) {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(AppTheme.success)
+                    Text("\(total)")
+                        .font(AppTheme.mono(16, weight: .black))
+                        .foregroundStyle(AppTheme.success)
+                        .monospacedDigit()
+                }
+                TechLabel(text: S.missionsLabel, color: AppTheme.textSecondary)
+                if let eff = avgEfficiency {
+                    TechLabel(
+                        text: "\(S.avgEfficiency)  \(Int(eff * 100))%",
+                        color: AppTheme.success.opacity(0.70)
+                    )
+                }
+            }
+
+        case .locked:
+            VStack(alignment: .trailing, spacing: 4) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.65))
+                Text("\(total) \(S.missionsCount)")
+                    .font(AppTheme.mono(9, weight: .bold))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.70))
+                    .kerning(1)
+                TechLabel(
+                    text: !region.isUnlocked(for: profile)
+                        ? S.unlockAtLevel(region.requiredPlayerLevel)
+                        : S.completePreviousSectors,
+                    color: AppTheme.textSecondary.opacity(0.70)
+                )
+            }
+        }
+    }
+
+    private var activeProgressBar: some View {
+        let total     = region.levels.count
+        let completed = region.completedCount(in: profile)
+        let progress  = total > 0 ? CGFloat(completed) / CGFloat(total) : 0
+
+        return GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppTheme.backgroundPrimary)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppTheme.accentPrimary)
+                    .frame(width: geo.size.width * progress)
+                    .animation(.easeOut(duration: 0.55), value: progress)
+            }
+        }
+        .frame(height: 3)
+    }
+
+    // MARK: Level grid
+
+    private var levelGrid: some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 5)
+        return LazyVGrid(columns: columns, spacing: 6) {
+            ForEach(region.levels) { level in
+                MissionCell(
+                    level: level,
+                    state: cellState(for: level)
+                ) {
+                    onSelect(level)
+                }
+                .id(level.id)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 4)
+        .padding(.bottom, displayState == .completed ? 4 : 20)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    // MARK: Expand / collapse for completed sectors
+
+    private var expandToggle: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                gridExpanded.toggle()
+            }
+        }) {
+            HStack(spacing: 6) {
+                TechLabel(
+                    text: gridExpanded ? S.hideMissions : S.viewMissions,
+                    color: AppTheme.success.opacity(0.70)
+                )
+                Image(systemName: gridExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(AppTheme.success.opacity(0.60))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+        }
+    }
+
+    // MARK: Left accent bar
+
+    private var leftAccentBar: some View {
+        Rectangle()
+            .fill(accentColor)
+            .frame(width: displayState == .active ? 3 : 2)
+            // Glow only on the active sector bar
+            .shadow(
+                color:  displayState == .active ? AppTheme.accentPrimary.opacity(0.55) : .clear,
+                radius: 5, x: 3, y: 0
+            )
+            .padding(.vertical, 10)
+    }
+
+    // MARK: Card background
+
+    private var cardBackground: Color {
+        switch displayState {
+        case .active:    return AppTheme.backgroundSecondary.opacity(0.78)
+        case .completed: return AppTheme.backgroundSecondary.opacity(0.45)
+        case .locked:    return Color.clear
+        }
+    }
+
+    // MARK: Cell state helper
+
+    private func cellState(for level: Level) -> MissionCell.CellState {
+        if profile.hasCompleted(levelId: level.id) { return .completed }
+        if !profile.isLevelUnlocked(level.id)      { return .locked }
+        if level.id == profile.nextMission?.id      { return .next }
+        return .available
+    }
+}
+
 // MARK: - MissionCell
-/// A single level button in the mission map grid.
-/// Visual state reflects completion, unlock, or next-mission status.
+
+/// A single level button used inside the active / expanded sector grid.
 struct MissionCell: View {
     enum CellState { case completed, next, available, locked }
 
@@ -275,12 +528,15 @@ struct MissionCell: View {
     let state: CellState
     let onTap: () -> Void
 
-    private var accentColor: Color {
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
+    private var cellBackground: Color {
         switch state {
-        case .completed: return AppTheme.success
-        case .next:      return AppTheme.accentPrimary
-        case .available: return level.difficulty.color
-        case .locked:    return AppTheme.textSecondary.opacity(0.2)
+        case .completed: return AppTheme.success.opacity(0.12)
+        case .next:      return AppTheme.accentPrimary.opacity(0.15)
+        case .available: return AppTheme.surface
+        case .locked:    return AppTheme.backgroundSecondary
         }
     }
 
@@ -289,55 +545,53 @@ struct MissionCell: View {
         case .completed: return AppTheme.success.opacity(0.45)
         case .next:      return AppTheme.accentPrimary
         case .available: return AppTheme.stroke
-        case .locked:    return AppTheme.stroke.opacity(0.25)
+        case .locked:    return AppTheme.stroke.opacity(0.35)
+        }
+    }
+
+    private var numberColor: Color {
+        switch state {
+        case .completed: return AppTheme.success
+        case .next:      return AppTheme.accentPrimary
+        case .available: return AppTheme.textPrimary
+        case .locked:    return AppTheme.textSecondary.opacity(0.45)
         }
     }
 
     var body: some View {
         Button(action: onTap) {
             ZStack {
-                // Background fill
                 RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                    .fill(state == .completed
-                          ? AppTheme.success.opacity(0.08)
-                          : AppTheme.surface)
+                    .fill(cellBackground)
                     .overlay(
                         RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                            .strokeBorder(borderColor, lineWidth: state == .next ? 1.0 : 0.5)
+                            .strokeBorder(borderColor, lineWidth: state == .next ? 1.5 : 0.5)
                     )
 
-                // Content
                 VStack(spacing: 3) {
-                    // Top indicator
                     Group {
                         switch state {
                         case .completed:
                             Image(systemName: "checkmark")
                                 .font(.system(size: 7, weight: .bold))
-                                .foregroundStyle(AppTheme.success.opacity(0.75))
+                                .foregroundStyle(AppTheme.success)
                         case .locked:
                             Image(systemName: "lock.fill")
-                                .font(.system(size: 7))
-                                .foregroundStyle(AppTheme.textSecondary.opacity(0.2))
+                                .font(.system(size: 6))
+                                .foregroundStyle(AppTheme.textSecondary.opacity(0.40))
                         default:
                             Circle()
-                                .fill(level.difficulty.color.opacity(0.65))
+                                .fill(level.difficulty.color.opacity(state == .next ? 0.90 : 0.60))
                                 .frame(width: 4, height: 4)
                         }
                     }
 
-                    // Level number
                     Text(level.displayID)
                         .font(AppTheme.mono(12, weight: state == .next ? .black : .bold))
-                        .foregroundStyle(
-                            state == .locked
-                            ? AppTheme.textSecondary.opacity(0.25)
-                            : (state == .next ? AppTheme.accentPrimary : AppTheme.textPrimary)
-                        )
+                        .foregroundStyle(numberColor)
 
-                    // Bottom label
                     if state == .next {
-                        Text("NEXT")
+                        Text(S.next)
                             .font(AppTheme.mono(6, weight: .bold))
                             .foregroundStyle(AppTheme.accentPrimary)
                             .kerning(0.5)

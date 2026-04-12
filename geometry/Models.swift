@@ -360,12 +360,14 @@ struct AstronautProfile: Codable {
 
     // ── Computed — planetary destination ──────────────────────────────────
 
+    /// The highest-requirement planet the player has actually unlocked.
+    /// Computed from `level` directly so it always agrees with SpatialRegion unlock logic.
     var currentPlanet: Planet {
-        Planet.catalog[min(currentPlanetIndex, Planet.catalog.count - 1)]
+        Planet.catalog.last(where: { $0.requiredLevel <= level }) ?? Planet.catalog[0]
     }
+    /// The next planet the player is working toward, or nil if all are unlocked.
     var nextPlanet: Planet? {
-        let idx = currentPlanetIndex + 1
-        return idx < Planet.catalog.count ? Planet.catalog[idx] : nil
+        Planet.catalog.first(where: { $0.requiredLevel > level })
     }
 
     // ── Progression gating ────────────────────────────────────────────────
@@ -424,6 +426,12 @@ struct AstronautProfile: Codable {
         default:     return "ADMIRAL"
         }
     }
+
+    // ── Single source of truth ────────────────────────────────────────────
+
+    /// Resolved snapshot of all progression state.
+    /// Use this in views instead of computing sector / planet state independently.
+    var progression: ProgressionState { ProgressionState(profile: self) }
 }
 
 // MARK: - LevelType
@@ -594,4 +602,81 @@ struct SpatialRegion: Identifiable {
         SpatialRegion(id: 7, name: "URANUS VOID",    subtitle: "ICE GIANT SURVEY",    levelRange: 131...150,requiredPlayerLevel: 14, accentColor: Color(hex: "7EC8E3")),
         SpatialRegion(id: 8, name: "NEPTUNE DEEP",   subtitle: "DEEP SPACE COMMS",    levelRange: 151...180,requiredPlayerLevel: 18, accentColor: Color(hex: "4B70DD")),
     ]
+}
+
+// MARK: - ProgressionState
+/// A fully resolved, consistent snapshot of the player's progression.
+///
+/// **Single source of truth** — all views (Home, Ticket, MissionMap, Victory) should
+/// derive their progression display from this struct rather than computing
+/// planets / sectors / missions independently.
+///
+/// All properties are derived in one place so Home, Ticket, and MissionMap
+/// always tell the same story.
+struct ProgressionState {
+
+    // ── Core ─────────────────────────────────────────────────────────────
+    let playerLevel:   Int
+    let activeMission: Level?          // next unlocked + incomplete level
+
+    // ── Planet (aligned with sector via requiredLevel) ────────────────────
+    let currentPlanet:  Planet         // highest planet with requiredLevel ≤ playerLevel
+    let nextPlanet:     Planet?        // first planet with requiredLevel > playerLevel
+
+    // ── Sector ────────────────────────────────────────────────────────────
+    let currentSector:    SpatialRegion     // most advanced unlocked sector
+    let nextTargetSector: SpatialRegion?    // first locked sector (aspirational)
+    let unlockedSectorIDs: Set<Int>
+
+    // ── Convenience ───────────────────────────────────────────────────────
+    /// True when the player has finished every mission in the catalogue.
+    let allMissionsComplete: Bool
+
+    // MARK: Init
+
+    init(profile: AstronautProfile) {
+        playerLevel   = profile.level
+        activeMission = profile.nextMission
+
+        // Planet — same requiredLevel thresholds as SpatialRegion, so they stay in sync
+        currentPlanet = Planet.catalog.last(where: { $0.requiredLevel <= profile.level }) ?? Planet.catalog[0]
+        nextPlanet    = Planet.catalog.first(where: { $0.requiredLevel > profile.level })
+
+        // Sectors
+        let unlocked      = SpatialRegion.catalog.filter { $0.isUnlocked(for: profile) }
+        unlockedSectorIDs = Set(unlocked.map(\.id))
+        currentSector     = unlocked.last ?? SpatialRegion.catalog[0]
+        nextTargetSector  = SpatialRegion.catalog.first { !$0.isUnlocked(for: profile) }
+
+        allMissionsComplete = profile.nextMission == nil
+    }
+
+    // MARK: Helpers
+
+    func isSectorUnlocked(_ id: Int) -> Bool { unlockedSectorIDs.contains(id) }
+
+    /// Avg best efficiency for a given sector's completed levels.
+    func avgEfficiency(for region: SpatialRegion, profile: AstronautProfile) -> Float? {
+        let effs = region.levels.compactMap { profile.bestEfficiencyByLevel[String($0.id)] }
+        guard !effs.isEmpty else { return nil }
+        return effs.reduce(0, +) / Float(effs.count)
+    }
+
+    // MARK: Debug
+
+    #if DEBUG
+    var debugDescription: String {
+        """
+        ProgressionState {
+          level:         \(playerLevel)
+          currentPlanet: \(currentPlanet.name)
+          nextPlanet:    \(nextPlanet?.name ?? "—")
+          currentSector: \(currentSector.name)
+          nextSector:    \(nextTargetSector?.name ?? "—")
+          activeMission: \(activeMission.map { "#\($0.id)" } ?? "—")
+          unlocked:      \(unlockedSectorIDs.sorted())
+        }
+        """
+    }
+    #endif
 }

@@ -1,12 +1,14 @@
 import SwiftUI
 
 // MARK: - SettingsView
-/// System configuration panel — sound, music, haptics, motion.
+/// System configuration panel — sound, music, haptics, motion, language.
 /// Presented as a modal sheet from HomeView.
 struct SettingsView: View {
 
-    @ObservedObject private var settings = SettingsStore.shared
+    @EnvironmentObject private var settings: SettingsStore
     @Environment(\.dismiss) private var dismiss
+
+    private var S: AppStrings { AppStrings(lang: settings.language) }
 
     var body: some View {
         ZStack {
@@ -17,29 +19,31 @@ struct SettingsView: View {
                 navStrip
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
-                        settingsSection(title: "AUDIO") {
+                        settingsSection(title: S.audio) {
                             settingsRow(icon: "speaker.wave.2.fill",
-                                        label: "SOUND FX",
-                                        sub: "Game sound effects",
+                                        label: S.soundFX,
+                                        sub: S.soundFXSub,
                                         binding: $settings.soundEnabled)
                             TechDivider()
                             settingsRow(icon: "music.note",
-                                        label: "AMBIENT MUSIC",
-                                        sub: "Background drone",
+                                        label: S.ambientMusic,
+                                        sub: S.ambientMusicSub,
                                         binding: $settings.musicEnabled)
                         }
 
-                        settingsSection(title: "INTERFACE") {
+                        settingsSection(title: S.interfaceSection) {
                             settingsRow(icon: "hand.tap.fill",
-                                        label: "HAPTIC FEEDBACK",
-                                        sub: "Vibration on actions",
+                                        label: S.hapticFeedback,
+                                        sub: S.hapticFeedbackSub,
                                         binding: $settings.hapticsEnabled)
                             TechDivider()
                             settingsRow(icon: "waveform.path",
-                                        label: "REDUCED MOTION",
-                                        sub: "Simplify animations",
+                                        label: S.reducedMotion,
+                                        sub: S.reducedMotionSub,
                                         binding: $settings.reducedMotion)
                         }
+
+                        languageSection
 
                         buildInfo
                     }
@@ -58,17 +62,17 @@ struct SettingsView: View {
                 HStack(spacing: 5) {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .bold))
-                    TechLabel(text: "CLOSE")
+                    TechLabel(text: S.close)
                 }
                 .foregroundStyle(AppTheme.textSecondary)
             }
             Spacer()
-            TechLabel(text: "SYSTEM CONFIG", color: AppTheme.sage)
+            TechLabel(text: S.systemConfig, color: AppTheme.sage)
             Spacer()
             // Balance spacer
             HStack(spacing: 5) {
                 Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
-                TechLabel(text: "CLOSE")
+                TechLabel(text: S.close)
             }.opacity(0)
         }
         .padding(.horizontal, 20)
@@ -130,6 +134,42 @@ struct SettingsView: View {
         .padding(.vertical, 13)
     }
 
+    // MARK: Language section
+
+    private var languageSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TechLabel(text: S.language, color: AppTheme.sage)
+            HStack(spacing: 0) {
+                ForEach(AppLanguage.allCases, id: \.self) { lang in
+                    let isSelected = settings.language == lang
+                    Button(action: {
+                        settings.language = lang
+                        HapticsManager.selection()
+                    }) {
+                        Text(lang.displayName)
+                            .font(AppTheme.mono(11, weight: isSelected ? .bold : .regular))
+                            .foregroundStyle(isSelected ? .white : AppTheme.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 42)
+                            .background(isSelected ? AppTheme.accentPrimary : Color.clear)
+                            .animation(.easeInOut(duration: 0.15), value: settings.language)
+                    }
+                    if lang != AppLanguage.allCases.last {
+                        Rectangle()
+                            .fill(AppTheme.stroke.opacity(0.50))
+                            .frame(width: 0.5)
+                    }
+                }
+            }
+            .background(AppTheme.surface)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                    .strokeBorder(AppTheme.sage.opacity(0.14), lineWidth: 0.5)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+        }
+    }
+
     // MARK: Build info
 
     private var buildInfo: some View {
@@ -140,7 +180,7 @@ struct SettingsView: View {
             HStack {
                 TechLabel(text: "SIGNAL ROUTE  ·  v1.0")
                 Spacer()
-                TechLabel(text: "\(LevelGenerator.levels.count) MISSIONS",
+                TechLabel(text: "\(LevelGenerator.levels.count) \(S.missionsLabel)",
                           color: AppTheme.sage.opacity(0.55))
             }
         }

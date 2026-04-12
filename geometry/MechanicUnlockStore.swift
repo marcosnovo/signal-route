@@ -26,6 +26,13 @@ enum MechanicUnlockStore {
         UserDefaults.standard.removeObject(forKey: key)
     }
 
+    /// Mark a single mechanic as unseen so its unlock message can fire again.
+    static func markUnannounced(_ mechanic: MechanicType) {
+        var set = announced
+        set.remove(mechanic.rawValue)
+        announced = set
+    }
+
     // MARK: - Private
 
     private static var announced: Set<String> {

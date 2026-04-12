@@ -14,6 +14,9 @@ struct VictoryTelemetryView: View {
     var onNextMission: (() -> Void)? = nil
     var onMissions: (() -> Void)?    = nil
 
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
     // ── Animation state ────────────────────────────────────────────────────
     @State private var panelVisible   = false
     @State private var displayedPct   = 0
@@ -85,7 +88,7 @@ struct VictoryTelemetryView: View {
                 HStack(spacing: 5) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 10, weight: .bold))
-                    TechLabel(text: "HOME", color: AppTheme.sage)
+                    TechLabel(text: S.home, color: AppTheme.sage)
                 }
                 .foregroundStyle(AppTheme.sage)
             }
@@ -216,7 +219,7 @@ struct VictoryTelemetryView: View {
             .padding(.bottom, 8)
 
             // ── Large title (mirrors "Planetary Telemetry Results") ──────
-            Text("MISSION\nDEBRIEF")
+            Text(S.missionDebrief)
                 .font(.system(size: 24, weight: .black, design: .default))
                 .foregroundStyle(sageInk)
                 .lineSpacing(-2)
@@ -241,7 +244,7 @@ struct VictoryTelemetryView: View {
                         .lineLimit(1)
                         .offset(y: -3)
                 }
-                Text("MISSION QUALITY")
+                Text(S.missionQuality)
                     .font(.system(size: 9, weight: .semibold))
                     .tracking(1.5)
                     .foregroundStyle(sageMid)
@@ -259,11 +262,11 @@ struct VictoryTelemetryView: View {
             // ── Route rating + message ───────────────────────────────────
             if let result = vm.gameResult {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(result.routeRating)
+                    Text(S.routeRating(result.efficiency))
                         .font(AppTheme.mono(8, weight: .bold))
                         .foregroundStyle(result.isOptimalRoute ? sageInk : sageMid)
                         .tracking(2.0)
-                    Text(result.routeMessage)
+                    Text(S.routeMessage(result.efficiency))
                         .font(.system(size: 10, weight: .regular))
                         .foregroundStyle(sageMid)
                         .fixedSize(horizontal: false, vertical: true)
@@ -281,7 +284,7 @@ struct VictoryTelemetryView: View {
                 HStack(spacing: 0) {
                     SageMetric(
                         icon:  "scope",
-                        label: "SCORE",
+                        label: S.score,
                         value: "\(vm.score)",
                         ink:   sageInk,
                         sub:   sageFaint
@@ -289,7 +292,7 @@ struct VictoryTelemetryView: View {
                     Rectangle().fill(sageDivider).frame(width: 0.5)
                     SageMetric(
                         icon:  "waveform",
-                        label: "USED / MIN",
+                        label: S.usedMin,
                         value: "\(vm.movesUsed)/\(vm.currentLevel.minimumRequiredMoves)",
                         ink:   sageInk,
                         sub:   sageFaint
@@ -314,7 +317,7 @@ struct VictoryTelemetryView: View {
         case .maxCoverage:
             SageMetric(
                 icon:  "bolt.fill",
-                label: "COVERAGE",
+                label: S.coverage,
                 value: "\(vm.gridCoveragePercent)%",
                 ink:   sageInk,
                 sub:   sageFaint
@@ -322,7 +325,7 @@ struct VictoryTelemetryView: View {
         case .energySaving:
             SageMetric(
                 icon:  "leaf.fill",
-                label: "WASTE",
+                label: S.waste,
                 value: "\(vm.energyWaste)",
                 ink:   sageInk,
                 sub:   sageFaint
@@ -330,7 +333,7 @@ struct VictoryTelemetryView: View {
         case .normal:
             SageMetric(
                 icon:  "cpu",
-                label: "NODES",
+                label: S.activeNodes,
                 value: "\(vm.activeNodes)",
                 ink:   sageInk,
                 sub:   sageFaint
@@ -359,11 +362,11 @@ struct VictoryTelemetryView: View {
                 Button(action: { onNextMission?() }) {
                     HStack(spacing: 0) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("MISSION \(next.displayID)")
+                            Text(S.nextMissionLabel(next.displayID))
                                 .font(AppTheme.mono(9, weight: .regular))
                                 .foregroundStyle(.white.opacity(0.55))
                                 .kerning(2)
-                            Text("NEXT MISSION")
+                            Text(S.nextMission)
                                 .font(AppTheme.mono(16, weight: .black))
                                 .foregroundStyle(.white)
                                 .kerning(1)
@@ -389,14 +392,14 @@ struct VictoryTelemetryView: View {
             // ── Secondary row: RETRY / SHARE / MAP / HOME ──────────────
             HStack(spacing: 0) {
                 Button(action: onRestart) {
-                    secondaryButton(icon: "arrow.counterclockwise", label: "RETRY",
+                    secondaryButton(icon: "arrow.counterclockwise", label: S.retryLabel,
                                     color: AppTheme.textPrimary)
                 }
 
                 Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
 
                 Button(action: shareTicket) {
-                    secondaryButton(icon: "square.and.arrow.up", label: "SHARE",
+                    secondaryButton(icon: "square.and.arrow.up", label: S.shareLabel,
                                     color: AppTheme.textSecondary)
                 }
 
@@ -404,7 +407,7 @@ struct VictoryTelemetryView: View {
                     Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
 
                     Button(action: { onMissions?() }) {
-                        secondaryButton(icon: "map", label: "MAP",
+                        secondaryButton(icon: "map", label: S.mapLabel,
                                         color: AppTheme.sage.opacity(0.75))
                     }
                 }
@@ -412,7 +415,7 @@ struct VictoryTelemetryView: View {
                 Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
 
                 Button(action: onDismiss) {
-                    secondaryButton(icon: "house", label: "HOME",
+                    secondaryButton(icon: "house", label: S.home,
                                     color: AppTheme.sage.opacity(0.55))
                 }
             }

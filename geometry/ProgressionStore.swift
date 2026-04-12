@@ -57,10 +57,9 @@ enum ProgressionStore {
 
         // Level-up loop — handles the rare case where one result crosses multiple thresholds
         var levelsGained = 0
-        let prevPlanetIndex = p.currentPlanetIndex
+        let prevPlanet = p.currentPlanet   // computed from level; captured before any level-up
         while p.canLevelUp {
             p.level += 1
-            p.currentPlanetIndex = min(p.level - 1, Planet.catalog.count - 1)
             levelsGained += 1
         }
 
@@ -68,15 +67,16 @@ enum ProgressionStore {
 
         guard levelsGained > 0 else { return nil }
 
-        // Issue a planet pass if the player reached a new destination
+        // Issue a planet pass if the player reached a new destination.
+        // currentPlanet is now computed from level, so it automatically reflects the new level.
         var newPass: PlanetPass? = nil
-        if p.currentPlanetIndex > prevPlanetIndex {
+        if p.currentPlanet.id > prevPlanet.id {
             newPass = PassStore.issue(planet: p.currentPlanet, profile: p)
         }
 
         return LevelUpEvent(
             newLevel:     p.level,
-            newPlanet:    p.currentPlanet,
+            newPlanet:    p.currentPlanet,   // now correctly aligned with SpatialRegion lock levels
             levelsGained: levelsGained,
             newPass:      newPass
         )
@@ -87,6 +87,31 @@ enum ProgressionStore {
     /// Resets the profile to a fresh Level-1 state.
     static func reset() {
         UserDefaults.standard.removeObject(forKey: key)
+    }
+
+    /// Jump to a specific player level and re-issue passes for all earned planets.
+    static func devSetLevel(_ targetLevel: Int) {
+        var p = profile
+        p.level = max(1, targetLevel)
+        save(p)
+        PassStore.reset()
+        for planet in Planet.catalog where planet.requiredLevel <= p.level {
+            PassStore.issue(planet: planet, profile: p)
+        }
+    }
+
+    /// Clear mission history (best-per-level efficiency map) while keeping level/planet.
+    static func devResetMissions() {
+        var p = profile
+        p.bestEfficiencyByLevel = [:]
+        save(p)
+    }
+
+    /// Full factory reset — profile, passes, and mechanic announcements.
+    static func devResetAll() {
+        reset()
+        PassStore.reset()
+        MechanicUnlockStore.reset()
     }
 }
 

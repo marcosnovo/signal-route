@@ -27,13 +27,27 @@ struct ContentView: View {
                 GameView(
                     level: level,
                     onDismiss: { activeLevel = nil },
-                    onNextMission: { activeLevel = ProgressionStore.profile.nextMission },
+                    onNextMission: {
+                        // Navigate to the level immediately after the current one in the catalog.
+                        // Using the sequential next (not profile.nextMission) keeps the button
+                        // consistent with what VictoryTelemetryView displays.
+                        let levels = LevelGenerator.levels
+                        if let idx = levels.firstIndex(where: { $0.id == level.id }),
+                           idx + 1 < levels.count {
+                            activeLevel = levels[idx + 1]
+                        }
+                    },
                     onMissions: { activeLevel = nil; showingLevelSelect = true }
                 )
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing),
-                        removal:   .move(edge: .trailing)
-                    ))
+                // .id forces SwiftUI to destroy and recreate GameView (and its @StateObject
+                // GameViewModel) whenever the level changes. Without this, SwiftUI recycles
+                // the same view instance when activeLevel switches from Level N to Level N+1,
+                // keeping the old GameViewModel — the board never updates.
+                .id(level.id)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing),
+                    removal:   .move(edge: .trailing)
+                ))
             } else if showingLevelSelect {
                 MissionMapView(
                     onSelect: { level in
