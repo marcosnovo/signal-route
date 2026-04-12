@@ -76,11 +76,18 @@ struct PlanetPass3DView: View {
     // ── Sheen sweep ───────────────────────────────────────────────────────
     @State private var sheenX: CGFloat = -0.5
 
+    // ── Device motion ────────────────────────────────────────────────────
+    @ObservedObject private var motion: DeviceMotionManager = .shared
+    /// Animated scale applied to the motion contribution.
+    /// Springs to 0 during export so the card settles to its canonical rest.
+    @State private var motionScale: Double = 1.0
+
     // ── Tilt parameters ───────────────────────────────────────────────────
-    private let restTiltX: Double  =  3.5
-    private let restTiltY: Double  = -5.0
-    private let maxTilt:   Double  =  8.0
-    private let dragScale: CGFloat = 80
+    private let restTiltX:    Double  =  3.5
+    private let restTiltY:    Double  = -5.0
+    private let maxTilt:      Double  =  8.0
+    private let dragScale:    CGFloat = 80
+    private let motionMaxTilt: Double =  6.0   // ±6° max from device motion
 
     // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -91,15 +98,53 @@ struct PlanetPass3DView: View {
     private var normX: Double { norm(tilt.width)  }
     private var normY: Double { norm(tilt.height) }
 
-    // Active tilt = editorial rest + drag + entry boost + idle drift
-    private var activeTiltX: Double { restTiltX + normY * maxTilt + entryTiltX + idleTiltX }
-    private var activeTiltY: Double { restTiltY + normX * maxTilt + entryTiltY + idleTiltY }
+    /// Smoothed, scaled device-motion contributions. Zero when not available.
+    private var mX: Double { motion.isAvailable ? motion.tiltX * motionScale : 0 }
+    private var mY: Double { motion.isAvailable ? motion.tiltY * motionScale : 0 }
 
-    private var glossShiftX: Double { -normX * 0.14 }
-    private var glossShiftY: Double { -normY * 0.10 }
+    // Active tilt = editorial rest + drag + entry boost + idle drift + device motion
+    // motion.tiltX (left/right phone tilt) drives Y rotation; tiltY drives X rotation.
+    private var activeTiltX: Double { restTiltX + normY * maxTilt + entryTiltX + idleTiltX + mY * motionMaxTilt }
+    private var activeTiltY: Double { restTiltY + normX * maxTilt + entryTiltY + idleTiltY + mX * motionMaxTilt }
 
-    private var specularX: Double { 0.30 - normX * 0.18 }
-    private var specularY: Double { 0.18 - normY * 0.10 }
+    private var glossShiftX: Double { -normX * 0.14 - mX * 0.11 }
+    private var glossShiftY: Double { -normY * 0.10 - mY * 0.08 }
+
+    // Wider motion travel — now matches drag sensitivity
+    private var specularX: Double { 0.30 - normX * 0.18 - mX * 0.16 }
+    private var specularY: Double { 0.18 - normY * 0.10 - mY * 0.12 }
+
+    /// Specular intensity 0.30–1.0.
+    /// Peaks when the highlight is at its rest position (aligned with the simulated
+    /// upper-left light source), fades as it drifts away with tilt.
+    /// Physical analogy: the reflection "blooms" when it bounces straight back at
+    /// the viewer's eye, and diffuses when the reflection angle diverges.
+    private var specularIntensity: Double {
+        let dx = specularX - 0.30
+        let dy = specularY - 0.18
+        return max(0.30, 1.0 - sqrt(dx * dx + dy * dy) * 2.4)
+    }
+
+    /// Gloss strip brightness 0.60–1.25.
+    /// Slightly stronger when the card tilts toward the light (upper-left),
+    /// slightly dimmer when tilting away.
+    private var glossIntensity: Double {
+        max(0.60, min(1.25, 1.0 - mX * 0.28 - mY * 0.18))
+    }
+
+    /// Bevel light-edge opacity (top-left corner).
+    /// Brightens when the card tilts toward the light source.
+    private var bevelLightOpacity: Double {
+        let toward = (-normX - normY - mX - mY) * 0.25   // positive = tilted toward light
+        return max(0.10, min(0.50, 0.30 + toward * 0.18))
+    }
+
+    /// Bevel dark-edge opacity (bottom-right corner).
+    /// Deepens when the card tilts away from the light source.
+    private var bevelDarkOpacity: Double {
+        let away = (normX + normY + mX + mY) * 0.25     // positive = tilted away from light
+        return max(0.08, min(0.38, 0.20 + away * 0.14))
+    }
 
     private var displayScale: CGFloat { entryScale * tapScale }
 
@@ -126,8 +171,8 @@ struct PlanetPass3DView: View {
         .shadow(
             color:  .black.opacity(0.30),
             radius: 30,
-            x: 6  + CGFloat(normX) * 8,
-            y: 18 + CGFloat(normY) * 8
+            x: 6  + CGFloat(normX) * 8 + CGFloat(mX) * 5,
+            y: 18 + CGFloat(normY) * 8 + CGFloat(mY) * 4
         )
         .scaleEffect(displayScale)
         .offset(y: entryOffsetY)
@@ -142,21 +187,31 @@ struct PlanetPass3DView: View {
                     }
                 }
         )
-        // Respond to export mode: settle idle + flash border
+        // Respond to export mode: settle idle + silence motion + flash border
         .onChange(of: isExporting) { _, exporting in
-            guard exporting else { return }
-            // Smoothly kill idle drift so the card sits at its canonical rest position
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
-                idleTiltX = 0
-                idleTiltY = 0
-            }
-            // Brief bright border flash — "capture" signal
-            withAnimation(.easeOut(duration: 0.10)) { exportBorderAlpha = 0.90 }
-            Task {
-                try? await Task.sleep(nanoseconds: 180_000_000)
-                withAnimation(.easeOut(duration: 0.35)) { exportBorderAlpha = 0.0 }
+            if exporting {
+                // Kill idle drift and motion tilt so the card sits at its canonical rest
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+                    idleTiltX   = 0
+                    idleTiltY   = 0
+                    motionScale = 0
+                }
+                motion.decayToZero()
+                // Brief bright border flash — "capture" signal
+                withAnimation(.easeOut(duration: 0.10)) { exportBorderAlpha = 0.90 }
+                Task {
+                    try? await Task.sleep(nanoseconds: 180_000_000)
+                    withAnimation(.easeOut(duration: 0.35)) { exportBorderAlpha = 0.0 }
+                }
+            } else {
+                // Share sheet dismissed — restore motion contribution
+                withAnimation(.spring(response: 0.50, dampingFraction: 0.70)) {
+                    motionScale = 1.0
+                }
             }
         }
+        .onAppear    { motion.start() }
+        .onDisappear { motion.stop()  }
         .task { await runEntrySequence() }
         .task { await runIdleMotion()   }
     }
@@ -288,8 +343,8 @@ struct PlanetPass3DView: View {
             .blendMode(.screen)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .offset(
-                x: CGFloat(normX) * -8,
-                y: CGFloat(normY) * -6
+                x: CGFloat(normX) * -8 + CGFloat(mX) * -5,
+                y: CGFloat(normY) * -6 + CGFloat(mY) * -4
             )
             .allowsHitTesting(false)
     }
@@ -343,8 +398,8 @@ struct PlanetPass3DView: View {
             .blendMode(.screen)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .offset(
-                x: CGFloat(normX) * -4,
-                y: CGFloat(normY) * -3
+                x: CGFloat(normX) * -4 + CGFloat(mX) * -3,
+                y: CGFloat(normY) * -3 + CGFloat(mY) * -2
             )
             .allowsHitTesting(false)
     }
@@ -367,13 +422,14 @@ struct PlanetPass3DView: View {
     }
 
     private var glossOverlay: some View {
-        RoundedRectangle(cornerRadius: 8)
+        let g = glossIntensity
+        return RoundedRectangle(cornerRadius: 8)
             .fill(
                 LinearGradient(
                     stops: [
-                        .init(color: .white.opacity(0.13), location: 0.00),
-                        .init(color: .white.opacity(0.06), location: 0.38),
-                        .init(color: .clear,               location: 0.56),
+                        .init(color: .white.opacity(0.13 * g), location: 0.00),
+                        .init(color: .white.opacity(0.06 * g), location: 0.38),
+                        .init(color: .clear,                   location: 0.56),
                     ],
                     startPoint: UnitPoint(x: 0.10 + glossShiftX, y: glossShiftY),
                     endPoint:   UnitPoint(x: 0.90 + glossShiftX, y: 1.00 + glossShiftY)
@@ -383,25 +439,32 @@ struct PlanetPass3DView: View {
     }
 
     private var specularDot: some View {
-        RadialGradient(
-            colors: [.white.opacity(0.22), .white.opacity(0.07), .clear],
+        let a = specularIntensity   // 0.30–1.0
+        return RadialGradient(
+            colors: [
+                .white.opacity(0.07 + a * 0.20),   // 0.13 (dim) → 0.27 (bright)
+                .white.opacity(0.02 + a * 0.05),   // 0.04 → 0.07
+                .clear,
+            ],
             center:      UnitPoint(x: specularX, y: specularY),
             startRadius: 0,
-            endRadius:   90
+            endRadius:   45 + (1.0 - a) * 60    // 45 (sharp aligned) → 105 (diffuse swept)
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .allowsHitTesting(false)
     }
 
     private var bevelOverlay: some View {
-        RoundedRectangle(cornerRadius: 8)
+        let lo = bevelLightOpacity
+        let do_ = bevelDarkOpacity
+        return RoundedRectangle(cornerRadius: 8)
             .strokeBorder(
                 LinearGradient(
                     stops: [
-                        .init(color: .white.opacity(0.30), location: 0.00),
-                        .init(color: .white.opacity(0.09), location: 0.30),
-                        .init(color: .black.opacity(0.06), location: 0.70),
-                        .init(color: .black.opacity(0.20), location: 1.00),
+                        .init(color: .white.opacity(lo),        location: 0.00),
+                        .init(color: .white.opacity(lo * 0.30), location: 0.30),
+                        .init(color: .black.opacity(do_ * 0.30), location: 0.70),
+                        .init(color: .black.opacity(do_),        location: 1.00),
                     ],
                     startPoint: UnitPoint(x: 0.0, y: 0.0),
                     endPoint:   UnitPoint(x: 1.0, y: 1.0)

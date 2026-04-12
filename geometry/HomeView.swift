@@ -860,6 +860,10 @@ struct PlanetTicketView: View {
     @State private var loadingPhase:  Int      = 0
     /// True while the export is being prepared — tells PlanetPass3DView to settle and flash.
     @State private var isExporting:   Bool     = false
+    /// Resolved sheet width — set via onGeometryChange; seeded with a safe default.
+    @State private var viewWidth: CGFloat      = 393
+    /// Drives the entry animation for nav strip and share section.
+    @State private var chromeVisible: Bool     = false
 
     private var planet: Planet { profile.currentPlanet }
 
@@ -883,38 +887,72 @@ struct PlanetTicketView: View {
             VStack(spacing: 0) {
                 // ── Nav strip ────────────────────────────────────────
                 HStack {
+                    // Bordered pill close button — discrete but clear
                     Button(action: { dismiss() }) {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
                             Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 9, weight: .bold))
                             TechLabel(text: S.close)
                         }
                         .foregroundStyle(AppTheme.textSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(AppTheme.backgroundSecondary)
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                                .strokeBorder(AppTheme.stroke, lineWidth: 0.5)
+                        )
                     }
+
                     Spacer()
-                    TechLabel(text: S.planetPass, color: planet.color)
+
+                    // Title + planet name subtitle
+                    VStack(spacing: 2) {
+                        TechLabel(text: S.planetPass, color: planet.color)
+                        TechLabel(text: planet.name.uppercased(),
+                                  color: planet.color.opacity(0.50))
+                    }
+
                     Spacer()
-                    HStack(spacing: 5) {
-                        Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+
+                    // Invisible balance to keep title centred
+                    HStack(spacing: 4) {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
                         TechLabel(text: S.close)
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
                     .opacity(0)
                 }
                 .padding(.horizontal, 20)
-                .padding(.vertical, 14)
+                .padding(.vertical, 12)
                 .overlay(alignment: .bottom) { TechDivider() }
+                .opacity(chromeVisible ? 1 : 0)
+                .offset(y: chromeVisible ? 0 : 6)
 
-                // ── Ticket area ──────────────────────────────────────
+                // ── Ticket area — square hero ────────────────────────
                 ticketArea
+                    .aspectRatio(1, contentMode: .fit)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 20)
+                    .padding(.bottom, 16)
 
-                Spacer(minLength: 0)
                 TechDivider()
+                    .opacity(chromeVisible ? 1 : 0)
 
                 // ── Share button — activates after reveal ─────────────
                 Button(action: sharePass) {
                     HStack(spacing: 8) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 11, weight: .bold))
+                        if revealed {
+                            // Small planet-color dot accent — "passport activated"
+                            Circle()
+                                .fill(planet.color)
+                                .frame(width: 5, height: 5)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                        Image(systemName: revealed ? "square.and.arrow.up" : "lock")
+                            .font(.system(size: 11, weight: revealed ? .bold : .regular))
                         Text(S.sharePass)
                             .font(AppTheme.mono(12, weight: .bold))
                             .kerning(2)
@@ -927,11 +965,22 @@ struct PlanetTicketView: View {
                             .opacity(isExporting ? 0.55 : 1.0)
                     )
                     .foregroundStyle(revealed ? .black.opacity(0.85) : AppTheme.textSecondary)
-                    .animation(.easeOut(duration: 0.4), value: revealed)
+                    .animation(.easeOut(duration: 0.40), value: revealed)
                     .animation(.easeOut(duration: 0.15), value: isExporting)
                 }
                 .disabled(!revealed || isExporting)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+                .opacity(chromeVisible ? 1 : 0)
+                .offset(y: chromeVisible ? 0 : 6)
             }
+        }
+        .presentationDetents([.height(sheetContentHeight)])
+        .presentationDragIndicator(.visible)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewWidth = $0 }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.28).delay(0.12)) { chromeVisible = true }
         }
         .task {
             let p    = pass
@@ -948,7 +997,9 @@ struct PlanetTicketView: View {
             let phaseTask = Task { @MainActor in
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 1_400_000_000)
-                    if !Task.isCancelled { loadingPhase += 1 }
+                    if !Task.isCancelled {
+                        withAnimation(.easeInOut(duration: 0.35)) { loadingPhase += 1 }
+                    }
                 }
             }
 
@@ -985,44 +1036,100 @@ struct PlanetTicketView: View {
                 accentColor:  planet.color,
                 isExporting:  isExporting
             )
-            .padding(16)
         } else {
-            // Loading state — shown while rendering in background (first open only)
+            // Loading state — shown only on first open (subsequent opens use cache)
             let copies = [S.preparingPass, S.renderingPass, S.generatingCredential]
-            RoundedRectangle(cornerRadius: AppTheme.cardRadius)
-                .fill(AppTheme.surface)
-                .aspectRatio(1, contentMode: .fit)
-                .overlay(
-                    VStack(spacing: 14) {
-                        // Arc spinner — open circle, rotates continuously
+            ZStack {
+                // Base card
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(AppTheme.backgroundSecondary)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(planet.color.opacity(0.20), lineWidth: 0.5)
+                    )
+
+                // Corner registration marks — sci-fi card framing
+                Canvas { ctx, size in
+                    let len: CGFloat  = 10
+                    let pad: CGFloat  = 14
+                    let lw:  CGFloat  = 0.7
+                    let marks: [(CGPoint, CGPoint, CGPoint)] = [
+                        (CGPoint(x: pad, y: pad + len),      CGPoint(x: pad, y: pad),      CGPoint(x: pad + len, y: pad)),
+                        (CGPoint(x: size.width - pad - len, y: pad),      CGPoint(x: size.width - pad, y: pad),      CGPoint(x: size.width - pad, y: pad + len)),
+                        (CGPoint(x: pad, y: size.height - pad - len), CGPoint(x: pad, y: size.height - pad), CGPoint(x: pad + len, y: size.height - pad)),
+                        (CGPoint(x: size.width - pad - len, y: size.height - pad), CGPoint(x: size.width - pad, y: size.height - pad), CGPoint(x: size.width - pad, y: size.height - pad - len)),
+                    ]
+                    for (a, b, c) in marks {
+                        var p = Path()
+                        p.move(to: a); p.addLine(to: b); p.addLine(to: c)
+                        ctx.stroke(p, with: .color(planet.color.opacity(0.35)), lineWidth: lw)
+                    }
+                }
+                .allowsHitTesting(false)
+
+                // Centre content
+                VStack(spacing: 20) {
+                    // Dual-ring spinner
+                    ZStack {
+                        // Outer ring — slow, counter-rotates, planet colour
+                        Circle()
+                            .trim(from: 0, to: 0.55)
+                            .stroke(
+                                planet.color.opacity(0.28),
+                                style: StrokeStyle(lineWidth: 1.0, lineCap: .round)
+                            )
+                            .frame(width: 44, height: 44)
+                            .rotationEffect(.degrees(-spinAngle * 0.55))
+                        // Inner ring — fast, accent colour
                         Circle()
                             .trim(from: 0, to: 0.72)
                             .stroke(
-                                AppTheme.accentPrimary.opacity(0.82),
+                                AppTheme.accentPrimary.opacity(0.85),
                                 style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
                             )
                             .frame(width: 28, height: 28)
                             .rotationEffect(.degrees(spinAngle))
-                            .onAppear {
-                                withAnimation(
-                                    .linear(duration: 1.1).repeatForever(autoreverses: false)
-                                ) { spinAngle = 360 }
-                            }
-
-                        // Cycling copy — advances every 1.4 s via loadingPhase
-                        TechLabel(
-                            text:  copies[loadingPhase % copies.count],
-                            color: AppTheme.textSecondary
-                        )
-
-                        // Thin accent rule
-                        Rectangle()
-                            .fill(AppTheme.accentPrimary.opacity(0.22))
-                            .frame(width: 80, height: 0.5)
                     }
-                )
-                .padding(16)
+                    .onAppear {
+                        withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
+                            spinAngle = 360
+                        }
+                    }
+
+                    // Cycling copy with fade transition
+                    VStack(spacing: 10) {
+                        Text(copies[loadingPhase % copies.count])
+                            .font(AppTheme.mono(8, weight: .semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .kerning(1.5)
+                            .id(loadingPhase)
+                            .transition(.opacity)
+
+                        // Three-dot progress — advances with loadingPhase
+                        HStack(spacing: 5) {
+                            ForEach(0..<3, id: \.self) { i in
+                                Circle()
+                                    .fill(i < (loadingPhase % 3) + 1
+                                          ? AppTheme.accentPrimary.opacity(0.75)
+                                          : AppTheme.stroke)
+                                    .frame(width: 4, height: 4)
+                                    .animation(.easeOut(duration: 0.25), value: loadingPhase)
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    // MARK: Layout
+
+    /// Sheet height = square ticket + all fixed chrome, sized for the current device.
+    /// nav(42) + topPad(20) + bottomPad(16) + divider(1) + shareTopPad(12) + share(52) + shareBottomPad(8)
+    /// + safe-area buffer(40) = 191 pt overhead.
+    private var sheetContentHeight: CGFloat {
+        let ticketSize = viewWidth - 32   // 16pt horizontal padding each side
+        return ticketSize + 191
     }
 
     // MARK: Share
