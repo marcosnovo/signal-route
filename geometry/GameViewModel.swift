@@ -28,6 +28,15 @@ class GameViewModel: ObservableObject {
     /// Set when the player first encounters a new mechanic. Cleared after acknowledgement.
     @Published var pendingMechanicAnnouncement: MechanicType? = nil
 
+    // MARK: Sector completion
+    /// Set when completing a level causes ALL missions in the sector to be done for the first time.
+    /// Cleared by GameView after the banner is displayed.
+    @Published var pendingPassGrant: PlanetPass? = nil
+
+    /// The LevelUpEvent from the most recent win. Nil before first win or after a loss/restart.
+    /// Read by ContentView's onWin callback to surface rank-up and pass story beats.
+    private(set) var lastLevelUpEvent: LevelUpEvent? = nil
+
     // MARK: Level info (read-only from outside)
     private(set) var currentLevel: Level
 
@@ -67,6 +76,8 @@ class GameViewModel: ObservableObject {
         connectedPairs = []
         targetsOnline = 0
         activeNodes = 0
+        pendingPassGrant = nil
+        lastLevelUpEvent = nil
         timeRemaining = currentLevel.timeLimit
         updateConnections()
 
@@ -141,7 +152,11 @@ class GameViewModel: ObservableObject {
             countdownTask?.cancel()
             saveResultIfDaily(success: true)
             if let result = gameResult {
-                ProgressionStore.record(result)
+                let event = ProgressionStore.record(result)
+                lastLevelUpEvent = event
+                if let newPass = event?.newPass {
+                    pendingPassGrant = newPass
+                }
             }
         } else if movesLeft == 0 {
             status = .lost

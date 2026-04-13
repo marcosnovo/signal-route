@@ -19,6 +19,7 @@ enum SoundManager {
         case overloadArm     // overloaded tile armed on first tap
         case timerTick       // countdown — last-10-seconds tick
         case mechanicUnlock  // first encounter with a new mechanic
+        case sectorComplete  // all missions in a sector done — access granted
     }
 
     // MARK: Persistent settings
@@ -128,6 +129,8 @@ enum SoundManager {
         case .timerTick:      return digitalTick()
         // 3-note warm chime sequence — discovery / mechanic unlock
         case .mechanicUnlock: return discoveryJingle()
+        // Bass thud + four-voice rising chord — sector clearance granted
+        case .sectorComplete: return accessGranted()
         }
     }
 
@@ -299,6 +302,49 @@ enum SoundManager {
                     v += sin(2 * .pi * freq * ratio * t) * weight * exp(-baseDecay * dk * t)
                 }
                 out[gi] += Float(v * 0.44)
+            }
+        }
+        return out
+    }
+
+    /// Deep bass thud followed by a four-voice arpeggiated chord — space-station access granted.
+    /// Total ~1.5 s: sub-bass transient (0–0.22 s) then D-major arpeggio (0.15–1.5 s).
+    nonisolated private static func accessGranted() -> [Float] {
+        let total = 1.5
+        let n     = Int(Double(sr) * total)
+        var out   = [Float](repeating: 0, count: n)
+
+        // Phase 1: sub-bass confirmation thud (88 Hz, fast exponential decay)
+        let thudN = Int(Double(sr) * 0.22)
+        for i in 0..<thudN {
+            let t = Double(i) / Double(sr)
+            out[i] += Float(sin(2 * .pi * 88.0 * t) * exp(-10.0 * t) * 0.72)
+        }
+
+        // Phase 2: D-major four-note arpeggio — D4 A4 D5 F#5, staggered 65 ms apart
+        let chordFreqs: [Double] = [293.66, 440.00, 587.33, 739.99]
+        let noteStep = 0.065
+        let chordStart = 0.15
+        let noteDur = total - chordStart
+        let baseDecay = 2.2 / noteDur   // slow decay — chord sustains across the screen
+
+        let partials: [(Double, Double, Double)] = [
+            (1.000, 0.44, 1.0),
+            (2.000, 0.20, 1.7),
+            (3.011, 0.09, 3.0),
+        ]
+
+        for (fi, freq) in chordFreqs.enumerated() {
+            let start = Int(Double(sr) * (chordStart + noteStep * Double(fi)))
+            for j in 0..<(n - start) {
+                let gi = start + j; guard gi < n else { break }
+                let t      = Double(j) / Double(sr)
+                let attack = min(1.0, Double(j) / Double(Int(Double(sr) * 0.035))) // 35 ms ramp
+                var v      = 0.0
+                for (ratio, weight, dk) in partials {
+                    v += sin(2 * .pi * freq * ratio * t) * weight * exp(-baseDecay * dk * t)
+                }
+                out[gi] += Float(v * attack * 0.30)
             }
         }
         return out

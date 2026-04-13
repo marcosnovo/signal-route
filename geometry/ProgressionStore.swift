@@ -15,11 +15,22 @@ enum ProgressionStore {
     // MARK: - Profile access
 
     /// Current profile — returns a default Level-1 profile if no data exists yet.
+    ///
+    /// Performs a one-time migration the first time a player runs a build that
+    /// includes `lastEfficiencyByLevel`: if the new field is empty but `bestEfficiencyByLevel`
+    /// is not, we seed `last` from `best` so existing players keep their progress intact.
     static var profile: AstronautProfile {
         guard
             let data    = UserDefaults.standard.data(forKey: key),
-            let decoded = try? JSONDecoder().decode(AstronautProfile.self, from: data)
+            var decoded = try? JSONDecoder().decode(AstronautProfile.self, from: data)
         else { return AstronautProfile() }
+
+        // One-time migration: seed last-score store from best-score store
+        if decoded.lastEfficiencyByLevel.isEmpty && !decoded.bestEfficiencyByLevel.isEmpty {
+            decoded.lastEfficiencyByLevel = decoded.bestEfficiencyByLevel
+            save(decoded)
+        }
+
         return decoded
     }
 
@@ -37,8 +48,11 @@ enum ProgressionStore {
     /// Replaying the same level a hundred times does not inflate the quality count —
     /// the stored entry is updated only when the new score strictly improves on the best.
     ///
-    /// - Returns: A `LevelUpEvent` if the player advanced one or more levels,
-    ///            or `nil` if no level boundary was crossed.
+    /// A `PlanetPass` is issued the first time the player completes every mission
+    /// in a sector — this is what unlocks the next sector, not the astronaut level.
+    ///
+    /// - Returns: A `LevelUpEvent` if the player levelled up or earned a new pass,
+    ///            or `nil` if neither happened.
     @discardableResult
     static func record(_ result: GameResult) -> LevelUpEvent? {
         guard result.success else { return nil }
@@ -48,35 +62,45 @@ enum ProgressionStore {
         // Always accumulate lifetime score (not used for level-up gating)
         p.totalScore += result.score
 
-        // Best-per-level dedup: only store if this result beats the previous best
         let key = String(result.levelId)
+
+        // Best score: update only when the new result strictly beats the previous best (for display).
         let previousBest = p.bestEfficiencyByLevel[key] ?? 0
         if result.efficiency > previousBest {
             p.bestEfficiencyByLevel[key] = result.efficiency
         }
 
+        // Last score: always overwrite regardless of quality (for level-up gating).
+        // This prevents farming: replaying an easy mission at 100% stays in the record
+        // but replaying it later at 50% will reduce its contribution to level progress.
+        p.lastEfficiencyByLevel[key] = result.efficiency
+
         // Level-up loop — handles the rare case where one result crosses multiple thresholds
         var levelsGained = 0
-        let prevPlanet = p.currentPlanet   // computed from level; captured before any level-up
         while p.canLevelUp {
             p.level += 1
             levelsGained += 1
         }
 
+        // Sector completion check — issue a pass when ALL missions in the completed level's
+        // sector are done for the first time. This pass gates the next sector on the map.
+        var newPass: PlanetPass? = nil
+        if let sector = SpatialRegion.catalog.first(where: { $0.levelRange.contains(result.levelId) }) {
+            let planetIdx = sector.id - 1
+            if planetIdx < Planet.catalog.count,
+               !PassStore.hasPass(for: planetIdx),
+               sector.levels.allSatisfy({ p.hasCompleted(levelId: $0.id) }) {
+                newPass = PassStore.issue(planet: Planet.catalog[planetIdx], profile: p)
+            }
+        }
+
         save(p)
 
-        guard levelsGained > 0 else { return nil }
-
-        // Issue a planet pass if the player reached a new destination.
-        // currentPlanet is now computed from level, so it automatically reflects the new level.
-        var newPass: PlanetPass? = nil
-        if p.currentPlanet.id > prevPlanet.id {
-            newPass = PassStore.issue(planet: p.currentPlanet, profile: p)
-        }
+        guard levelsGained > 0 || newPass != nil else { return nil }
 
         return LevelUpEvent(
             newLevel:     p.level,
-            newPlanet:    p.currentPlanet,   // now correctly aligned with SpatialRegion lock levels
+            newPlanet:    p.currentPlanet,
             levelsGained: levelsGained,
             newPass:      newPass
         )
@@ -100,10 +124,11 @@ enum ProgressionStore {
         }
     }
 
-    /// Clear mission history (best-per-level efficiency map) while keeping level/planet.
+    /// Clear mission history (both best and last efficiency maps) while keeping level/planet.
     static func devResetMissions() {
         var p = profile
-        p.bestEfficiencyByLevel = [:]
+        p.bestEfficiencyByLevel  = [:]
+        p.lastEfficiencyByLevel  = [:]
         save(p)
     }
 
@@ -112,6 +137,42 @@ enum ProgressionStore {
         reset()
         PassStore.reset()
         MechanicUnlockStore.reset()
+    }
+
+    /// Mark every level in a sector as completed at 100% efficiency and issue its pass.
+    /// Used by the dev QA scenario panel to simulate sector progression without manual play.
+    static func devSimulateSectorComplete(_ sectorID: Int) {
+        guard let sector = SpatialRegion.catalog.first(where: { $0.id == sectorID }) else { return }
+        var p = profile
+
+        // Stamp each level at 100% in both efficiency maps
+        for level in sector.levels {
+            let k = String(level.id)
+            p.bestEfficiencyByLevel[k] = 1.0
+            p.lastEfficiencyByLevel[k] = 1.0
+        }
+
+        // Run level-up loop (same as record())
+        while p.canLevelUp { p.level += 1 }
+        save(p)
+
+        // Issue pass for the sector's planet if not already held
+        let planetIdx = sectorID - 1
+        guard planetIdx < Planet.catalog.count else { return }
+        PassStore.issue(planet: Planet.catalog[planetIdx], profile: p)
+    }
+
+    /// Issue passes for every sector whose levels are all completed but has no pass yet.
+    /// Repairs state that can occur after devResetMissions + re-play without re-issuing passes.
+    static func devSyncPasses() {
+        let p = profile
+        for sector in SpatialRegion.catalog {
+            let planetIdx = sector.id - 1
+            guard planetIdx < Planet.catalog.count,
+                  !PassStore.hasPass(for: planetIdx),
+                  sector.levels.allSatisfy({ p.hasCompleted(levelId: $0.id) }) else { continue }
+            PassStore.issue(planet: Planet.catalog[planetIdx], profile: p)
+        }
     }
 }
 

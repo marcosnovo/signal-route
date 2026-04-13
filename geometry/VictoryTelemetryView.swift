@@ -13,8 +13,10 @@ struct VictoryTelemetryView: View {
     let onDismiss: () -> Void
     var onNextMission: (() -> Void)? = nil
     var onMissions: (() -> Void)?    = nil
+    var onUpgrade: (() -> Void)?     = nil
 
     @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var entitlement: EntitlementStore
     private var S: AppStrings { AppStrings(lang: settings.language) }
 
     // ── Animation state ────────────────────────────────────────────────────
@@ -345,6 +347,13 @@ struct VictoryTelemetryView: View {
     // MARK: - CTA strip
     // ══════════════════════════════════════════════════════════════════════
 
+    /// True when the just-completed level is in Lunar sector or beyond (not Earth Orbit).
+    private var isLunarOrBeyond: Bool {
+        let sectorID = SpatialRegion.catalog
+            .first { $0.levelRange.contains(vm.currentLevel.id) }?.id ?? 1
+        return sectorID > 1
+    }
+
     /// The level immediately after the one just completed.
     private var nextMission: Level? {
         guard onNextMission != nil else { return nil }
@@ -420,6 +429,30 @@ struct VictoryTelemetryView: View {
                 }
             }
             .background(AppTheme.surface)
+
+            // ── Upgrade banner — free users on Lunar+ only ──────────────
+            if !entitlement.isPremium && isLunarOrBeyond, let onUpgrade {
+                Button(action: onUpgrade) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "infinity")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(S.continueWithoutLimits)
+                            .font(AppTheme.mono(9, weight: .bold))
+                            .kerning(1.5)
+                        Spacer()
+                        Text(S.upgradeLabel)
+                            .font(AppTheme.mono(8))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
+                    .padding(.horizontal, 16)
+                    .background(AppTheme.accentPrimary.opacity(0.09))
+                    .foregroundStyle(AppTheme.accentPrimary)
+                }
+                .overlay(alignment: .top) { TechDivider() }
+            }
         }
     }
 

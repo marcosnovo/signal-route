@@ -155,12 +155,12 @@ struct LevelGenerator {
     /// Applies mechanics to a seeded-random subset of relay path tiles.
     /// Guaranteed safe: maxRotations is always ≥ minTaps + 1, so the puzzle remains solvable.
     ///
-    /// Mechanic unlock thresholds (by level ID, matching the 150-level catalogue):
-    ///   rotationCap  — id ≥  31 (medium+)   1 cap → 2 (id ≥ 71) → 3 (id ≥ 131)
-    ///   overloaded   — id ≥  91 (mid-hard+)  1 tile → 2 (id ≥ 131)
+    /// Mechanic unlock thresholds (scaled for a real 1→180 difficulty curve):
+    ///   rotationCap  — id ≥  31 (1 cap) → id ≥  61 (2) → id ≥ 111 (3) → id ≥ 151 (4)
+    ///   overloaded   — id ≥  81 (1 tile) → id ≥ 111 (2) → id ≥ 156 (3)
     ///   timeLimit    — set on Level, not tiles (handled in buildCatalogue)
-    ///   autoDrift    — id ≥ 131 (late expert)
-    ///   oneWayRelay  — id ≥ 146 (end-game expert); blocks one inbound direction per tile
+    ///   autoDrift    — id ≥ 121 (4.0 s), id ≥ 141 (3.5 s); 2nd tile id ≥ 156
+    ///   oneWayRelay  — id ≥ 136 (was 146); blocks one inbound direction per tile
     ///                  Applied to 2-connection tiles only; blocked direction = exit side at
     ///                  solved rotation → solvable from source approach direction, but
     ///                  reverse-flow through the relay is impossible.
@@ -186,47 +186,55 @@ struct LevelGenerator {
         var available = candidates
 
         // Rotation Cap — medium+ (id ≥ 31)
-        // 1 cap (medium), 2 caps (hard), 3 caps (expert)
+        // 1 cap, scaling to 4 caps by endgame. maxRotations = minTaps + 1 → 1 slack, always solvable.
         if !available.isEmpty {
             let capCount: Int
-            if levelId >= 131      { capCount = min(3, available.count) }
-            else if levelId >= 71  { capCount = min(2, available.count) }
+            if levelId >= 151      { capCount = min(4, available.count) }
+            else if levelId >= 111 { capCount = min(3, available.count) }
+            else if levelId >= 61  { capCount = min(2, available.count) }
             else                   { capCount = 1 }
             for i in 0..<capCount {
                 let info = available[i]
-                // maxRotations = minTaps + 1 → exactly 1 slack, never unsolvable
                 grid[info.r][info.c].maxRotations = info.minTaps + 1
             }
             available.removeFirst(capCount)
         }
 
-        // Overloaded Relay — mid-hard+ (id ≥ 91)
+        // Overloaded Relay — mid-hard+ (id ≥ 81, was 91)
         // First tap arms, second tap rotates. Costs 2 moves per rotation.
-        // At id ≥ 131: up to 2 overloaded tiles.
-        if levelId >= 91 {
-            let overloadCount = levelId >= 131 ? min(2, available.count) : min(1, available.count)
+        // Scales to 3 tiles at id ≥ 156.
+        if levelId >= 81 {
+            let overloadCount: Int
+            if levelId >= 156      { overloadCount = min(3, available.count) }
+            else if levelId >= 111 { overloadCount = min(2, available.count) }
+            else                   { overloadCount = min(1, available.count) }
             for _ in 0..<overloadCount {
                 guard !available.isEmpty else { break }
                 let info = available.removeFirst()
                 grid[info.r][info.c].isOverloaded = true
-                minMoves += info.minTaps   // each rotation costs 2 taps total
+                minMoves += info.minTaps
             }
         }
 
-        // Auto-Drift — late expert (id ≥ 131)
-        // Tile drifts +1 clockwise after a delay. Player must sequence timing.
-        if levelId >= 131 && !available.isEmpty {
-            let info = available.removeFirst()
-            let delay: Double = levelId >= 141 ? 4.0 : 5.0
-            grid[info.r][info.c].autoDriftDelay = delay
+        // Auto-Drift — expert mid-tier (id ≥ 121, was 131)
+        // Tile drifts +1 clockwise after a delay; player must sequence timing.
+        // Delay tightens at id ≥ 141. Second drifting tile added at id ≥ 156.
+        if levelId >= 121 && !available.isEmpty {
+            let driftCount = levelId >= 156 ? min(2, available.count) : 1
+            for _ in 0..<driftCount {
+                guard !available.isEmpty else { break }
+                let info = available.removeFirst()
+                let delay: Double = levelId >= 141 ? 3.5 : 4.0
+                grid[info.r][info.c].autoDriftDelay = delay
+            }
         }
 
-        // One-Way Relay — end-game expert (id ≥ 146)
+        // One-Way Relay — expert (id ≥ 136, was 146)
         // Blocks energy entry from the exit side at the solved rotation, making
         // reverse-flow impossible. Only applied to 2-connection relay tiles
         // (straight/curve) where the approach direction is known, guaranteeing
         // the puzzle remains solvable via the intended source-side path.
-        if levelId >= 146 {
+        if levelId >= 136 {
             // Find the first eligible 2-connection relay with a known approach dir
             if let idx = available.firstIndex(where: {
                 $0.solvedConns.count == 2 && $0.approachDir != nil
@@ -244,12 +252,14 @@ struct LevelGenerator {
             }
         }
 
-        // Fragile Tile — endgame (id ≥ 151)
+        // Fragile Tile — expert late (id ≥ 146, was 151)
         // Tile burns out after being on the energized network for 3 player taps.
-        // At id ≥ 158 a second fragile tile is added.
-        // fragileCharges = 3 means the player has 3 turns of routing through it.
-        if levelId >= 151 && !available.isEmpty {
-            let fragileCount = levelId >= 158 ? min(2, available.count) : 1
+        // Two fragile tiles at id ≥ 156 (was 158); three at id ≥ 168 (new).
+        if levelId >= 146 && !available.isEmpty {
+            let fragileCount: Int
+            if levelId >= 168      { fragileCount = min(3, available.count) }
+            else if levelId >= 156 { fragileCount = min(2, available.count) }
+            else                   { fragileCount = 1 }
             for _ in 0..<fragileCount {
                 guard !available.isEmpty else { break }
                 let info = available.removeFirst()
@@ -257,22 +267,25 @@ struct LevelGenerator {
             }
         }
 
-        // Charge Gate — endgame (id ≥ 164)
-        // Gate relay only conducts energy after 2 charge cycles; adds 1 to minMoves
-        // to account for the extra turn needed while the gate accumulates its first charge.
-        if levelId >= 164 && !available.isEmpty {
-            let info = available.removeFirst()
-            grid[info.r][info.c].gateChargesRequired = 2
-            minMoves += 1   // one extra turn for the initial charging cycle
+        // Charge Gate — endgame (id ≥ 158, was 164)
+        // Gate relay only conducts energy after 2 charge cycles.
+        // Second gate at id ≥ 171 (new).
+        if levelId >= 158 && !available.isEmpty {
+            let gateCount = levelId >= 171 ? min(2, available.count) : 1
+            for _ in 0..<gateCount {
+                guard !available.isEmpty else { break }
+                let info = available.removeFirst()
+                grid[info.r][info.c].gateChargesRequired = 2
+                minMoves += 1
+            }
         }
 
-        // Interference Zone — endgame (id ≥ 171)
+        // Interference Zone — endgame (id ≥ 164, was 171)
         // Visual static overlay applied to relay tiles; no BFS or move-count effect.
         // Applied to a seeded-random subset of relay tiles (noise and path tiles).
-        if levelId >= 171 {
+        if levelId >= 164 {
             let gs = grid.count
             let pathSet = Set(relayPath.map { $0.r * gs + $0.c })
-            // Prefer noise tiles (not on solution path); mixed in at higher IDs
             var noiseTiles: [(Int, Int)] = []
             var pathTiles:  [(Int, Int)] = []
             for r in 0..<gs {
@@ -291,12 +304,12 @@ struct LevelGenerator {
             for i in stride(from: pathTiles.count - 1, through: 1, by: -1) {
                 pathTiles.swapAt(i, rng.nextInt(i + 1))
             }
-            // 3 noise tiles + (id ≥ 175: 1 extra path tile) for visual confusion
+            // 3 noise tiles + (id ≥ 171: 1 path tile) for genuine visual confusion
             let noiseCount = min(3, noiseTiles.count)
             for i in 0..<noiseCount {
                 grid[noiseTiles[i].0][noiseTiles[i].1].hasInterference = true
             }
-            if levelId >= 175 && !pathTiles.isEmpty {
+            if levelId >= 171 && !pathTiles.isEmpty {
                 grid[pathTiles[0].0][pathTiles[0].1].hasInterference = true
             }
         }
@@ -442,9 +455,10 @@ struct LevelGenerator {
     //
     // Tier breakdown:
     //   Easy     (IDs   1– 30, 4×4): introduces all five level types, no mechanics
-    //   Medium   (IDs  31– 70, 4×4+5×5): rotation cap unlocks at ID 31
-    //   Hard     (IDs  71–110, 5×5): time pressure (ID 71) + overloaded (ID 91)
-    //   Expert   (IDs 111–150, 5×5): all mechanics, autoDrift at ID 131, tightest timers
+    //   Medium   (IDs  31– 70, 4×4+5×5): rotation cap unlocks at ID 31 (2 caps at 61)
+    //   Hard     (IDs  71–110, 5×5): time pressure (ID 71) + overloaded from ID 81
+    //   Expert   (IDs 111–150, 5×5): 3 caps + 2 overloaded; autoDrift at 121; oneWay at 136; 42 s timer
+    //   Endgame  (IDs 151–180, 5×5): near-zero buffer; fragile+chargeGate+interference
     //   Endgame  (IDs 151–180, 5×5): fragile tile (151), charge gate (164), interference (171)
 
     private static func buildCatalogue() -> [Level] {
@@ -493,31 +507,29 @@ struct LevelGenerator {
             (.hard,  5, 5, .multiTarget, 2),
 
             // ── EXPERT (40 levels, 5×5) ──────────────────────────────────────
-            // Overloaded persists. AutoDrift unlocks at ID 131. Timers tighten.
-            // IDs 111–118: normal, time (80 s), overloaded (2 tiles)
-            (.expert,  8, 5, .singlePath,  1),
-            // IDs 119–125: maxCoverage, time (70 s), overloaded
-            (.expert,  7, 5, .branching,   1),
-            // IDs 126–132: multi-target, time (70 s→60 s), overloaded
-            (.expert,  7, 5, .multiTarget, 2),
-            // IDs 133–138: dense energySaving, time (60 s), overloaded + autoDrift
+            // Overloaded (2 tiles) active throughout. AutoDrift from ID 121. Timers brutal.
+            // IDs 111–115: singlePath intro — 3-cap rotations + 2 overloaded; time 72 s
+            (.expert,  5, 5, .singlePath,  1),
+            // IDs 116–123: multi-target right away — planning required; time 72→62 s
+            (.expert,  8, 5, .multiTarget, 2),
+            // IDs 124–129: maxCoverage branching; time 62 s
+            (.expert,  6, 5, .branching,   1),
+            // IDs 130–135: sparse + autoDrift (id 121 threshold fires); time 52 s
+            (.expert,  6, 5, .sparse,      1),
+            // IDs 136–141: dense energySaving + oneWayRelay (id 136); time 52 s
             (.expert,  6, 5, .dense,       1),
-            // IDs 139–145: sparse + autoDrift, time (50 s)
-            (.expert,  7, 5, .sparse,      1),
-            // IDs 146–150: multi-target, all mechanics, time (50 s) — hardest
-            (.expert,  5, 5, .multiTarget, 2),
+            // IDs 142–150: multi-target + all mechanics; time 42 s — hardest expert
+            (.expert,  9, 5, .multiTarget, 2),
 
             // ── ENDGAME (30 levels, 5×5) ─────────────────────────────────────
-            // Fragile Tile unlocks at ID 151. Timer stays 50 s.
-            // IDs 151–157: singlePath, fragile tile (1)
-            (.expert,  7, 5, .singlePath,  1),
-            // IDs 158–163: multiTarget, fragile tile (2)
+            // Near-zero move buffer (max 1, ×0.08). Timer 42 s. All mechanics active.
+            // IDs 151–157: multi-target + fragile (1) + 4 rotation caps + 3 overloaded
+            (.expert,  7, 5, .multiTarget, 2),
+            // IDs 158–163: multi-target + fragile (2) + charge gate (id 158)
             (.expert,  6, 5, .multiTarget, 2),
-            // Charge Gate unlocks at ID 164.
-            // IDs 164–170: branching + chargeGate
-            (.expert,  7, 5, .branching,   1),
-            // Interference Zone unlocks at ID 171.
-            // IDs 171–180: dense + interferenceZone
+            // IDs 164–170: multi-target + interference (id 164) + charge gate
+            (.expert,  7, 5, .multiTarget, 2),
+            // IDs 171–180: dense + double charge gate (id 171) + path interference
             (.expert, 10, 5, .dense,       1),
         ]
 
@@ -539,7 +551,7 @@ struct LevelGenerator {
                     objectiveType: objType, solutionPathLength: 0
                 )
                 let (_, minMoves, pathLen) = buildBoardInternal(for: temp)
-                let maxMov = minMoves + movesBuffer(for: diff, minMoves: minMoves)
+                let maxMov = minMoves + movesBuffer(for: diff, minMoves: minMoves, levelId: id)
 
                 catalogue.append(Level(
                     id: id, seed: seed,
@@ -557,60 +569,119 @@ struct LevelGenerator {
     /// Time limit in seconds for a level, or nil if there is no time limit.
     ///
     /// Easy / Medium (IDs   1– 70): no timer — learn mechanics first
-    /// Hard early    (IDs  71–100): 120 s — generous first exposure
-    /// Hard late     (IDs 101–110): 100 s — moderate squeeze
-    /// Expert tier 1 (IDs 111–120):  80 s — clear skill requirement
-    /// Expert tier 2 (IDs 121–130):  70 s — tighter
-    /// Expert tier 3 (IDs 131–140):  60 s — autoDrift era
-    /// Expert tier 4 (IDs 141–180):  50 s — brutal endgame / endgame mechanics
+    /// Hard early    (IDs  71–100): 110 s — first exposure to time pressure
+    /// Hard late     (IDs 101–110):  95 s — moderate squeeze
+    /// Expert tier 1 (IDs 111–120):  72 s — clear skill requirement
+    /// Expert tier 2 (IDs 121–130):  62 s — autoDrift era
+    /// Expert tier 3 (IDs 131–140):  52 s — oneWayRelay / fragile era
+    /// Expert tier 4 (IDs 141–180):  42 s — endgame mechanics: brutal
     private static func timeLimitSeconds(for id: Int, difficulty: DifficultyTier) -> Int? {
         switch difficulty {
         case .easy, .medium:
             return nil
         case .hard:
-            return id >= 101 ? 100 : 120
+            return id >= 101 ? 95 : 110
         case .expert:
-            if id >= 141 { return 50 }
-            if id >= 131 { return 60 }
-            if id >= 121 { return 70 }
-            return 80
+            if id >= 141 { return 42 }
+            if id >= 131 { return 52 }
+            if id >= 121 { return 62 }
+            return 72
         }
     }
 
-    /// Objective type derived from structural level type.
+    /// Objective type derived from structural level type and progression phase.
     ///
-    /// .singlePath  → normal       (pure routing focus)
-    /// .branching   → maxCoverage  (multiple paths → reward exploring the grid)
-    /// .dense       → energySaving (lots of noise → reward lean routing)
-    /// .sparse      → maxCoverage  (few tiles → finding all of them is the challenge; id%3==0 → normal)
-    /// .multiTarget → normal, with energySaving every 3rd level (id % 3 == 0)
+    /// Phase 1 (IDs  1– 50): fixed objectives — one mechanic, one goal, learn the basics.
+    /// Phase 2 (IDs 51–110): cross-objectives introduced occasionally — expect the unexpected.
+    /// Phase 3 (IDs 111–180): aggressive mixing — any archetype can carry any objective,
+    ///                         creating trade-off puzzles (efficiency vs coverage vs speed).
     private static func objectiveType(for levelType: LevelType, id: Int) -> LevelObjectiveType {
+
+        // ── Phase 1: fixed — clarity over variety ─────────────────────────────
+        if id <= 50 {
+            switch levelType {
+            case .singlePath:  return .normal
+            case .branching:   return .maxCoverage
+            case .dense:       return .energySaving
+            case .sparse:      return id % 3 == 0 ? .normal : .maxCoverage
+            case .multiTarget: return id % 3 == 0 ? .energySaving : .normal
+            }
+        }
+
+        // ── Phase 2: occasional cross-objectives ──────────────────────────────
+        if id <= 110 {
+            switch levelType {
+            case .singlePath:
+                // Mostly pure routing; every 7th level demands lean routing instead
+                return id % 7 == 0 ? .energySaving : .normal
+            case .branching:
+                // Mostly coverage; every 5th level demands lean routing instead
+                return id % 5 == 0 ? .energySaving : .maxCoverage
+            case .dense:
+                // Mostly lean routing; occasional normal break
+                return id % 4 == 0 ? .normal : .energySaving
+            case .sparse:
+                return id % 3 == 0 ? .normal : .maxCoverage
+            case .multiTarget:
+                // Cycles all three — planning + efficiency + coverage
+                switch id % 3 {
+                case 0:  return .energySaving
+                case 1:  return .normal
+                default: return .maxCoverage
+                }
+            }
+        }
+
+        // ── Phase 3: aggressive mixing — every type can carry any objective ───
         switch levelType {
-        case .singlePath:  return .normal
-        case .branching:   return .maxCoverage
-        case .dense:       return .energySaving
-        case .sparse:      return id % 3 == 0 ? .normal : .maxCoverage
-        case .multiTarget: return id % 3 == 0 ? .energySaving : .normal
+        case .singlePath:
+            // Alternates: unique-route efficiency puzzle vs pure routing
+            return id % 2 == 0 ? .energySaving : .normal
+        case .branching:
+            // Alternates: coverage exploration vs lean branching (true trade-off)
+            return id % 3 == 0 ? .energySaving : .maxCoverage
+        case .dense:
+            // Three-way cycle: lean routing / coverage / normal
+            switch id % 3 {
+            case 0:  return .normal
+            case 1:  return .energySaving
+            default: return .maxCoverage
+            }
+        case .sparse:
+            // Three-way cycle: coverage / efficiency / normal
+            switch id % 3 {
+            case 0:  return .normal
+            case 1:  return .maxCoverage
+            default: return .energySaving
+            }
+        case .multiTarget:
+            // Full cycle — multi-target + any objective = complex trade-off
+            switch id % 3 {
+            case 0:  return .maxCoverage
+            case 1:  return .energySaving
+            default: return .normal
+            }
         }
     }
 
     /// Proportional move buffer (maxMoves − minimumRequiredMoves).
     ///
-    /// Unlike a flat buffer, this scales with path length so every difficulty tier
-    /// feels uniformly forgiving regardless of whether the board is a short 4-tile
-    /// path or a winding 20-tile route.
+    /// Scales with path length so difficulty feels consistent regardless of board size.
+    /// The `levelId` parameter applies an extra squeeze for the deepest endgame levels.
     ///
     /// Formula:  buffer = max(floor, floor(minMoves × ratio))
-    ///   Easy   — max( 8, min × 0.65)  very forgiving; ≥ 8 free taps always
-    ///   Medium — max( 5, min × 0.50)  moderate pressure; scales with path length
-    ///   Hard   — max( 3, min × 0.32)  focused play; limited margin for error
-    ///   Expert — max( 2, min × 0.18)  near-optimal; two extra taps is the limit
-    private static func movesBuffer(for difficulty: DifficultyTier, minMoves: Int) -> Int {
+    ///   Easy            — max(8,  min × 0.65)  very forgiving
+    ///   Medium          — max(4,  min × 0.45)  moderate pressure
+    ///   Hard            — max(2,  min × 0.26)  limited margin for error
+    ///   Expert          — max(1,  min × 0.15)  near-optimal required
+    ///   Endgame (≥151)  — max(1,  min × 0.08)  essentially perfect play
+    private static func movesBuffer(for difficulty: DifficultyTier, minMoves: Int, levelId: Int = 0) -> Int {
+        if levelId >= 151 { return max(1, Int(Double(minMoves) * 0.08)) }
         switch difficulty {
         case .easy:   return max(8, Int(Double(minMoves) * 0.65))
-        case .medium: return max(5, Int(Double(minMoves) * 0.50))
-        case .hard:   return max(3, Int(Double(minMoves) * 0.32))
-        case .expert: return max(2, Int(Double(minMoves) * 0.18))
+        case .medium: return max(4, Int(Double(minMoves) * 0.45))
+        case .hard:   return max(2, Int(Double(minMoves) * 0.26))
+        case .expert: return max(1, Int(Double(minMoves) * 0.15))
         }
     }
 

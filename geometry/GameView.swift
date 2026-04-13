@@ -10,6 +10,10 @@ struct GameView: View {
     let onIntroComplete: (() -> Void)?
     let onNextMission: (() -> Void)?
     let onMissions: (() -> Void)?
+    /// Called immediately when a non-intro mission is won, before the win animation completes.
+    /// Receives the completed level and the LevelUpEvent (nil if no progression change).
+    let onWin: ((Level, LevelUpEvent?) -> Void)?
+    let onUpgrade: (() -> Void)?
 
     /// Controls when the overlay actually appears — decoupled from vm.status
     /// so we can show the winning path before covering the board.
@@ -21,18 +25,27 @@ struct GameView: View {
     /// Position of the moving signal front during the win sweep animation.
     @State private var signalFrontRow: Int = -1
     @State private var signalFrontCol: Int = -1
+    /// True while the SectorCompleteView banner is visible between the win sequence and victory screen.
+    @State private var showSectorComplete: Bool = false
+
+    /// Queue for mechanic-unlock story beats shown right after the tutorial overlay closes.
+    @State private var mechanicStoryQueue = StoryBeatQueue()
 
     init(level: Level,
          isIntro: Bool = false,
          onDismiss: @escaping () -> Void,
          onIntroComplete: (() -> Void)? = nil,
          onNextMission: (() -> Void)? = nil,
-         onMissions: (() -> Void)? = nil) {
+         onMissions: (() -> Void)? = nil,
+         onWin: ((Level, LevelUpEvent?) -> Void)? = nil,
+         onUpgrade: (() -> Void)? = nil) {
         self.isIntro          = isIntro
         self.onDismiss        = onDismiss
         self.onIntroComplete  = onIntroComplete
         self.onNextMission    = onNextMission
         self.onMissions       = onMissions
+        self.onWin            = onWin
+        self.onUpgrade        = onUpgrade
         _vm = StateObject(wrappedValue: GameViewModel(level: level))
     }
 
@@ -66,7 +79,8 @@ struct GameView: View {
                                      onRestart: { vm.setupLevel() },
                                      onDismiss: onDismiss,
                                      onNextMission: onNextMission,
-                                     onMissions: onMissions)
+                                     onMissions: onMissions,
+                                     onUpgrade: onUpgrade)
                     .transition(.opacity)
             } else if !isIntro && overlayVisible && vm.status == .lost {
                 MissionOverlay(vm: vm,
@@ -80,14 +94,37 @@ struct GameView: View {
                     )
             }
 
+            // Sector complete banner — shown once when all missions in a sector are done
+            if showSectorComplete, let grant = vm.pendingPassGrant {
+                SectorCompleteView(pass: grant)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.94)).combined(with: .offset(y: 18)),
+                            removal:   .opacity.combined(with: .scale(scale: 1.02))
+                        )
+                    )
+            }
+
             // Mechanic unlock announcement — shown once on first encounter
             if let mechanic = vm.pendingMechanicAnnouncement {
                 MechanicUnlockView(mechanic: mechanic) {
                     MechanicUnlockStore.markAnnounced(mechanic)
                     vm.pendingMechanicAnnouncement = nil
+                    // Surface the narrative beat for this mechanic, if unseen
+                    let ctx = StoryContext.forMechanic(mechanic, level: ProgressionStore.profile.level)
+                    if let beat = StoryStore.pending(for: .mechanicUnlocked, context: ctx) {
+                        mechanicStoryQueue.enqueue(beat)
+                    }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.93)))
                 .onAppear { SoundManager.play(.mechanicUnlock) }
+            }
+
+            // Mechanic story beat — appears after the tutorial overlay closes
+            if let beat = mechanicStoryQueue.current {
+                StoryBeatView(beat: beat) { mechanicStoryQueue.advance() }
+                    .transition(.opacity)
+                    .zIndex(200)
             }
         }
         .onChange(of: vm.status) { _, newStatus in
@@ -106,6 +143,7 @@ struct GameView: View {
                 boardSuccessOpacity = 0
                 signalFrontRow = -1
                 signalFrontCol = -1
+                showSectorComplete = false
             }
         }
     }
@@ -119,6 +157,8 @@ struct GameView: View {
         SoundManager.play(.win)
         withAnimation(.easeOut(duration: 0.20)) { boardSuccessOpacity = 0.75 }
         withAnimation(.easeOut(duration: 0.55).delay(0.28)) { boardSuccessOpacity = 0 }
+        // Notify ContentView immediately so it can collect story beats while context is accurate
+        if !isIntro { onWin?(vm.currentLevel, vm.lastLevelUpEvent) }
 
         Task { @MainActor in
             // Brief pause — let the player see the completed board
@@ -131,7 +171,10 @@ struct GameView: View {
                 winPulse = true
                 HapticsManager.medium()
                 try? await Task.sleep(nanoseconds: 450_000_000)
-                withAnimation(.spring(response: 0.44, dampingFraction: 0.80)) { overlayVisible = true }
+                let navigated1 = await showSectorCompleteIfNeeded()
+                if navigated1 { onMissions?() } else {
+                    withAnimation(.spring(response: 0.44, dampingFraction: 0.80)) { overlayVisible = true }
+                }
                 return
             }
 
@@ -161,10 +204,37 @@ struct GameView: View {
 
             // Let the pulse settle before covering the board
             try? await Task.sleep(nanoseconds: 380_000_000)
-            withAnimation(.spring(response: 0.44, dampingFraction: 0.80)) {
-                overlayVisible = true
+            let navigated = await showSectorCompleteIfNeeded()
+            if navigated {
+                onMissions?()
+            } else {
+                withAnimation(.spring(response: 0.44, dampingFraction: 0.80)) {
+                    overlayVisible = true
+                }
             }
         }
+    }
+
+    // MARK: - Sector complete interstitial
+
+    /// Shows the sector-complete banner for 4.2 s, then fades it out and signals
+    /// that the caller should navigate to the Mission Map instead of VictoryTelemetryView.
+    /// Returns false immediately if no pass was granted this win.
+    @MainActor
+    @discardableResult
+    private func showSectorCompleteIfNeeded() async -> Bool {
+        guard vm.pendingPassGrant != nil else { return false }
+        SoundManager.play(.sectorComplete)
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+            showSectorComplete = true
+        }
+        try? await Task.sleep(nanoseconds: 4_200_000_000)
+        withAnimation(.easeOut(duration: 0.35)) {
+            showSectorComplete = false
+        }
+        vm.pendingPassGrant = nil
+        try? await Task.sleep(nanoseconds: 380_000_000)
+        return true
     }
 
     // MARK: - Header
@@ -858,6 +928,137 @@ struct MechanicUnlockView: View {
             withAnimation(.spring(response: 0.38, dampingFraction: 0.82).delay(0.20)) {
                 bodyRevealed = true
             }
+        }
+    }
+}
+
+// MARK: - SectorCompleteView
+/// Full-screen cinematic interstitial shown between the win animation and the Mission Map
+/// when the player completes every mission in a sector for the first time.
+/// Staggered reveal: sector name → COMPLETE → divider → access granted → pass card → serial.
+/// Parent auto-navigates to Mission Map after 4.2 s.
+struct SectorCompleteView: View {
+    let pass: PlanetPass
+
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
+    /// Planet color and identity derived directly from the pass's own planetIndex.
+    private var planet: Planet {
+        Planet.catalog[min(pass.planetIndex, Planet.catalog.count - 1)]
+    }
+    /// The name of the sector just completed — taken directly from the pass so text and card are always consistent.
+    private var completedName: String { pass.planetName }
+    /// The name of the next planet being unlocked — nil when this is the final sector.
+    private var nextPlanetName: String? {
+        let nextIdx = pass.planetIndex + 1
+        guard nextIdx < Planet.catalog.count else { return nil }
+        return Planet.catalog[nextIdx].name
+    }
+
+    @State private var titleAppeared   = false
+    @State private var dividerAppeared = false
+    @State private var accessAppeared  = false
+    @State private var cardAppeared    = false
+    @State private var serialAppeared  = false
+    @State private var passImage: UIImage? = nil
+
+    var body: some View {
+        ZStack {
+            AppTheme.backgroundPrimary.opacity(0.97).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                // ── Planet name + COMPLETE ───────────────────────────────
+                VStack(spacing: 8) {
+                    TechLabel(text: completedName, color: planet.color.opacity(0.75))
+                    Text(S.zoneComplete)
+                        .font(AppTheme.mono(44, weight: .black))
+                        .foregroundStyle(.white)
+                        .tracking(-1.0)
+                }
+                .opacity(titleAppeared ? 1 : 0)
+                .offset(y: titleAppeared ? 0 : 18)
+                .padding(.bottom, 28)
+
+                // ── Animated divider line ─────────────────────────────────
+                Rectangle()
+                    .fill(planet.color.opacity(0.55))
+                    .frame(width: dividerAppeared ? 110 : 0, height: 1)
+                    .animation(.easeOut(duration: 0.40).delay(0.45), value: dividerAppeared)
+                    .padding(.bottom, 24)
+
+                // ── Next planet + ACCESS GRANTED ──────────────────────────
+                VStack(spacing: 6) {
+                    if let next = nextPlanetName {
+                        Text(next)
+                            .font(AppTheme.mono(11, weight: .semibold))
+                            .foregroundStyle(planet.color)
+                            .tracking(3)
+                    }
+                    Text(S.accessGranted)
+                        .font(AppTheme.mono(13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .tracking(4)
+                }
+                .opacity(accessAppeared ? 1 : 0)
+                .offset(y: accessAppeared ? 0 : 10)
+                .padding(.bottom, 42)
+
+                // ── Planet Pass card ──────────────────────────────────────
+                Group {
+                    if let img = passImage {
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxWidth: 290)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .shadow(color: planet.color.opacity(0.40), radius: 28, y: 6)
+                    } else {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(planet.color.opacity(0.07))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .strokeBorder(planet.color.opacity(0.18), lineWidth: 1)
+                            )
+                            .frame(width: 270, height: 152)
+                    }
+                }
+                .opacity(cardAppeared ? 1 : 0)
+                .scaleEffect(cardAppeared ? 1 : 0.80)
+                .rotation3DEffect(.degrees(cardAppeared ? 0 : -8), axis: (x: 1, y: 0, z: 0))
+                .padding(.bottom, 28)
+
+                // ── Serial code ───────────────────────────────────────────
+                TechLabel(text: pass.serialCode, color: .white.opacity(0.22))
+                    .opacity(serialAppeared ? 1 : 0)
+
+                Spacer()
+            }
+            .padding(.horizontal, 32)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.52, dampingFraction: 0.72).delay(0.10)) {
+                titleAppeared = true
+            }
+            dividerAppeared = true
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.80).delay(0.78)) {
+                accessAppeared = true
+            }
+            withAnimation(.spring(response: 0.60, dampingFraction: 0.62).delay(1.15)) {
+                cardAppeared = true
+            }
+            withAnimation(.easeIn(duration: 0.36).delay(1.72)) {
+                serialAppeared = true
+            }
+        }
+        .task {
+            let p       = pass
+            let profile = ProgressionStore.profile
+            passImage   = await Task.detached(priority: .userInitiated) {
+                TicketRenderer.render(pass: p, profile: profile)
+            }.value
         }
     }
 }

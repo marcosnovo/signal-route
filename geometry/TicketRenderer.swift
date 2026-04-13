@@ -365,7 +365,8 @@ enum TicketRenderer {
         draw(pass.serialCode, at: CGPoint(x: 66, y: 54),
              size: 16, weight: .regular, color: .white.withAlphaComponent(0.72), kern: 2)
 
-        let passAttr = attr("PLANET PASS", size: 22, weight: .bold, color: accent, kern: 3)
+        let passLabel = pass.isEarned ? "PLANET PASS" : "TRAINING CLEARANCE"
+        let passAttr = attr(passLabel, size: 22, weight: .bold, color: accent, kern: 3)
         passAttr.draw(at: CGPoint(x: size.width - passAttr.size().width - 48, y: 24))
         let diffAttr = attr(planet.difficulty.fullLabel, size: 14, weight: .semibold,
                             color: accent.withAlphaComponent(0.72), kern: 2)
@@ -394,7 +395,8 @@ enum TicketRenderer {
         ])
         nameAttr.draw(at: CGPoint(x: leftX - 4, y: 150))
 
-        draw("ACCESS AUTHORIZED", at: CGPoint(x: leftX, y: 382),
+        let accessLabel = pass.isEarned ? "ACCESS AUTHORIZED" : "IN TRAINING"
+        draw(accessLabel, at: CGPoint(x: leftX, y: 382),
              size: 17, weight: .semibold, color: accent.withAlphaComponent(0.68), kern: 4)
     }
 
@@ -437,7 +439,7 @@ enum TicketRenderer {
             ("LEVEL",    String(format: "%02d", pass.levelReached)),
             ("MISSIONS", String(format: "%04d", pass.missionCount)),
             ("RANK",     profile.rankTitle),
-            ("STATUS",   "CLEARED"),
+            ("STATUS",   pass.isEarned ? "CLEARED" : "IN PROGRESS"),
         ]
         let cellW = (size.width - 30) / CGFloat(cells.count)
         for (i, (label, value)) in cells.enumerated() {
@@ -538,6 +540,6 @@ final class TicketCache {
 
     private func cacheKey(for pass: PlanetPass) -> String {
         let eff = Int((pass.efficiencyScore * 100).rounded())
-        return "\(pass.planetIndex)-\(pass.levelReached)-\(pass.missionCount)-\(eff)"
+        return "\(pass.planetIndex)-\(pass.levelReached)-\(pass.missionCount)-\(eff)-\(pass.isEarned)"
     }
 }

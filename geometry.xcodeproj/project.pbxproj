@@ -9,6 +9,11 @@
 /* Begin PBXBuildFile section */
 		6A4FDB932F8BAD690069C7B0 /* L.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDB922F8BAD690069C7B0 /* L.swift */; };
 		6A4FDB972F8C15EA0069C7B0 /* DeviceMotionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDB962F8C15EA0069C7B0 /* DeviceMotionManager.swift */; };
+		6A4FDB992F8CECCA0069C7B0 /* StoryBeat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDB982F8CECCA0069C7B0 /* StoryBeat.swift */; };
+		6A4FDB9B2F8CECDF0069C7B0 /* StoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDB9A2F8CECDF0069C7B0 /* StoryStore.swift */; };
+		6A4FDB9D2F8CECFE0069C7B0 /* StoryBeatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDB9C2F8CECFE0069C7B0 /* StoryBeatView.swift */; };
+		6A4FDB9F2F8CEE700069C7B0 /* NarrativeIntroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDB9E2F8CEE700069C7B0 /* NarrativeIntroView.swift */; };
+		6A4FDBA12F8CEE830069C7B0 /* MissionClearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDBA02F8CEE830069C7B0 /* MissionClearanceView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,6 +36,11 @@
 /* Begin PBXFileReference section */
 		6A4FDB922F8BAD690069C7B0 /* L.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L.swift; sourceTree = "<group>"; };
 		6A4FDB962F8C15EA0069C7B0 /* DeviceMotionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceMotionManager.swift; sourceTree = "<group>"; };
+		6A4FDB982F8CECCA0069C7B0 /* StoryBeat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryBeat.swift; sourceTree = "<group>"; };
+		6A4FDB9A2F8CECDF0069C7B0 /* StoryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryStore.swift; sourceTree = "<group>"; };
+		6A4FDB9C2F8CECFE0069C7B0 /* StoryBeatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryBeatView.swift; sourceTree = "<group>"; };
+		6A4FDB9E2F8CEE700069C7B0 /* NarrativeIntroView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NarrativeIntroView.swift; sourceTree = "<group>"; };
+		6A4FDBA02F8CEE830069C7B0 /* MissionClearanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissionClearanceView.swift; sourceTree = "<group>"; };
 		6A68C0EC2F890D860077D0E0 /* geometry.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = geometry.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6A68C0F92F890D870077D0E0 /* geometryTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = geometryTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6A68C1032F890D870077D0E0 /* geometryUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = geometryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -88,6 +98,11 @@
 				6A68C0ED2F890D860077D0E0 /* Products */,
 				6A4FDB922F8BAD690069C7B0 /* L.swift */,
 				6A4FDB962F8C15EA0069C7B0 /* DeviceMotionManager.swift */,
+				6A4FDB982F8CECCA0069C7B0 /* StoryBeat.swift */,
+				6A4FDB9A2F8CECDF0069C7B0 /* StoryStore.swift */,
+				6A4FDB9C2F8CECFE0069C7B0 /* StoryBeatView.swift */,
+				6A4FDB9E2F8CEE700069C7B0 /* NarrativeIntroView.swift */,
+				6A4FDBA02F8CEE830069C7B0 /* MissionClearanceView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -245,6 +260,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6A4FDB9F2F8CEE700069C7B0 /* NarrativeIntroView.swift in Sources */,
+				6A4FDB992F8CECCA0069C7B0 /* StoryBeat.swift in Sources */,
+				6A4FDB9B2F8CECDF0069C7B0 /* StoryStore.swift in Sources */,
+				6A4FDBA12F8CEE830069C7B0 /* MissionClearanceView.swift in Sources */,
+				6A4FDB9D2F8CECFE0069C7B0 /* StoryBeatView.swift in Sources */,
 				6A4FDB972F8C15EA0069C7B0 /* DeviceMotionManager.swift in Sources */,
 				6A4FDB932F8BAD690069C7B0 /* L.swift in Sources */,
 			);

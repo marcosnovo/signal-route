@@ -5,9 +5,11 @@ import GameKit
 struct HomeView: View {
     let onPlay: (Level) -> Void
     let onMissions: () -> Void
+    var onUpgrade: (() -> Void)? = nil
 
     @EnvironmentObject private var gcManager: GameCenterManager
     @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var entitlement: EntitlementStore
     private var S: AppStrings { AppStrings(lang: settings.language) }
     @State private var secretTaps          = 0
     @State private var lastTapTime         = Date.distantPast
@@ -160,6 +162,32 @@ struct HomeView: View {
                     AllClearCard()
                 }
 
+                // Upgrade pill — free users only
+                if !entitlement.isPremium, let onUpgrade {
+                    Button(action: onUpgrade) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "infinity")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(S.unlimitedAccess)
+                                .font(AppTheme.mono(9, weight: .bold))
+                                .kerning(1.5)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8, weight: .bold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 34)
+                        .padding(.horizontal, 14)
+                        .background(AppTheme.accentPrimary.opacity(0.07))
+                        .foregroundStyle(AppTheme.accentPrimary.opacity(0.80))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                                .strokeBorder(AppTheme.accentPrimary.opacity(0.20), lineWidth: 0.5)
+                        )
+                    }
+                }
+
                 // Mission Map shortcut — always visible for returning players
                 Button(action: onMissions) {
                     HStack(spacing: 8) {
@@ -255,8 +283,11 @@ struct HomeView: View {
     private func warmTicketCache() async {
         let prof = profile
         let planet = prof.currentPlanet
-        let p = PassStore.all.first(where: { $0.planetIndex == planet.id })
-            ?? PlanetPass(
+        let p: PlanetPass = {
+            if let earned = PassStore.all.first(where: { $0.planetIndex == planet.id }) {
+                return earned
+            }
+            var provisional = PlanetPass(
                 id:              UUID(),
                 planetName:      planet.name,
                 planetIndex:     planet.id,
@@ -265,6 +296,9 @@ struct HomeView: View {
                 missionCount:    prof.completedMissions,
                 timestamp:       Date()
             )
+            provisional.isEarned = false
+            return provisional
+        }()
         guard TicketCache.shared.image(for: p) == nil else { return }
         let image = await Task.detached(priority: .background) {
             TicketRenderer.render(pass: p, profile: prof)
@@ -627,213 +661,192 @@ private struct UIViewControllerRepresentableWrapper: UIViewControllerRepresentab
 }
 
 // MARK: - AstronautProgressCard
-/// Compact progression block shown on Home for returning players.
-/// Shows level, rank, current/next planet, and a clear breakdown of what's
-/// needed to reach the next level: quality mission count, efficiency threshold,
-/// and how many unique missions remain.
+/// Home screen mission pass — a compact 2D preview of the full Planet Pass ticket.
+///
+/// Inherits the ticket's exact visual DNA (TicketRenderer layer order):
+///   • Same dark background colour (TicketRenderer.drawBackground)
+///   • Same left accent bar — planet colour, full height
+///   • Same top-bar layout: SIGNAL ROUTE + serial | PLANET PASS + difficulty
+///   • Same planet name as the hero element (large, white, .black mono weight)
+///   • Same MISSION EFFICIENCY section + 10-segment bar (same rounding logic)
+///   • Same 4-cell stats grid: LEVEL / MISSIONS / RANK / VIEW PASS
+///   • Same planet orb watermark — right-edge radial glow
+///
+/// Tapping opens PlanetTicketView — both pieces read as the same artefact
+/// at different scales.
 struct AstronautProgressCard: View {
     let profile: AstronautProfile
 
     @EnvironmentObject private var settings: SettingsStore
     private var S: AppStrings { AppStrings(lang: settings.language) }
 
-    private var rule: ProgressionRule { profile.progressionRule }
-    private var planet: Planet { profile.currentPlanet }
-    private var qualityCount: Int {
-        profile.qualityCompletions(minEfficiency: rule.requiredAvgEfficiency)
+    private var planet: Planet          { profile.currentPlanet }
+    private var rule:   ProgressionRule { profile.progressionRule }
+
+    /// True when the player has earned (completed) the pass for the current planet/sector.
+    private var isPassEarned: Bool { PassStore.hasPass(for: planet.id) }
+
+    /// Serial code matching PlanetPass.serialCode format.
+    /// Training state uses "TRN" suffix; earned passes use the planet abbreviation.
+    private var serialCode: String {
+        if !isPassEarned { return String(format: "SR-%04d-TRN", profile.completedMissions) }
+        let abbrev = String(planet.name.prefix(3)).replacingOccurrences(of: " ", with: "_")
+        return String(format: "SR-%04d-%@", profile.completedMissions, abbrev)
     }
 
+    /// Segments filled in the 10-cell bar — rounded to nearest integer,
+    /// matching TicketRenderer's own logic.
+    private var efficiencySegments: Int {
+        min(10, max(0, Int((profile.averageEfficiency * 10).rounded())))
+    }
+
+    // Exact background used by TicketRenderer.drawBackground
+    private let ticketBg = Color(red: 0.040, green: 0.047, blue: 0.059)
+
     var body: some View {
-        let sep   = Color.black.opacity(0.09)
-        let dark  = Color(hex: "141414")
-        let muted = Color.black.opacity(0.52)
+        HStack(spacing: 0) {
 
-        VStack(spacing: 0) {
-            // ── Header ────────────────────────────────────────────────
-            HStack(spacing: 8) {
-                Rectangle()
-                    .fill(planet.color)
-                    .frame(width: 2, height: 14)
-                TechLabel(text: S.astronautProfile, color: muted)
-                Spacer()
-                TechLabel(text: S.rankTitle(profile.level), color: planet.color)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            // ── Left accent bar — same as ticket (full height) ────────
+            Rectangle()
+                .fill(planet.color)
+                .frame(width: 4)
 
-            Rectangle().fill(sep).frame(height: 0.5)
+            VStack(spacing: 0) {
 
-            // ── Level + Destination row ───────────────────────────────
-            HStack(spacing: 0) {
-                // Left: big level number
-                VStack(alignment: .leading, spacing: 3) {
-                    TechLabel(text: S.levelLabel, color: muted)
-                    Text("\(profile.level)")
-                        .font(AppTheme.mono(40, weight: .black))
-                        .foregroundStyle(dark)
-                        .monospacedDigit()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
-
-                Rectangle().fill(sep).frame(width: 0.5, height: 56)
-
-                // Right: current + next planet
-                VStack(alignment: .leading, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        TechLabel(text: S.destination, color: muted)
-                        HStack(spacing: 5) {
-                            Circle()
-                                .fill(planet.color)
-                                .frame(width: 5, height: 5)
-                                .pulsingGlow(color: planet.color, duration: 2.2)
-                            Text(planet.name)
-                                .font(AppTheme.mono(10, weight: .bold))
-                                .foregroundStyle(planet.color)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                    }
-                    if let next = profile.nextPlanet {
-                        VStack(alignment: .leading, spacing: 2) {
-                            TechLabel(text: S.nextTarget, color: muted)
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.up.right")
-                                    .font(.system(size: 7, weight: .bold))
-                                    .foregroundStyle(dark.opacity(0.62))
-                                Text(next.name)
-                                    .font(AppTheme.mono(9))
-                                    .foregroundStyle(dark.opacity(0.65))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
-                            }
-                        }
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
-            }
-
-            Rectangle().fill(sep).frame(height: 0.5)
-
-            // ── Progress to next level ────────────────────────────────
-            VStack(spacing: 9) {
-                // Label row: section header + quality threshold badge
-                HStack {
-                    TechLabel(text: S.progressToLevel(profile.level + 1), color: muted)
-                    Spacer()
-                    // Badge showing the efficiency bar required for a mission to count
-                    HStack(spacing: 3) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 6, weight: .bold))
-                            .foregroundStyle(AppTheme.accentPrimary)
-                        Text(S.toQualify(pct: rule.requiredEfficiencyPercent))
-                            .font(AppTheme.mono(7, weight: .bold))
-                            .foregroundStyle(AppTheme.accentPrimary)
-                            .kerning(0.5)
-                    }
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 3)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 2)
-                            .strokeBorder(AppTheme.accentPrimary.opacity(0.40), lineWidth: 0.5)
-                    )
-                }
-
-                // Segmented progress bar (10 segments)
-                HStack(spacing: 3) {
-                    ForEach(0..<10, id: \.self) { i in
-                        let filled = CGFloat(i) < CGFloat(profile.levelProgress) * 10
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(filled ? planet.color : sep)
-                            .frame(height: 4)
-                            .animation(.easeOut(duration: 0.3), value: profile.levelProgress)
-                    }
-                }
-
-                // Stat row: QUALIFIED | REMAINING | AVG EFF
-                HStack(spacing: 0) {
-                    // Qualified missions (unique levels at threshold)
+                // ── Top bar — SIGNAL ROUTE / PLANET PASS ─────────────
+                // Mirrors ticket drawTopBar: faint tint, left identity, right pass label.
+                HStack(alignment: .center) {
                     VStack(alignment: .leading, spacing: 1) {
-                        TechLabel(text: S.qualified, color: muted)
-                        HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Text("\(qualityCount)")
-                                .font(AppTheme.mono(16, weight: .bold))
-                                .foregroundStyle(dark)
-                                .monospacedDigit()
-                            Text("/ \(rule.requiredMissions)")
-                                .font(AppTheme.mono(8))
-                                .foregroundStyle(dark.opacity(0.62))
-                        }
+                        TechLabel(text: "SIGNAL ROUTE", color: .white.opacity(0.90))
+                        TechLabel(text: serialCode,     color: .white.opacity(0.38))
                     }
-
                     Spacer()
-
-                    // Missions still needed (centre column)
-                    if profile.missionsRemaining > 0 {
-                        VStack(alignment: .center, spacing: 1) {
-                            TechLabel(text: S.remaining, color: muted)
-                            Text("\(profile.missionsRemaining)")
-                                .font(AppTheme.mono(16, weight: .bold))
-                                .foregroundStyle(AppTheme.accentPrimary)
-                                .monospacedDigit()
-                        }
-                    } else {
-                        VStack(alignment: .center, spacing: 1) {
-                            TechLabel(text: S.statusLabel, color: muted)
-                            Text(S.ready)
-                                .font(AppTheme.mono(11, weight: .bold))
-                                .foregroundStyle(AppTheme.success)
-                                .pulsingGlow(color: AppTheme.success)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Average efficiency (trailing)
                     VStack(alignment: .trailing, spacing: 1) {
-                        TechLabel(text: S.avgEff, color: muted)
+                        TechLabel(text: isPassEarned ? S.planetPass : S.trainingClearance,
+                                  color: planet.color)
+                        TechLabel(text: planet.difficulty.fullLabel, color: planet.color.opacity(0.60))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(planet.color.opacity(0.055))
+
+                Rectangle().fill(planet.color.opacity(0.28)).frame(height: 0.5)
+
+                // ── Planet name — hero element ────────────────────────
+                // Mirrors ticket drawPlanetSection: missionBrief + large name.
+                ZStack(alignment: .trailing) {
+                    // Planet orb echo — faint radial glow at right edge,
+                    // same placement as the large sphere in the full ticket.
+                    RadialGradient(
+                        colors: [planet.color.opacity(0.17), planet.color.opacity(0.03), .clear],
+                        center: .center, startRadius: 0, endRadius: 56
+                    )
+                    .frame(width: 112, height: 112)
+                    .offset(x: 22)
+                    .allowsHitTesting(false)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        TechLabel(text: planet.missionBrief, color: planet.color.opacity(0.78))
+                        Text(planet.name)
+                            .font(AppTheme.mono(28, weight: .black))
+                            .foregroundStyle(.white)
+                            .tracking(-0.5)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.55)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                }
+
+                Rectangle().fill(planet.color.opacity(0.22)).frame(height: 0.5)
+
+                // ── Efficiency — mirrors ticket drawEfficiency ────────
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        TechLabel(text: "MISSION EFF", color: .white.opacity(0.52))
                         Text("\(profile.averageEfficiencyPercent)%")
-                            .font(AppTheme.mono(16, weight: .bold))
-                            .foregroundStyle(
-                                profile.averageEfficiency >= rule.requiredAvgEfficiency
-                                ? AppTheme.success : dark
-                            )
+                            .font(AppTheme.mono(20, weight: .black))
+                            .foregroundStyle(.white)
                             .monospacedDigit()
                     }
+                    // 10-segment bar — exact ticket segment count and rounding
+                    HStack(spacing: 2) {
+                        ForEach(0..<10, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(i < efficiencySegments
+                                      ? planet.color
+                                      : Color.white.opacity(0.10))
+                                .frame(height: 4)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+
+                Rectangle().fill(planet.color.opacity(0.18)).frame(height: 0.5)
+
+                // ── Stats row — mirrors ticket drawStats: 4-cell grid ─
+                HStack(spacing: 0) {
+                    passStatCell(label: "LEVEL",    value: String(format: "%02d", profile.level))
+                    statDivider()
+                    passStatCell(label: "MISSIONS", value: String(format: "%04d", profile.completedMissions))
+                    statDivider()
+                    passStatCell(label: "RANK",     value: profile.rankTitle)
+                    statDivider()
+                    // 4th cell — VIEW PASS tap cue (planet-color pill)
+                    HStack(spacing: 3) {
+                        TechLabel(text: S.viewPass, color: planet.color.opacity(0.88))
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 6, weight: .bold))
+                            .foregroundStyle(planet.color.opacity(0.72))
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(planet.color.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 2))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 2)
+                            .strokeBorder(planet.color.opacity(0.20), lineWidth: 0.5)
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-
-            Rectangle().fill(sep).frame(height: 0.5)
-
-            // ── Tap affordance footer ─────────────────────────────────
-            HStack {
-                TechLabel(text: S.tapToViewPlanetPass, color: muted)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(muted)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
         }
-        .background(
-            // Astronaut silhouette floats behind the card content, top-right corner
-            ZStack(alignment: .topTrailing) {
-                AppTheme.sage
-                AstronautSilhouette(color: planet.color, size: 78)
-                    .opacity(0.14)
-                    .offset(x: 6, y: -8)
-                    .allowsHitTesting(false)
-            }
-        )
+        .background(ticketBg)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.cardRadius)
-                .strokeBorder(planet.color.opacity(0.30), lineWidth: 0.5)
+                .strokeBorder(planet.color.opacity(0.22), lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    /// Stat cell matching the ticket's drawStats layout — label above value.
+    private func passStatCell(label: String, value: String) -> some View {
+        VStack(spacing: 1) {
+            TechLabel(text: label, color: .white.opacity(0.42))
+            Text(value)
+                .font(AppTheme.mono(10, weight: .bold))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.70)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+    }
+
+    private func statDivider() -> some View {
+        Rectangle()
+            .fill(planet.color.opacity(0.18))
+            .frame(width: 0.5)
+            .padding(.vertical, 4)
     }
 }
 
@@ -868,16 +881,20 @@ struct PlanetTicketView: View {
     private var planet: Planet { profile.currentPlanet }
 
     private var pass: PlanetPass {
-        PassStore.all.first(where: { $0.planetIndex == planet.id })
-            ?? PlanetPass(
-                id:              UUID(),
-                planetName:      planet.name,
-                planetIndex:     planet.id,
-                levelReached:    profile.level,
-                efficiencyScore: profile.averageEfficiency,
-                missionCount:    profile.completedMissions,
-                timestamp:       Date()
-            )
+        if let earned = PassStore.all.first(where: { $0.planetIndex == planet.id }) {
+            return earned
+        }
+        var p = PlanetPass(
+            id:              UUID(),
+            planetName:      planet.name,
+            planetIndex:     planet.id,
+            levelReached:    profile.level,
+            efficiencyScore: profile.averageEfficiency,
+            missionCount:    profile.completedMissions,
+            timestamp:       Date()
+        )
+        p.isEarned = false
+        return p
     }
 
     var body: some View {
@@ -909,7 +926,8 @@ struct PlanetTicketView: View {
 
                     // Title + planet name subtitle
                     VStack(spacing: 2) {
-                        TechLabel(text: S.planetPass, color: planet.color)
+                        TechLabel(text: pass.isEarned ? S.planetPass : S.trainingClearance,
+                                  color: planet.color)
                         TechLabel(text: planet.name.uppercased(),
                                   color: planet.color.opacity(0.50))
                     }

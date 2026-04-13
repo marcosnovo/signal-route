@@ -1,28 +1,120 @@
 import SwiftUI
 
+// Posted by DevMenuView to replay the intro without touching main game progress.
+extension Notification.Name {
+    static let devReplayOnboarding = Notification.Name("geometry.devReplayOnboarding")
+}
+
 struct ContentView: View {
     @State private var activeLevel: Level?        = nil
     @State private var showingLevelSelect: Bool   = false
-    @State private var isIntroActive: Bool        = !OnboardingStore.hasCompletedIntro
+    @State private var showingPaywall: Bool         = false
+    @State private var paywallContext: PaywallContext = .standard
+
+    // ── Multi-step intro flow ──────────────────────────────────────────────
+    /// nil = intro complete (player goes to Home as normal).
+    enum IntroStep: Equatable {
+        case firstLaunchBeats       // StoryModal sequence for firstLaunch trigger
+        case narrative              // 4-panel NarrativeIntroView
+        case gameplay               // intro mission GameView
+        case clearance              // MissionClearanceView
+        case firstMissionReadyBeat  // StoryModal beat before Mission 1
+    }
+    @State private var introStep: IntroStep? = Self.initialIntroStep()
+
+    // ── Story beat system ──────────────────────────────────────────────────
+    /// Queue of pending narrative beats — drives both intro flow and post-win beats.
+    @State private var storyQueue = StoryBeatQueue()
+
+    private static func initialIntroStep() -> IntroStep? {
+        guard !OnboardingStore.hasCompletedIntro else { return nil }
+        if OnboardingStore.hasSeenNarrativeIntro { return .gameplay }
+        // Show firstLaunch story beats before the narrative panels on the very first run
+        return StoryStore.pendingAll(for: .firstLaunch).isEmpty ? .narrative : .firstLaunchBeats
+    }
 
     var body: some View {
         ZStack {
-            if isIntroActive {
-                // First launch → intro mission (no home screen)
-                GameView(
-                    level: LevelGenerator.introLevel,
-                    isIntro: true,
-                    onDismiss: {
-                        // Back/skip — don't mark complete; show intro again next launch
-                        isIntroActive = false
-                    },
-                    onIntroComplete: {
-                        // Win — mark complete and proceed to Home
-                        OnboardingStore.markIntroCompleted()
-                        isIntroActive = false
+            if let step = introStep {
+                switch step {
+
+                // ── Step 0: firstLaunch story beats ───────────────────────
+                // Dark backdrop only — the StoryModal overlay (zIndex 50) renders
+                // on top. When the queue empties, .onChange transitions to .narrative.
+                case .firstLaunchBeats:
+                    Color.black.ignoresSafeArea()
+                        .transition(.opacity)
+                        .zIndex(9)
+                        .onAppear {
+                            let beats = StoryStore.pendingAll(for: .firstLaunch)
+                            if beats.isEmpty {
+                                withAnimation(.easeIn(duration: 0.35)) { introStep = .narrative }
+                            } else {
+                                storyQueue.enqueue(beats)
+                            }
+                        }
+
+                // ── Step 4b: firstMissionReady beat ───────────────────────
+                // Shown after MissionClearanceView — same dark backdrop pattern.
+                // When the queue empties, .onChange opens Mission 1.
+                case .firstMissionReadyBeat:
+                    Color.black.ignoresSafeArea()
+                        .transition(.opacity)
+                        .zIndex(9)
+
+                // ── Step 1: 4-panel narrative ─────────────────────────────
+                case .narrative:
+                    NarrativeIntroView {
+                        OnboardingStore.markNarrativeSeen()
+                        withAnimation(.easeIn(duration: 0.35)) { introStep = .gameplay }
                     }
-                )
-                .transition(.opacity)
+                    .transition(.opacity)
+                    .zIndex(10)
+
+                // ── Step 2: gameplay onboarding mission ───────────────────
+                case .gameplay:
+                    GameView(
+                        level: LevelGenerator.introLevel,
+                        isIntro: true,
+                        onDismiss: {
+                            // Back/skip — don't mark complete; show intro again next launch
+                            introStep = nil
+                        },
+                        onIntroComplete: {
+                            // Win — proceed to clearance modal
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
+                                introStep = .clearance
+                            }
+                        }
+                    )
+                    .transition(.opacity)
+                    .zIndex(10)
+
+                // ── Step 3: "you are cleared" confirmation ────────────────
+                case .clearance:
+                    MissionClearanceView {
+                        OnboardingStore.markIntroCompleted()
+                        // Collect post-onboarding narrative beats in priority order:
+                        // 1. postOnboarding  — "the real work begins" reflection
+                        // 2. firstMissionReady — "you are cleared for Mission 1" directive
+                        let beats = StoryStore.pendingQueue(triggers: [
+                            (.postOnboarding,     StoryContext()),
+                            (.firstMissionReady,  StoryContext()),
+                        ])
+                        if beats.isEmpty {
+                            introStep   = nil
+                            activeLevel = LevelGenerator.levels.first
+                        } else {
+                            storyQueue.enqueue(beats)
+                            withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
+                                introStep = .firstMissionReadyBeat
+                            }
+                        }
+                    }
+                    .transition(.opacity)
+                    .zIndex(10)
+                }
+
             } else if let level = activeLevel {
                 GameView(
                     level: level,
@@ -34,10 +126,22 @@ struct ContentView: View {
                         let levels = LevelGenerator.levels
                         if let idx = levels.firstIndex(where: { $0.id == level.id }),
                            idx + 1 < levels.count {
-                            activeLevel = levels[idx + 1]
+                            // Pass .postVictory so the paywall uses celebratory copy
+                            // and dismisses the game first for a clean transition.
+                            tryPlay(levels[idx + 1], context: .postVictory)
                         }
                     },
-                    onMissions: { activeLevel = nil; showingLevelSelect = true }
+                    onMissions: { activeLevel = nil; showingLevelSelect = true },
+                    onWin: { wonLevel, event in
+                        EntitlementStore.shared.recordMissionCompleted(wonLevel)
+                        collectStoryBeats(for: wonLevel, event: event)
+                    },
+                    onUpgrade: {
+                        activeLevel = nil
+                        withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
+                            showingPaywall = true
+                        }
+                    }
                 )
                 // .id forces SwiftUI to destroy and recreate GameView (and its @StateObject
                 // GameViewModel) whenever the level changes. Without this, SwiftUI recycles
@@ -52,9 +156,14 @@ struct ContentView: View {
                 MissionMapView(
                     onSelect: { level in
                         showingLevelSelect = false
-                        activeLevel = level
+                        tryPlay(level)
                     },
-                    onDismiss: { showingLevelSelect = false }
+                    onDismiss: { showingLevelSelect = false },
+                    onUpgrade: {
+                        withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
+                            showingPaywall = true
+                        }
+                    }
                 )
                 .transition(.asymmetric(
                     insertion: .move(edge: .bottom),
@@ -62,18 +171,148 @@ struct ContentView: View {
                 ))
             } else {
                 HomeView(
-                    onPlay:     { level in activeLevel = level },
-                    onMissions: { showingLevelSelect = true }
+                    onPlay:     { level in tryPlay(level) },
+                    onMissions: { showingLevelSelect = true },
+                    onUpgrade:  {
+                        withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
+                            showingPaywall = true
+                        }
+                    }
                 )
                 .transition(.asymmetric(
                     insertion: .move(edge: .leading),
                     removal:   .move(edge: .leading)
                 ))
             }
+
+            // ── Daily limit paywall overlay ────────────────────────────────
+            if showingPaywall {
+                PaywallView(context: paywallContext) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.90)) {
+                        showingPaywall = false
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal:   .move(edge: .bottom).combined(with: .opacity)
+                ))
+                .zIndex(100)
+            }
+
+            // ── Story beat overlay ─────────────────────────────────────────
+            // Visible during normal play (introStep == nil) and during the two
+            // intro steps that rely on the queue to drive their flow.
+            if let beat = storyQueue.current, activeLevel == nil,
+               (introStep == nil
+                || introStep == .firstLaunchBeats
+                || introStep == .firstMissionReadyBeat) {
+                StoryModal(beat: beat, hasNext: storyQueue.hasNext) { storyQueue.advance() }
+                    .transition(.opacity)
+                    .zIndex(50)
+            }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: activeLevel != nil)
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: showingLevelSelect)
-        .animation(.spring(response: 0.44, dampingFraction: 0.88), value: isIntroActive)
+        .animation(.spring(response: 0.44, dampingFraction: 0.88), value: introStep)
+        .animation(.easeInOut(duration: 0.30), value: storyQueue.current?.id)
+        // Drive intro-step transitions when the story queue empties
+        .onChange(of: storyQueue.current) { _, newBeat in
+            guard newBeat == nil else { return }
+            switch introStep {
+            case .firstLaunchBeats:
+                // All firstLaunch beats seen — proceed to narrative panels
+                withAnimation(.easeIn(duration: 0.35)) { introStep = .narrative }
+            case .firstMissionReadyBeat:
+                // firstMissionReady beat dismissed — open Mission 1
+                introStep  = nil
+                activeLevel = LevelGenerator.levels.first
+            default:
+                break
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .devReplayOnboarding)) { _ in
+            activeLevel        = nil
+            showingLevelSelect = false
+            storyQueue         = StoryBeatQueue()   // flush any queued beats
+            // Re-surface firstLaunch and firstMissionReady beats so they fire again
+            StoryBeatCatalog.beats
+                .filter { $0.trigger == .firstLaunch || $0.trigger == .firstMissionReady }
+                .forEach { StoryStore.markUnseen($0) }
+            // Restart from the very beginning of the flow
+            let hasFirstLaunchBeats = !StoryStore.pendingAll(for: .firstLaunch).isEmpty
+            introStep = hasFirstLaunchBeats ? .firstLaunchBeats : .narrative
+        }
+    }
+
+    // MARK: - Entitlement gate
+
+    /// Attempts to start a level. Shows the daily-limit paywall if the free quota is exhausted.
+    ///
+    /// - Parameter context: `.postVictory` dismisses the active game first so the paywall
+    ///   slides up over a clean home screen rather than the victory overlay.
+    private func tryPlay(_ level: Level, context: PaywallContext = .standard) {
+        if EntitlementStore.shared.canPlay(level) {
+            activeLevel = level
+        } else {
+            paywallContext = context
+            if context == .postVictory {
+                // Dismiss game simultaneously — paywall slides up over the home screen.
+                activeLevel = nil
+            }
+            withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
+                showingPaywall = true
+            }
+        }
+    }
+
+    // MARK: - Story beat collection
+
+    /// Gathers all pending story beats triggered by a mission win and enqueues them.
+    /// Called immediately on win (before navigation) so profile context is accurate.
+    ///
+    /// Beat sequence per sector-completing win:
+    ///   1. firstMissionComplete (only on the very first mission ever)
+    ///   2. sectorComplete       — retrospective of what was accomplished
+    ///   3. passUnlocked         — official authorization for the next sector
+    ///   4. enteringNewSector    — briefing for the destination just unlocked
+    ///   5. rankUp               — personal recognition when a level threshold is crossed
+    private func collectStoryBeats(for level: Level, event: LevelUpEvent?) {
+        let profile = ProgressionStore.profile
+        var triggers: [(StoryTrigger, StoryContext)] = []
+
+        // 1. First mission ever completed
+        if profile.uniqueCompletions == 1 {
+            triggers.append((.firstMissionComplete, StoryContext(playerLevel: profile.level)))
+        }
+
+        // 2–4. Sector-related beats — fire as a sequence when the sector finishes
+        if let sector = SpatialRegion.catalog.first(where: { $0.levelRange.contains(level.id) }),
+           sector.levels.allSatisfy({ profile.hasCompleted(levelId: $0.id) }) {
+
+            // 2. Sector complete — recap
+            triggers.append((.sectorComplete, .forSector(sector.id, level: profile.level)))
+
+            // 3–4. Pass + new sector entry — only when a fresh pass was actually issued
+            if event?.newPass != nil {
+                // 3. Pass unlocked — authorization (requiredSectorID = the sector that issued it)
+                triggers.append((.passUnlocked,
+                    StoryContext(playerLevel: profile.level, completedSectorID: sector.id)))
+                // 4. Entering new sector — destination briefing (requiredSectorID = next sector)
+                let nextID = sector.id + 1
+                if SpatialRegion.catalog.contains(where: { $0.id == nextID }) {
+                    triggers.append((.enteringNewSector,
+                        StoryContext(playerLevel: profile.level, completedSectorID: nextID)))
+                }
+            }
+        }
+
+        // 5. Rank up — fire for milestone levels (2, 5, 10)
+        if let event, event.levelsGained > 0 {
+            triggers.append((.rankUp, .forRankUp(to: profile.level)))
+        }
+
+        let beats = StoryStore.pendingQueue(triggers: triggers)
+        storyQueue.enqueue(beats)
     }
 }
 

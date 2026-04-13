@@ -7,6 +7,7 @@ import SwiftUI
 struct MissionMapView: View {
     let onSelect: (Level) -> Void
     let onDismiss: () -> Void
+    var onUpgrade: (() -> Void)? = nil
 
     @EnvironmentObject private var settings: SettingsStore
     private var S: AppStrings { AppStrings(lang: settings.language) }
@@ -39,6 +40,7 @@ struct MissionMapView: View {
                                     region: region,
                                     profile: profile,
                                     onSelect: onSelect,
+                                    onUpgrade: onUpgrade,
                                     appearDelay: Double(idx) * 0.055
                                 )
                                 .id("region-\(region.id)")
@@ -256,9 +258,11 @@ private struct SectorCard: View {
     let region:      SpatialRegion
     let profile:     AstronautProfile
     let onSelect:    (Level) -> Void
+    var onUpgrade:   (() -> Void)? = nil
     let appearDelay: Double
 
     @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var entitlement: EntitlementStore
 
     @State private var appeared     = false
     @State private var gridExpanded = false
@@ -301,6 +305,10 @@ private struct SectorCard: View {
             }
             if displayState == .completed {
                 expandToggle
+            }
+            // Upgrade nudge — free users on locked sectors beyond Earth Orbit
+            if displayState == .locked && region.id > 1 && !entitlement.isPremium, let onUpgrade {
+                upgradeNudge(onUpgrade: onUpgrade)
             }
         }
         .background(cardBackground)
@@ -414,9 +422,7 @@ private struct SectorCard: View {
                     .foregroundStyle(AppTheme.textSecondary.opacity(0.70))
                     .kerning(1)
                 TechLabel(
-                    text: !region.isUnlocked(for: profile)
-                        ? S.unlockAtLevel(region.requiredPlayerLevel)
-                        : S.completePreviousSectors,
+                    text: S.completePreviousSectors,
                     color: AppTheme.textSecondary.opacity(0.70)
                 )
             }
@@ -482,6 +488,28 @@ private struct SectorCard: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
         }
+    }
+
+    // MARK: Upgrade nudge (locked sectors, free users)
+
+    private func upgradeNudge(onUpgrade: @escaping () -> Void) -> some View {
+        Button(action: onUpgrade) {
+            HStack(spacing: 6) {
+                Image(systemName: "infinity")
+                    .font(.system(size: 9, weight: .bold))
+                Text(S.unlimitedAccess)
+                    .font(AppTheme.mono(8, weight: .bold))
+                    .kerning(1.5)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 7, weight: .bold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 28)
+            .padding(.vertical, 10)
+            .foregroundStyle(AppTheme.accentPrimary.opacity(0.65))
+        }
+        .overlay(alignment: .top) { TechDivider() }
     }
 
     // MARK: Left accent bar

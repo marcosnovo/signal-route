@@ -323,18 +323,30 @@ struct ProgressionRule {
 // MARK: - AstronautProfile
 /// The player's persistent identity and progression state.
 ///
-/// Progression is based on **unique** level completions — replaying a mission
-/// only updates the stored score if the new result beats the previous best.
-/// This prevents grinding the same easy level to farm progress.
+/// Two efficiency stores are maintained per level:
+///
+/// • `bestEfficiencyByLevel` — stores the all-time best score per level.
+///   Used for display (ticket efficiency bar, average %, completion tracking).
+///   A replay only updates this if the new score strictly beats the previous best.
+///
+/// • `lastEfficiencyByLevel` — always overwritten with the most recent score.
+///   Used for level-up gating (`qualityCompletions`, `canLevelUp`).
+///   This prevents exploitation: you cannot bank a great run from level 1 forever —
+///   your CURRENT performance against each mission determines your progression tier.
 struct AstronautProfile: Codable {
     var level:              Int   = 1
     var totalScore:         Int   = 0
     var currentPlanetIndex: Int   = 0
 
-    /// Best efficiency achieved per level ID (key = String(level.id)).
-    /// Only successful completions are stored. A replay replaces the entry
-    /// only when the new efficiency strictly exceeds the previous best.
+    /// All-time best efficiency per level ID — for display only (tickets, stats).
+    /// Replays only update when the new score strictly exceeds the previous best.
     var bestEfficiencyByLevel: [String: Float] = [:]
+
+    /// Most-recent efficiency per level ID — for level-up gating.
+    /// Always overwritten on every successful completion, regardless of quality.
+    /// Prevents farming: replaying a level with poor execution reduces its contribution
+    /// to level-up progress.
+    var lastEfficiencyByLevel: [String: Float] = [:]
 
     // ── Computed — unique completion stats ────────────────────────────────
 
@@ -352,22 +364,42 @@ struct AstronautProfile: Codable {
     }
     var averageEfficiencyPercent: Int { Int(averageEfficiency * 100) }
 
-    /// How many unique levels have been completed with efficiency ≥ `minEfficiency`.
-    /// This is the core progression metric — grinding one easy level never inflates it.
+    /// How many quality-weighted completions the player has, using their LAST score per level.
+    ///
+    /// Each level that meets the efficiency threshold contributes credit based on its
+    /// difficulty tier: Easy/Medium = 1 point, Hard = 2 points, Expert = 3 points.
+    /// This means progressing into harder sectors naturally accelerates level-up.
+    ///
+    /// Deliberately uses `lastEfficiencyByLevel` (not best): replaying a level with poor
+    /// execution reduces its contribution, preventing stat farming.
     func qualityCompletions(minEfficiency: Float) -> Int {
-        bestEfficiencyByLevel.values.filter { $0 >= minEfficiency }.count
+        var total = 0
+        for (levelIdStr, efficiency) in lastEfficiencyByLevel {
+            guard efficiency >= minEfficiency, let levelId = Int(levelIdStr) else { continue }
+            let tier = LevelGenerator.levels.first { $0.id == levelId }?.difficulty ?? .easy
+            switch tier {
+            case .easy, .medium: total += 1
+            case .hard:          total += 2
+            case .expert:        total += 3
+            }
+        }
+        return total
     }
 
     // ── Computed — planetary destination ──────────────────────────────────
 
-    /// The highest-requirement planet the player has actually unlocked.
-    /// Computed from `level` directly so it always agrees with SpatialRegion unlock logic.
+    /// The planet corresponding to the most advanced sector the player has unlocked.
+    /// Sector 1 (always open) maps to planet 0; sector N maps to planet N-1.
     var currentPlanet: Planet {
-        Planet.catalog.last(where: { $0.requiredLevel <= level }) ?? Planet.catalog[0]
+        let idx = SpatialRegion.catalog.filter { $0.isUnlocked(for: self) }.last.map { $0.id - 1 } ?? 0
+        return Planet.catalog[min(idx, Planet.catalog.count - 1)]
     }
-    /// The next planet the player is working toward, or nil if all are unlocked.
+    /// The planet the player is working toward (next locked sector's planet), or nil if all sectors are open.
     var nextPlanet: Planet? {
-        Planet.catalog.first(where: { $0.requiredLevel > level })
+        guard let next = SpatialRegion.catalog.first(where: { !$0.isUnlocked(for: self) }) else { return nil }
+        let idx = next.id - 1
+        guard idx < Planet.catalog.count else { return nil }
+        return Planet.catalog[idx]
     }
 
     // ── Progression gating ────────────────────────────────────────────────
@@ -519,7 +551,7 @@ enum DifficultyTier: Int, CaseIterable, Identifiable {
 }
 
 // MARK: - PlanetPass
-/// A collectible access pass issued when the player unlocks a new planet destination.
+/// A collectible access pass issued when the player completes every mission in a sector.
 /// Represents real progression — one pass per planet, never duplicated.
 struct PlanetPass: Codable, Identifiable {
     let id: UUID
@@ -530,8 +562,20 @@ struct PlanetPass: Codable, Identifiable {
     let missionCount: Int       // total completed missions at unlock
     let timestamp: Date
 
-    /// Formatted serial code for display/share, e.g. "SR-0007-MAR"
+    /// `false` for provisional "Training Clearance" passes synthesised before the sector is
+    /// fully completed.  Not persisted — stored passes are always earned (true).
+    var isEarned: Bool = true
+
+    /// CodingKeys excludes `isEarned` so it is never written to or read from storage.
+    /// Decoded passes always get the default value of `true`.
+    private enum CodingKeys: String, CodingKey {
+        case id, planetName, planetIndex, levelReached, efficiencyScore, missionCount, timestamp
+    }
+
+    /// Formatted serial code for display/share.
+    /// Earned passes: "SR-0007-MAR" · Training passes: "SR-0007-TRN"
     var serialCode: String {
+        if !isEarned { return String(format: "SR-%04d-TRN", missionCount) }
         let abbrev = String(planetName.prefix(3)).replacingOccurrences(of: " ", with: "_")
         return String(format: "SR-%04d-%@", missionCount, abbrev)
     }
@@ -581,9 +625,12 @@ struct SpatialRegion: Identifiable {
     /// All catalogue levels that belong to this region.
     var levels: [Level] { LevelGenerator.levels.filter { levelRange.contains($0.id) } }
 
-    /// True when the player's astronaut level meets the entry requirement.
+    /// True when the player holds the pass that gates this sector.
+    /// Sector 1 (Earth Orbit) is always open.
+    /// Sector N (N > 1) requires a PlanetPass for planet N-2 (the previous sector's planet).
     func isUnlocked(for profile: AstronautProfile) -> Bool {
-        profile.level >= requiredPlayerLevel
+        guard id > 1 else { return true }
+        return PassStore.hasPass(for: id - 2)
     }
 
     /// Number of levels in this region the player has completed at least once.
@@ -638,9 +685,9 @@ struct ProgressionState {
         playerLevel   = profile.level
         activeMission = profile.nextMission
 
-        // Planet — same requiredLevel thresholds as SpatialRegion, so they stay in sync
-        currentPlanet = Planet.catalog.last(where: { $0.requiredLevel <= profile.level }) ?? Planet.catalog[0]
-        nextPlanet    = Planet.catalog.first(where: { $0.requiredLevel > profile.level })
+        // Planet — derived from sector unlock state (pass-based), same as AstronautProfile
+        currentPlanet = profile.currentPlanet
+        nextPlanet    = profile.nextPlanet
 
         // Sectors
         let unlocked      = SpatialRegion.catalog.filter { $0.isUnlocked(for: profile) }

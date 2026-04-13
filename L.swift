@@ -48,7 +48,7 @@ struct AppStrings {
     var missions:     String { t("MISSIONS",             "MISIONES",            "MISSIONS") }
 
     // MARK: - Astronaut progress card
-    var astronautProfile:  String { t("ASTRONAUT PROFILE",  "PERFIL DE ASTRONAUTA", "PROFIL D'ASTRONAUTE") }
+    var astronautProfile:  String { t("MISSION CREDENTIAL",  "CREDENCIAL DE MISIÓN", "ACCRÉDITATION") }
     var levelLabel:        String { t("LEVEL",              "NIVEL",                "NIVEAU") }
     var destination:       String { t("DESTINATION",        "DESTINO",              "DESTINATION") }
     var nextTarget:        String { t("NEXT TARGET",        "PRÓXIMO OBJETIVO",     "PROCHAINE CIBLE") }
@@ -65,9 +65,11 @@ struct AppStrings {
     var ready:              String { t("READY",               "LISTO",          "PRÊT") }
     var avgEff:             String { t("AVG EFF",             "EFF. MEDIA",     "EFF. MOY.") }
     var tapToViewPlanetPass: String { t("TAP TO VIEW PLANET PASS", "TOCA PARA VER EL PASE", "TOUCHER POUR LE LAISSEZ-PASSER") }
+    var viewPass:            String { t("VIEW PASS",               "VER PASE",              "VOIR LE PASSE") }
 
     // MARK: - Planet ticket
     var planetPass:           String { t("PLANET PASS",                  "PASE PLANETARIO",               "LAISSEZ-PASSER") }
+    var trainingClearance:    String { t("TRAINING CLEARANCE",            "AUTORIZACIÓN DE ENTRENAMIENTO", "AUTORISATION D'ENTRAÎNEMENT") }
     var sharePass:            String { t("SHARE PASS",                   "COMPARTIR PASE",                "PARTAGER LE LAISSEZ-PASSER") }
     var renderingPass:        String { t("RENDERING PASS…",              "GENERANDO PASE…",               "GÉNÉRATION DU LAISSEZ-PASSER…") }
     var preparingPass:        String { t("PREPARING PLANET PASS",        "PREPARANDO PASE PLANETARIO",    "PRÉPARATION DU LAISSEZ-PASSER") }
@@ -190,6 +192,14 @@ struct AppStrings {
     var returnToBase:   String { t("RETURN TO BASE",     "VOLVER A LA BASE",   "RETOUR À LA BASE") }
     var efficiencyBar:  String { t("EFFICIENCY",         "EFICIENCIA",         "EFFICACITÉ") }
 
+    // MARK: - Sector complete overlay
+    /// "COMPLETE" label shown below the planet name on the sector-complete interstitial.
+    var zoneComplete: String { t("COMPLETE", "COMPLETADO", "TERMINÉ") }
+    /// "[PLANET] ACCESS GRANTED" — label shown above the pass card.
+    func zoneAccessGranted(_ name: String) -> String {
+        t("\(name) ACCESS GRANTED", "\(name): ACCESO CONCEDIDO", "\(name): ACCÈS ACCORDÉ")
+    }
+
     // MARK: - Intro win overlay
     var signalRouted:              String { t("SIGNAL ROUTED",               "SEÑAL DIRIGIDA",                 "SIGNAL ACHEMINÉ") }
     var networkOnline:             String { t("NETWORK ONLINE",              "RED EN LÍNEA",                   "RÉSEAU EN LIGNE") }
@@ -266,6 +276,11 @@ struct AppStrings {
             )
         }
     }
+
+    // MARK: - Upgrade / monetization CTAs
+    var unlimitedAccess:       String { t("UNLIMITED ACCESS",        "ACCESO ILIMITADO",         "ACCÈS ILLIMITÉ") }
+    var continueWithoutLimits: String { t("CONTINUE WITHOUT LIMITS", "CONTINÚA SIN LÍMITES",     "CONTINUER SANS LIMITES") }
+    var upgradeLabel:          String { t("UPGRADE",                 "MEJORAR",                  "AMÉLIORER") }
 
     // MARK: - Victory telemetry
     var missionDebrief:  String { t("MISSION\nDEBRIEF",  "INFORME\nDE MISIÓN",  "COMPTE-RENDU\nDE MISSION") }
