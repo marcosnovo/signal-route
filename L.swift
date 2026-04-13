@@ -18,7 +18,9 @@ struct AppStrings {
     var close:  String { t("CLOSE",  "CERRAR",  "FERMER") }
     var back:   String { t("BACK",   "VOLVER",  "RETOUR") }
     var home:   String { t("HOME",   "INICIO",  "ACCUEIL") }
-    var skip:   String { t("SKIP",   "SALTAR",  "PASSER") }
+    var skip:           String { t("SKIP",     "SALTAR",    "PASSER") }
+    var continueAction: String { t("CONTINUE", "CONTINUAR", "CONTINUER") }
+    var begin:          String { t("BEGIN",    "COMENZAR",  "COMMENCER") }
 
     // MARK: - Home — system bar
     var nodeActive: String { t("NODE ACTIVE",  "NODO ACTIVO",  "NŒUD ACTIF") }
@@ -274,6 +276,31 @@ struct AppStrings {
                 "Se ha detectado interferencia electromagnética en la cuadrícula. Algunos sectores están comprometidos — las lecturas visuales pueden estar distorsionadas. Confía en la señal, no en tus ojos.",
                 "Interférence électromagnétique détectée dans la grille. Certains secteurs sont compromis — les lectures visuelles peuvent être déformées. Fiez-vous au signal, pas à vos yeux."
             )
+        }
+    }
+
+    // MARK: - Mission clearance (onboarding bridge screen)
+    var missionControlEncryptedLink: String { t("MISSION CONTROL  ·  ENCRYPTED LINK",   "CONTROL DE MISIÓN  ·  ENLACE CIFRADO",    "CONTRÔLE MISSION  ·  LIEN CHIFFRÉ") }
+    var clearanceGranted:            String { t("CLEARANCE GRANTED",                    "AUTORIZACIÓN CONCEDIDA",                   "AUTORISATION ACCORDÉE") }
+    var missionReadyTitle:           String { t("MISSION READY",                        "MISIÓN LISTA",                             "MISSION PRÊTE") }
+    var clearedForFirstMission:      String { t("You are cleared for your first mission.", "Estás autorizado para tu primera misión.", "Tu es autorisé pour ta première mission.") }
+    var mission1EarthOrbit:          String { t("MISSION 1  ·  EARTH ORBIT",            "MISIÓN 1  ·  ÓRBITA TERRESTRE",            "MISSION 1  ·  ORBITE TERRESTRE") }
+    var launchMission:               String { t("LAUNCH MISSION",                       "LANZAR MISIÓN",                            "LANCER LA MISSION") }
+
+    // MARK: - Story beat UI labels
+    var incomingTransmission: String { t("INCOMING TRANSMISSION", "TRANSMISIÓN ENTRANTE", "TRANSMISSION ENTRANTE") }
+
+    func storyTriggerLabel(_ trigger: StoryTrigger) -> String {
+        switch trigger {
+        case .firstLaunch:          return t("MISSION BRIEF",       "INFORME DE MISIÓN",       "BRIEFING MISSION")
+        case .postOnboarding:       return t("TRAINING COMPLETE",   "ENTRENAMIENTO LISTO",     "ENTRAÎNEMENT TERMINÉ")
+        case .firstMissionReady:    return t("MISSION READY",       "MISIÓN LISTA",            "MISSION PRÊTE")
+        case .firstMissionComplete: return t("MISSION REPORT",      "INFORME DE MISIÓN",       "RAPPORT DE MISSION")
+        case .sectorComplete:       return t("SECTOR CLEARED",      "SECTOR DESPEJADO",        "SECTEUR DÉGAGÉ")
+        case .passUnlocked:         return t("PASS ISSUED",         "PASE EMITIDO",            "LAISSEZ-PASSER ÉMIS")
+        case .rankUp:               return t("RANK UPDATE",         "ACTUALIZACIÓN DE RANGO",  "MISE À JOUR DU RANG")
+        case .mechanicUnlocked:     return t("FIELD ALERT",         "ALERTA DE CAMPO",         "ALERTE TERRAIN")
+        case .enteringNewSector:    return t("NEW SECTOR",          "NUEVO SECTOR",            "NOUVEAU SECTEUR")
         }
     }
 

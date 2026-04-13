@@ -11,6 +11,7 @@ struct StoryBeatView: View {
     let onDismiss: () -> Void
 
     @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
 
     @State private var appeared  = false
     @State private var dismissed = false
@@ -45,7 +46,7 @@ struct StoryBeatView: View {
 
                 VStack(spacing: 0) {
                     // Optional image banner
-                    if let name = beat.imageName, let uiImage = UIImage(named: name) {
+                    if let name = beat.imageName, let uiImage = UIImage(named: name)?.normalizedForDisplay {
                         imageBanner(uiImage, accent: accentColor)
                     }
                     transmissionHeader
@@ -107,7 +108,7 @@ struct StoryBeatView: View {
         HStack(spacing: 8) {
             BlinkingDot(color: accentColor)
 
-            Text("INCOMING TRANSMISSION")
+            Text(S.incomingTransmission)
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(accentColor.opacity(0.70))
                 .kerning(1.5)
@@ -130,7 +131,7 @@ struct StoryBeatView: View {
         VStack(alignment: .leading, spacing: 14) {
 
             // Trigger label badge
-            Text(storyTriggerLabel(beat.trigger))
+            Text(S.storyTriggerLabel(beat.trigger))
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(accentColor)
                 .kerning(1.2)
@@ -226,6 +227,7 @@ struct StoryModal: View {
     let onDismiss: () -> Void
 
     @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
 
     @State private var appeared      = false
     @State private var dismissed     = false
@@ -240,7 +242,7 @@ struct StoryModal: View {
     var body: some View {
         GeometryReader { geo in
             let cardH   = geo.size.height * 0.82
-            let uiImage = beat.imageName.flatMap { UIImage(named: $0) }
+            let uiImage = beat.imageName.flatMap { UIImage(named: $0)?.normalizedForDisplay }
 
             ZStack {
                 // ── Backdrop ──────────────────────────────────────────
@@ -294,12 +296,15 @@ struct StoryModal: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .scaleEffect(appeared ? 1.0 : 0.93)
-                .opacity(appeared ? 1.0 : 0.0)
                 // Tap on the card itself also skips / dismisses
                 .contentShape(Rectangle())
                 .onTapGesture { handleTap() }
             }
         }
+        // Whole-overlay opacity: backdrop + glow + card fade together.
+        // Keeping this at the GeometryReader level makes it impossible for the
+        // backdrop to remain visible after dismiss() runs.
+        .opacity(appeared ? 1.0 : 0.0)
         .ignoresSafeArea()
         .onAppear {
             withAnimation(.spring(response: 0.46, dampingFraction: 0.84)) {
@@ -323,7 +328,7 @@ struct StoryModal: View {
     private var compactHeader: some View {
         HStack(spacing: 8) {
             BlinkingDot(color: accent)
-            Text("INCOMING TRANSMISSION")
+            Text(S.incomingTransmission)
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(accent.opacity(0.70))
                 .kerning(1.5)
@@ -345,7 +350,7 @@ struct StoryModal: View {
         VStack(alignment: .leading, spacing: 14) {
 
             // Trigger badge
-            Text(storyTriggerLabel(beat.trigger))
+            Text(S.storyTriggerLabel(beat.trigger))
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(accent)
                 .kerning(1.5)
@@ -498,7 +503,13 @@ struct StoryModal: View {
         dismissed = true
         typeTask?.cancel()
         withAnimation(.easeOut(duration: 0.24)) { appeared = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) { onDismiss() }
+        // Use Task + withAnimation instead of DispatchQueue so the structural removal
+        // of this view (when storyQueue.current becomes nil) runs inside a valid
+        // animation context — preventing the backdrop from getting stuck in the hierarchy.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(240))
+            withAnimation(.easeOut(duration: 0.20)) { onDismiss() }
+        }
     }
 }
 
@@ -604,19 +615,6 @@ private struct AnimatedImageFrame: View {
 
 // MARK: - Shared trigger label helper (used by both StoryBeatView and StoryModal)
 
-func storyTriggerLabel(_ trigger: StoryTrigger) -> String {
-    switch trigger {
-    case .firstLaunch:           return "MISSION BRIEF"
-    case .postOnboarding:        return "TRAINING COMPLETE"
-    case .firstMissionReady:     return "MISSION READY"
-    case .firstMissionComplete:  return "MISSION REPORT"
-    case .sectorComplete:        return "SECTOR CLEARED"
-    case .passUnlocked:          return "PASS ISSUED"
-    case .rankUp:                return "RANK UPDATE"
-    case .mechanicUnlocked:      return "FIELD ALERT"
-    case .enteringNewSector:     return "NEW SECTOR"
-    }
-}
 
 // MARK: - BlinkingDot
 

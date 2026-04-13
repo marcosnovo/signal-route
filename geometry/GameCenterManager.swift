@@ -14,27 +14,22 @@ final class GameCenterManager: ObservableObject {
     @Published private(set) var displayName: String = ""
     @Published private(set) var isGameCenterEnabled: Bool = false
 
-    /// When GK requires a login UI, this holds the view controller to present.
-    @Published var presentationViewController: UIViewController? = nil
-
     private init() {}
 
     // MARK: - Authenticate
     /// Call once at app launch or Home entry. Safe to call multiple times — GK is idempotent.
     func authenticate() {
+        // Prevent GameKit's access-point overlay from auto-showing at launch.
+        // On some real-device configs the GKGameOverlayUI remote proxy fails to
+        // start and leaves a black UIWindow in the hierarchy — disabling the
+        // access point before authentication silences that race condition.
+        GKAccessPoint.shared.isActive = false
+
         let player = GKLocalPlayer.local
-        player.authenticateHandler = { [weak self] viewController, error in
+        player.authenticateHandler = { [weak self] _, error in
             guard let self else { return }
-
-            if let vc = viewController {
-                // GK wants to show a sign-in sheet
-                self.presentationViewController = vc
-                return
-            }
-
-            // Clear any pending presentation
-            self.presentationViewController = nil
-
+            // On iOS 14+ GameKit presents its own auth UI without the app
+            // needing to present the view controller. Just check auth state.
             if player.isAuthenticated {
                 self.isAuthenticated = true
                 self.isGameCenterEnabled = true

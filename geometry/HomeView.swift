@@ -591,14 +591,6 @@ private struct PlayerBlock: View {
                 TechLabel(text: "ORBITAL SYS  v1.0")
             }
         }
-        // Present GK sign-in sheet when GameKit needs it
-        .sheet(item: Binding(
-            get: { gcManager.presentationViewController.map(UIVCWrapper.init) },
-            set: { _ in }
-        )) { wrapper in
-            UIViewControllerRepresentableWrapper(viewController: wrapper.vc)
-                .ignoresSafeArea()
-        }
     }
 
     // MARK: Authenticated layout
@@ -647,18 +639,6 @@ private struct PlayerBlock: View {
     }
 }
 
-/// Thin Identifiable wrapper so `.sheet(item:)` works with UIViewController.
-private struct UIVCWrapper: Identifiable {
-    let id = UUID()
-    let vc: UIViewController
-}
-
-/// Bridges a UIViewController into SwiftUI for the GK sign-in sheet.
-private struct UIViewControllerRepresentableWrapper: UIViewControllerRepresentable {
-    let viewController: UIViewController
-    func makeUIViewController(context: Context) -> UIViewController { viewController }
-    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
-}
 
 // MARK: - AstronautProgressCard
 /// Home screen mission pass — a compact 2D preview of the full Planet Pass ticket.

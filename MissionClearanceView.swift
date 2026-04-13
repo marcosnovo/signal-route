@@ -10,6 +10,9 @@ struct MissionClearanceView: View {
 
     let onLaunch: () -> Void
 
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
     @State private var appeared = false
 
     var body: some View {
@@ -59,7 +62,7 @@ struct MissionClearanceView: View {
     private var header: some View {
         HStack(spacing: 8) {
             BlinkingSignalDot(color: AppTheme.accentPrimary)
-            Text("MISSION CONTROL  ·  ENCRYPTED LINK")
+            Text(S.missionControlEncryptedLink)
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(AppTheme.accentPrimary.opacity(0.65))
                 .kerning(1.2)
@@ -73,7 +76,7 @@ struct MissionClearanceView: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
             // Clearance badge
-            Text("CLEARANCE GRANTED")
+            Text(S.clearanceGranted)
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(AppTheme.accentPrimary)
                 .kerning(1.2)
@@ -86,13 +89,13 @@ struct MissionClearanceView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 3))
 
             // Title
-            Text("MISSION READY")
+            Text(S.missionReadyTitle)
                 .font(AppTheme.mono(24, weight: .black))
                 .foregroundStyle(Color.white)
                 .kerning(3)
 
             // Body
-            Text("You are cleared for your first mission.")
+            Text(S.clearedForFirstMission)
                 .font(AppTheme.mono(11))
                 .foregroundStyle(AppTheme.textSecondary)
                 .lineSpacing(4)
@@ -102,7 +105,7 @@ struct MissionClearanceView: View {
                 Rectangle()
                     .fill(AppTheme.accentPrimary.opacity(0.50))
                     .frame(width: 14, height: 1)
-                Text("MISSION 1  ·  EARTH ORBIT")
+                Text(S.mission1EarthOrbit)
                     .font(AppTheme.mono(8, weight: .bold))
                     .foregroundStyle(AppTheme.accentPrimary.opacity(0.70))
                     .kerning(1.0)
@@ -118,7 +121,7 @@ struct MissionClearanceView: View {
             HStack(spacing: 7) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 10, weight: .bold))
-                Text("LAUNCH MISSION")
+                Text(S.launchMission)
                     .font(AppTheme.mono(10, weight: .bold))
                     .kerning(2)
             }

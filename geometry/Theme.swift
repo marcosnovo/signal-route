@@ -1,4 +1,22 @@
 import SwiftUI
+import UIKit
+
+// MARK: - UIImage normalization
+extension UIImage {
+    /// Forces the image through a 32-bpp RGBA graphics context.
+    ///
+    /// Asset-catalog JPEGs are 24-bpp (no alpha channel). CoreGraphics'
+    /// block-based decoder expects 32-bpp and logs:
+    ///   "kCGImageBlockFormatBGRx8 is called for 24-bpp (8-bpc) image"
+    /// (rdar://143602439). Re-drawing through UIGraphicsImageRenderer
+    /// normalises the pixel format and silences the warning.
+    var normalizedForDisplay: UIImage {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        return renderer.image { _ in draw(at: .zero) }
+    }
+}
 
 // MARK: - Hex Color Convenience
 extension Color {

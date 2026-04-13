@@ -207,6 +207,7 @@ struct ContentView: View {
                 || introStep == .firstLaunchBeats
                 || introStep == .firstMissionReadyBeat) {
                 StoryModal(beat: beat, hasNext: storyQueue.hasNext) { storyQueue.advance() }
+                    .id(beat.id)   // forces fresh @State per beat; prevents dismissed/appeared bleeding across beats
                     .transition(.opacity)
                     .zIndex(50)
             }

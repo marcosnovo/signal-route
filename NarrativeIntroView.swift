@@ -15,51 +15,103 @@ struct NarrativeIntroView: View {
 
     let onComplete: () -> Void
 
-    // ── Content ───────────────────────────────────────────────────────────
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
 
-    private let panels: [(sentences: [String], accentHex: String)] = [
-        (
-            sentences: [
-                "Humanity can already travel",
-                "farther than ever before.",
-                "",
-                "Distance is no longer the barrier.",
-                "Stability is."
-            ],
-            accentHex: "4DB87A"
-        ),
-        (
-            sentences: [
-                "Every station, gate and orbital corridor",
-                "depends on fragile energy systems.",
-                "",
-                "A single routing failure",
-                "can stall an entire mission."
-            ],
-            accentHex: "D4A055"
-        ),
-        (
-            sentences: [
-                "You are not here to fly.",
-                "",
-                "You are here to restore the network.",
-                "",
-                "Your engineering skills",
-                "will decide how far we can go."
-            ],
-            accentHex: "7EC8E3"
-        ),
-        (
-            sentences: [
-                "Prove your precision.",
-                "Earn your rank.",
-                "",
-                "Unlock the routes that will carry",
-                "humanity deeper into space."
-            ],
-            accentHex: "4B70DD"
-        ),
-    ]
+    // ── Content ───────────────────────────────────────────────────────────
+    // Panels are computed so the text always matches the current language.
+
+    private var panels: [(sentences: [String], accentHex: String)] {
+        switch settings.language {
+        case .es: return panelsES
+        case .fr: return panelsFR
+        default:  return panelsEN
+        }
+    }
+
+    private var panelsEN: [(sentences: [String], accentHex: String)] { [
+        (sentences: ["Humanity can already travel",
+                     "farther than ever before.",
+                     "",
+                     "Distance is no longer the barrier.",
+                     "Stability is."],
+         accentHex: "4DB87A"),
+        (sentences: ["Every station, gate and orbital corridor",
+                     "depends on fragile energy systems.",
+                     "",
+                     "A single routing failure",
+                     "can stall an entire mission."],
+         accentHex: "D4A055"),
+        (sentences: ["You are not here to fly.",
+                     "",
+                     "You are here to restore the network.",
+                     "",
+                     "Your engineering skills",
+                     "will decide how far we can go."],
+         accentHex: "7EC8E3"),
+        (sentences: ["Prove your precision.",
+                     "Earn your rank.",
+                     "",
+                     "Unlock the routes that will carry",
+                     "humanity deeper into space."],
+         accentHex: "4B70DD"),
+    ] }
+
+    private var panelsES: [(sentences: [String], accentHex: String)] { [
+        (sentences: ["La humanidad ya puede viajar",
+                     "más lejos que nunca antes.",
+                     "",
+                     "La distancia ya no es la barrera.",
+                     "La estabilidad, sí."],
+         accentHex: "4DB87A"),
+        (sentences: ["Cada estación, puerta y corredor orbital",
+                     "depende de frágiles sistemas de energía.",
+                     "",
+                     "Un solo fallo de enrutamiento",
+                     "puede detener una misión completa."],
+         accentHex: "D4A055"),
+        (sentences: ["No estás aquí para volar.",
+                     "",
+                     "Estás aquí para restaurar la red.",
+                     "",
+                     "Tus habilidades de ingeniería",
+                     "decidirán hasta dónde podemos llegar."],
+         accentHex: "7EC8E3"),
+        (sentences: ["Demuestra tu precisión.",
+                     "Gana tu rango.",
+                     "",
+                     "Desbloquea las rutas que llevarán",
+                     "a la humanidad más lejos en el espacio."],
+         accentHex: "4B70DD"),
+    ] }
+
+    private var panelsFR: [(sentences: [String], accentHex: String)] { [
+        (sentences: ["L'humanité peut déjà voyager",
+                     "plus loin que jamais.",
+                     "",
+                     "La distance n'est plus l'obstacle.",
+                     "La stabilité, oui."],
+         accentHex: "4DB87A"),
+        (sentences: ["Chaque station, porte et couloir orbital",
+                     "dépend de systèmes énergétiques fragiles.",
+                     "",
+                     "Une seule défaillance de routage",
+                     "peut bloquer une mission entière."],
+         accentHex: "D4A055"),
+        (sentences: ["Tu n'es pas ici pour piloter.",
+                     "",
+                     "Tu es ici pour restaurer le réseau.",
+                     "",
+                     "Tes compétences en ingénierie",
+                     "détermineront jusqu'où nous pourrons aller."],
+         accentHex: "7EC8E3"),
+        (sentences: ["Prouve ta précision.",
+                     "Gagne ton rang.",
+                     "",
+                     "Débloque les routes qui mèneront",
+                     "l'humanité plus loin dans l'espace."],
+         accentHex: "4B70DD"),
+    ] }
 
     // ── State ─────────────────────────────────────────────────────────────
 
@@ -104,7 +156,7 @@ struct NarrativeIntroView: View {
                 HStack {
                     Spacer()
                     Button(action: skip) {
-                        Text("SKIP")
+                        Text(S.skip)
                             .font(AppTheme.mono(8, weight: .semibold))
                             .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
                             .kerning(1.5)
@@ -158,7 +210,7 @@ struct NarrativeIntroView: View {
                     // Continue / Begin prompt
                     if showContinue {
                         HStack(spacing: 4) {
-                            Text(isLastPanel ? "BEGIN" : "CONTINUE")
+                            Text(isLastPanel ? S.begin : S.continueAction)
                                 .font(AppTheme.mono(8, weight: .bold))
                                 .foregroundStyle(accentColor)
                                 .kerning(1.5)

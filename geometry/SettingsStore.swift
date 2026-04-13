@@ -44,9 +44,11 @@ final class SettingsStore: ObservableObject {
         hapticsEnabled = UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool ?? true
         reducedMotion  = UserDefaults.standard.object(forKey: "reducedMotion")  as? Bool ?? false
 
-        // Language — prefer saved preference, fall back to system locale, then English
+        // Language — prefer saved preference, fall back to device preferred language, then English.
+        // Locale.preferredLanguages reflects the language the user has set in iOS Settings,
+        // which is more reliable than Locale.current (tied to region, not display language).
         let savedCode  = UserDefaults.standard.string(forKey: "language")
-        let systemCode = Locale.current.language.languageCode?.identifier ?? "en"
+        let systemCode = Locale.preferredLanguages.first.map { String($0.prefix(2)) } ?? "en"
         language = AppLanguage(rawValue: savedCode ?? systemCode) ?? .en
     }
 }
