@@ -15,10 +15,11 @@ struct DevMenuView: View {
 
     @EnvironmentObject private var settings:  SettingsStore
     @EnvironmentObject private var storeKit:  StoreKitManager
+    @EnvironmentObject private var gcManager: GameCenterManager
 
     // ── Tab ───────────────────────────────────────────────────────────────
-    enum DevTab { case state, missions, tools, story, reset, qa, sim }
-    @State private var activeTab: DevTab = .state
+    enum DevTab { case overview, missions, story, tools, money, reset, qa, sim }
+    @State private var activeTab: DevTab = .overview
 
     // ── QA tab ────────────────────────────────────────────────────────────
     @StateObject private var qaRunner  = SelfQARunner()
@@ -47,6 +48,35 @@ struct DevMenuView: View {
     @State private var storyRefreshID:     UUID            = UUID()
     /// Result of the last StoryAssetValidator run (nil = not yet run).
     @State private var assetValidation:    StoryAssetValidator.Result? = nil
+    @State private var storySearch:        String = ""
+
+    // ── Toast feedback ────────────────────────────────────────────────────
+    struct DevToast: Identifiable {
+        enum Style { case success, warning, fail, info }
+        let id    = UUID()
+        let message: String
+        let style:   Style
+        var icon: String {
+            switch style {
+            case .success: return "checkmark.circle.fill"
+            case .warning: return "exclamationmark.triangle.fill"
+            case .fail:    return "xmark.circle.fill"
+            case .info:    return "info.circle.fill"
+            }
+        }
+        var color: Color {
+            switch style {
+            case .success: return AppTheme.success
+            case .warning: return Color.orange
+            case .fail:    return AppTheme.danger
+            case .info:    return AppTheme.accentPrimary
+            }
+        }
+    }
+    @State private var devToast: DevToast? = nil
+
+    // ── Mission search (MISSIONS tab) ──────────────────────────────────────
+    @State private var missionIDInput: String = ""
 
     // ── TOOLS tab ─────────────────────────────────────────────────────────
     /// Language used for inline mechanic message previews (independent of app language).
@@ -133,6 +163,11 @@ struct DevMenuView: View {
 
     private var filteredLevels: [Level] {
         LevelGenerator.levels.filter { level in
+            // ID search: exact match when a number is typed
+            if !missionIDInput.isEmpty {
+                if let id = Int(missionIDInput) { if level.id != id { return false } }
+                else { return false }
+            }
             if let d = filterDifficulty, level.difficulty != d { return false }
             if let o = filterObjective,  level.objectiveType != o { return false }
             switch filterStatus {
@@ -153,21 +188,25 @@ struct DevMenuView: View {
 
             VStack(spacing: 0) {
                 navStrip
+                globalStatusBar
                 quickActionsStrip
                 tabBar
                 TechDivider()
 
                 switch activeTab {
-                case .state:
-                    statePanel
+                case .overview:
+                    overviewPanel
                 case .missions:
+                    missionJumpBar
                     filterBar
                     TechDivider()
                     levelList
-                case .tools:
-                    toolsPanel
                 case .story:
                     storyPanel
+                case .tools:
+                    toolsPanel
+                case .money:
+                    moneyPanel
                 case .reset:
                     resetPanel
                 case .qa:
@@ -178,6 +217,34 @@ struct DevMenuView: View {
                 case .sim:
                     PlayerSimulationView(runner: simRunner)
                 }
+            }
+
+            // ── Dev toast ─────────────────────────────────────────────────
+            if let toast = devToast {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: toast.icon)
+                            .font(.system(size: 11, weight: .bold))
+                        Text(toast.message)
+                            .font(AppTheme.mono(10, weight: .bold))
+                            .kerning(0.5)
+                    }
+                    .foregroundStyle(toast.color)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(AppTheme.backgroundPrimary)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                            .strokeBorder(toast.color.opacity(0.60), lineWidth: 0.75)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                    .shadow(color: toast.color.opacity(0.25), radius: 16, y: 4)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 28)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .allowsHitTesting(false)
+                .zIndex(400)
             }
 
             // ── Full-screen mechanic preview overlay ──────────────────────
@@ -242,6 +309,73 @@ struct DevMenuView: View {
         }
     }
 
+    // MARK: - Global status bar
+
+    private var globalStatusBar: some View {
+        _ = refreshID
+        let prog    = profile.progression
+        let store   = EntitlementStore.shared
+        let isPrem  = store.isPremium
+        let unseen  = StoryBeatCatalog.beats.filter { !StoryStore.seenIDs.contains($0.id) }.count
+
+        let missingPasses = SpatialRegion.catalog.filter { s in
+            !PassStore.hasPass(for: s.id - 1) && s.levels.allSatisfy { profile.hasCompleted(levelId: $0.id) }
+        }
+        let devGranted = SpatialRegion.catalog.filter { s in
+            PassStore.hasPass(for: s.id - 1) && !s.levels.allSatisfy { profile.hasCompleted(levelId: $0.id) }
+        }
+        let (cohLabel, cohColor): (String, Color) = {
+            if !missingPasses.isEmpty { return ("INVALID", AppTheme.danger) }
+            if !devGranted.isEmpty    { return ("WARNING", Color.orange) }
+            return ("OK", AppTheme.success)
+        }()
+
+        return VStack(spacing: 0) {
+            // Row 1 — progression
+            HStack(spacing: 0) {
+                miniStat("LVL",     "\(prog.playerLevel) · \(rankLabel(for: prog.playerLevel))")
+                statDivider()
+                miniStat("SECTOR",  prog.currentSector.name.components(separatedBy: " ").first ?? "—")
+                statDivider()
+                miniStat("PLANET",  prog.currentPlanet.name)
+                statDivider()
+                miniStat("NEXT",    prog.nextPlanet?.name ?? "—")
+                statDivider()
+                miniStat("MISSION", prog.activeMission.map { "#\($0.id)" } ?? "DONE")
+            }
+            .padding(.vertical, 8)
+
+            TechDivider()
+
+            // Row 2 — meta state
+            HStack(spacing: 0) {
+                miniStatC("PLAN",    isPrem ? "PREMIUM" : "FREE",
+                          isPrem ? AppTheme.accentPrimary : AppTheme.sage)
+                statDivider()
+                miniStat("DAILY",   isPrem ? "∞" : "\(store.dailyCompleted)/\(EntitlementStore.dailyLimit)")
+                statDivider()
+                miniStatC("STORY",  unseen > 0 ? "\(unseen) UNSEEN" : "ALL SEEN",
+                          unseen > 0 ? Color.orange : AppTheme.success)
+                statDivider()
+                miniStatC("STATE",   cohLabel, cohColor)
+            }
+            .padding(.vertical, 8)
+        }
+        .background(AppTheme.surface)
+        .overlay(alignment: .bottom) { TechDivider() }
+    }
+
+    private func miniStatC(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(spacing: 2) {
+            TechLabel(text: label, color: AppTheme.textSecondary)
+            Text(value)
+                .font(AppTheme.mono(9, weight: .bold))
+                .foregroundStyle(color)
+                .lineLimit(1).minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     // MARK: - Nav strip
 
     private var navStrip: some View {
@@ -256,13 +390,7 @@ struct DevMenuView: View {
 
             Spacer()
 
-            VStack(spacing: 2) {
-                TechLabel(text: "DEV CONSOLE", color: AppTheme.accentPrimary)
-                TechLabel(
-                    text: "LVL \(profile.level)  ·  \(profile.uniqueCompletions)/\(LevelGenerator.levels.count) MISSIONS",
-                    color: AppTheme.sage.opacity(0.60)
-                )
-            }
+            TechLabel(text: "DEV CONSOLE", color: AppTheme.accentPrimary)
 
             Spacer()
 
@@ -286,7 +414,7 @@ struct DevMenuView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 // RESET ALL
-                quickBtn("RESET ALL", icon: "trash.fill", color: AppTheme.danger) {
+                quickBtn("RESET ALL", icon: "trash.fill", color: AppTheme.danger, isDanger: true) {
                     pendingReset = .all
                 }
                 // REPLAY ONBOARDING
@@ -305,7 +433,7 @@ struct DevMenuView: View {
                 }
                 // JUMP TO ACTIVE SECTOR
                 quickBtn("SECTOR", icon: "map.fill", color: AppTheme.sage) {
-                    activeTab = .state
+                    activeTab = .overview
                 }
                 // STORY PANEL
                 quickBtn("STORY", icon: "text.bubble", color: Color(hex: "7EC8E3")) {
@@ -313,7 +441,7 @@ struct DevMenuView: View {
                 }
                 // MONETIZATION PANEL
                 quickBtn("MONEY", icon: "infinity", color: AppTheme.accentPrimary) {
-                    activeTab = .state
+                    activeTab = .money
                 }
                 // SELF QA
                 quickBtn("SELF QA", icon: "checkmark.seal.fill", color: Color(hex: "4DB87A")) {
@@ -349,6 +477,7 @@ struct DevMenuView: View {
         _ label: String,
         icon: String,
         color: Color,
+        isDanger: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -357,11 +486,12 @@ struct DevMenuView: View {
                 Text(label).font(AppTheme.mono(8, weight: .bold)).kerning(0.6)
             }
             .foregroundStyle(color)
-            .padding(.horizontal, 9).padding(.vertical, 5)
-            .background(color.opacity(0.09))
+            .padding(.horizontal, 9).padding(.vertical, 6)
+            .background(color.opacity(isDanger ? 0.13 : 0.09))
             .overlay(
                 RoundedRectangle(cornerRadius: 3)
-                    .strokeBorder(color.opacity(0.28), lineWidth: 0.5)
+                    .strokeBorder(color.opacity(isDanger ? 0.55 : 0.32),
+                                  lineWidth: isDanger ? 1.0 : 0.6)
             )
             .clipShape(RoundedRectangle(cornerRadius: 3))
         }
@@ -372,52 +502,64 @@ struct DevMenuView: View {
 
     private var tabBar: some View {
         HStack(spacing: 0) {
-            tabButton("STATE",    icon: "person.fill",              tab: .state)
+            tabButton("OVERVIEW", icon: "square.grid.2x2",          tab: .overview)
             tabSeparator()
             tabButton("MISSIONS", icon: "list.bullet",              tab: .missions)
             tabSeparator()
-            tabButton("TOOLS",    icon: "wrench.and.screwdriver",   tab: .tools)
-            tabSeparator()
             tabButton("STORY",    icon: "text.bubble",              tab: .story)
             tabSeparator()
+            tabButton("TOOLS",    icon: "wrench.and.screwdriver",   tab: .tools)
+            tabSeparator()
+            tabButton("MONEY",    icon: "infinity",                 tab: .money)
+            tabSeparator()
             tabButton("RESET",    icon: "exclamationmark.triangle", tab: .reset)
-            tabSeparator()
-            tabButton("QA",       icon: "checkmark.seal.fill",      tab: .qa)
-            tabSeparator()
-            tabButton("SIM",      icon: "figure.run",               tab: .sim)
         }
-        .frame(height: 36)
+        .frame(height: 42)
         .background(AppTheme.backgroundSecondary)
     }
 
     private func tabSeparator() -> some View {
-        Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5)
+        Rectangle().fill(AppTheme.sage.opacity(0.14)).frame(width: 0.5)
     }
 
     private func tabButton(_ label: String, icon: String, tab: DevTab) -> some View {
-        Button(action: { activeTab = tab }) {
-            HStack(spacing: 5) {
+        let isActive = activeTab == tab
+        let isReset  = tab == .reset
+        let fgColor: Color = isActive
+            ? (isReset ? AppTheme.danger : AppTheme.accentPrimary)
+            : AppTheme.textSecondary.opacity(0.50)
+        return Button(action: {
+            withAnimation(.easeInOut(duration: 0.14)) { activeTab = tab }
+        }) {
+            VStack(spacing: 3) {
                 Image(systemName: icon)
-                    .font(.system(size: 9, weight: .semibold))
-                TechLabel(
-                    text: label,
-                    color: activeTab == tab ? AppTheme.accentPrimary : AppTheme.textSecondary
-                )
+                    .font(.system(size: 10, weight: isActive ? .bold : .regular))
+                Text(label)
+                    .font(AppTheme.mono(6, weight: isActive ? .bold : .regular))
+                    .kerning(0.5)
             }
+            .foregroundStyle(fgColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(activeTab == tab ? AppTheme.accentPrimary.opacity(0.08) : Color.clear)
+            .background(isActive
+                ? (isReset ? AppTheme.danger.opacity(0.06) : AppTheme.accentPrimary.opacity(0.07))
+                : Color.clear)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(isActive ? fgColor : Color.clear)
+                    .frame(height: 1.5)
+            }
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: - STATE tab
+    // MARK: - OVERVIEW tab
 
-    private var statePanel: some View {
+    private var overviewPanel: some View {
         ScrollView {
             VStack(spacing: 0) {
-                progressionSection
+                systemHealthSection
                 TechDivider()
-                monetizationSection
+                progressionSection
                 TechDivider()
                 coherenceSection
                 TechDivider()
@@ -425,6 +567,157 @@ struct DevMenuView: View {
                 TechDivider()
                 sectorPassGrid
             }
+        }
+    }
+
+    // MARK: - System Health
+
+    private var systemHealthSection: some View {
+        _ = refreshID
+        let prog = profile.progression
+
+        // ── Progression coherence ──────────────────────────────────────────────
+        let missingPasses = SpatialRegion.catalog.filter { s in
+            !PassStore.hasPass(for: s.id - 1) && s.levels.allSatisfy { profile.hasCompleted(levelId: $0.id) }
+        }
+        let devGranted = SpatialRegion.catalog.filter { s in
+            PassStore.hasPass(for: s.id - 1) && !s.levels.allSatisfy { profile.hasCompleted(levelId: $0.id) }
+        }
+        let cohStatus: QAStatus = missingPasses.isEmpty && devGranted.isEmpty ? .pass
+                                : !missingPasses.isEmpty ? .fail : .warning
+        let cohDetail: String   = missingPasses.isEmpty && devGranted.isEmpty
+                                ? "LVL \(prog.playerLevel) · S\(prog.currentSector.id)"
+                                : (!missingPasses.isEmpty ? "\(missingPasses.count) PASS MISSING" : "\(devGranted.count) DEV-GRANTED")
+
+        // ── Story assets ───────────────────────────────────────────────────────
+        let assetStat: QAStatus
+        let assetDetail: String
+        if let r = assetValidation {
+            assetStat  = r.isValid ? .pass : .fail
+            assetDetail = r.isValid ? "ALL \(r.checkedCount) OK" : "\(r.missingAssets.count)/\(r.checkedCount) MISSING"
+        } else {
+            assetStat  = .warning
+            assetDetail = "NOT CHECKED"
+        }
+
+        // ── Game Center ────────────────────────────────────────────────────────
+        let gcStat: QAStatus  = gcManager.isAuthenticated ? .pass : .warning
+        let gcDetail: String  = gcManager.isAuthenticated
+                              ? gcManager.displayName.isEmpty ? "AUTHENTICATED" : gcManager.displayName
+                              : "NOT AUTHENTICATED"
+
+        // ── StoreKit ───────────────────────────────────────────────────────────
+        let skStat: QAStatus
+        let skDetail: String
+        switch storeKit.purchaseState {
+        case .idle:       skStat = storeKit.product != nil ? .pass : .warning
+                          skDetail = storeKit.product.map { $0.displayPrice } ?? "NO PRODUCT"
+        case .failed:     skStat = .fail;    skDetail = "PURCHASE FAILED"
+        case .success:    skStat = .pass;    skDetail = "PURCHASE OK"
+        default:          skStat = .warning; skDetail = "LOADING…"
+        }
+
+        // ── Validation (DEBUG only) ────────────────────────────────────────────
+        #if DEBUG
+        let validStat: QAStatus
+        let validDetail: String
+        if isValidating {
+            validStat  = .warning; validDetail = "RUNNING…"
+        } else if validationReports.isEmpty {
+            validStat  = .warning; validDetail = "NOT RUN"
+        } else {
+            let issues = validationReports.filter { !$0.isSolvable || !$0.warnings.isEmpty || $0.isTrivial }
+            validStat  = issues.isEmpty ? .pass : .warning
+            validDetail = issues.isEmpty
+                ? "ALL \(validationReports.count) OK"
+                : "\(issues.count) ISSUES IN \(validationReports.count)"
+        }
+        #else
+        let validStat  = QAStatus.warning
+        let validDetail = "DEBUG ONLY"
+        #endif
+
+        // ── Last QA ────────────────────────────────────────────────────────────
+        let qaStat: QAStatus
+        let qaDetail: String
+        if qaRunner.isRunning {
+            qaStat  = .warning; qaDetail = "RUNNING…"
+        } else if let s = qaRunner.summary {
+            qaStat  = s.overallStatus
+            qaDetail = "\(s.passes)/\(s.total) · \(s.failures)F \(s.warnings)W"
+        } else {
+            qaStat  = .warning; qaDetail = "NOT RUN"
+        }
+
+        return VStack(spacing: 0) {
+            sectionHeader("SYSTEM HEALTH")
+            LazyVGrid(
+                columns: [GridItem(.flexible()), GridItem(.flexible())],
+                spacing: 0
+            ) {
+                healthCell("PROGRESSION",  status: cohStatus,   detail: cohDetail)
+                healthCell("STORY ASSETS", status: assetStat,   detail: assetDetail)
+                healthCell("GAME CENTER",  status: gcStat,       detail: gcDetail)
+                healthCell("STOREKIT",     status: skStat,       detail: skDetail)
+                healthCell("VALIDATION",   status: validStat,    detail: validDetail)
+                healthCell("LAST QA",      status: qaStat,       detail: qaDetail)
+            }
+            .padding(.vertical, 4)
+
+            // Run QA shortcut
+            HStack(spacing: 8) {
+                scenarioBtn("RUN QUICK QA", icon: "checkmark.seal.fill",
+                            color: qaStat == .fail ? AppTheme.danger : AppTheme.sage) {
+                    activeTab = .qa
+                    Task { await qaRunner.runQuick() }
+                }
+                scenarioBtn("VALIDATE ASSETS", icon: "checklist", color: AppTheme.accentPrimary) {
+                    assetValidation = StoryAssetValidator.validate()
+                    showToast(
+                        assetValidation!.isValid
+                            ? "✓ All \(assetValidation!.checkedCount) assets present"
+                            : "✗ \(assetValidation!.missingAssets.count) missing",
+                        style: assetValidation!.isValid ? .success : .fail
+                    )
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+        }
+        .background(AppTheme.surface)
+    }
+
+    private func healthCell(_ label: String, status: QAStatus, detail: String) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: status.systemIcon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(status.color)
+            VStack(alignment: .leading, spacing: 3) {
+                TechLabel(text: label, color: AppTheme.textSecondary.opacity(0.55))
+                Text(detail)
+                    .font(AppTheme.mono(8, weight: .bold))
+                    .foregroundStyle(status.color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 11)
+        .background(status == .fail    ? AppTheme.danger.opacity(0.05)
+                  : status == .warning ? Color.orange.opacity(0.04)
+                  : Color.clear)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(AppTheme.sage.opacity(0.08)).frame(height: 0.5)
+        }
+        .overlay(alignment: .trailing) {
+            Rectangle().fill(AppTheme.sage.opacity(0.08)).frame(width: 0.5)
+        }
+    }
+
+    // MARK: - MONEY tab
+
+    private var moneyPanel: some View {
+        ScrollView {
+            monetizationSection
         }
     }
 
@@ -614,10 +907,12 @@ struct DevMenuView: View {
                     ) {
                         store.setPremium(!isPremium)
                         refreshID = UUID()
+                        showToast(isPremium ? "Plan → FREE" : "Plan → PREMIUM", style: .info)
                     }
                     scenarioBtn("RESET DAILY", icon: "arrow.counterclockwise", color: AppTheme.sage) {
                         store.resetDailyCount()
                         refreshID = UUID()
+                        showToast("Daily count reset")
                     }
                     ForEach(0...limit, id: \.self) { n in
                         scenarioBtn("SET \(n)/\(limit)", icon: "number",
@@ -959,11 +1254,11 @@ struct DevMenuView: View {
                 scenarioBtn("SYNC PASSES", icon: "arrow.triangle.2.circlepath", color: AppTheme.accentPrimary) {
                     ProgressionStore.devSyncPasses()
                     refreshID = UUID()
+                    showToast("Passes synced")
                 }
                 scenarioBtn("REMOVE LATEST PASS", icon: "minus.circle", color: AppTheme.danger) {
                     if let last = PassStore.all.last {
                         let passes = PassStore.all.filter { $0.id != last.id }
-                        // Re-save via reset + re-issue remaining
                         PassStore.reset()
                         let p = ProgressionStore.profile
                         for pass in passes {
@@ -973,6 +1268,9 @@ struct DevMenuView: View {
                         }
                         TicketCache.shared.invalidateAll()
                         refreshID = UUID()
+                        showToast("Pass removed: \(last.planetName)", style: .warning)
+                    } else {
+                        showToast("No pass to remove", style: .info)
                     }
                 }
             }
@@ -992,12 +1290,12 @@ struct DevMenuView: View {
                 Image(systemName: icon).font(.system(size: 9, weight: .semibold))
                 Text(label).font(AppTheme.mono(8, weight: .bold)).kerning(0.6)
             }
-            .frame(maxWidth: .infinity).frame(height: 34)
+            .frame(maxWidth: .infinity).frame(height: 36)
             .foregroundStyle(color)
-            .background(color.opacity(0.07))
+            .background(color.opacity(0.08))
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                    .strokeBorder(color.opacity(0.25), lineWidth: 0.5)
+                    .strokeBorder(color.opacity(0.32), lineWidth: 0.6)
             )
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
@@ -1116,6 +1414,50 @@ struct DevMenuView: View {
     }
 
     // MARK: - MISSIONS tab
+
+    private var missionJumpBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(missionIDInput.isEmpty ? AppTheme.textSecondary : AppTheme.accentPrimary)
+            TextField("JUMP TO MISSION #", text: $missionIDInput)
+                .font(AppTheme.mono(10, weight: .bold))
+                .foregroundStyle(AppTheme.textPrimary)
+                .keyboardType(.numberPad)
+                .autocorrectionDisabled()
+            if !missionIDInput.isEmpty {
+                #if DEBUG
+                Button(action: {
+                    if let id = Int(missionIDInput) {
+                        filterDifficulty = nil
+                        filterObjective  = nil
+                        filterStatus     = .all
+                        jumpToLevelID    = id
+                    }
+                }) {
+                    Text("GO")
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .foregroundStyle(AppTheme.accentPrimary)
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(AppTheme.accentPrimary.opacity(0.10))
+                        .overlay(RoundedRectangle(cornerRadius: 3)
+                            .strokeBorder(AppTheme.accentPrimary.opacity(0.30), lineWidth: 0.5))
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
+                .buttonStyle(.plain)
+                #endif
+                Button(action: { missionIDInput = "" }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.40))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .background(AppTheme.backgroundSecondary)
+        .overlay(alignment: .bottom) { TechDivider() }
+    }
 
     private var filterBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -2593,10 +2935,22 @@ struct DevMenuView: View {
                 scenarioBtn("MARK ALL SEEN", icon: "checkmark.circle", color: AppTheme.sage) {
                     StoryStore.markAllSeen()
                     storyRefreshID = UUID()
+                    showToast("\(StoryBeatCatalog.beats.count) beats marked seen")
+                }
+                scenarioBtn("REPLAY LAST", icon: "backward.end.fill", color: Color(hex: "7EC8E3")) {
+                    let seenSet = StoryStore.seenIDs
+                    if let beat = StoryBeatCatalog.beats.last(where: { seenSet.contains($0.id) }) {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                            previewingBeat = beat
+                        }
+                    } else {
+                        showToast("No beats seen yet", style: .info)
+                    }
                 }
                 scenarioBtn("RESET ALL", icon: "arrow.counterclockwise", color: AppTheme.danger) {
                     StoryStore.reset()
                     storyRefreshID = UUID()
+                    showToast("Story beats reset", style: .warning)
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
@@ -2751,6 +3105,29 @@ struct DevMenuView: View {
         let beats   = filteredStoryBeats
 
         return VStack(spacing: 0) {
+            // ── Search field ──────────────────────────────────────────────────
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(storySearch.isEmpty ? AppTheme.textSecondary : AppTheme.accentPrimary)
+                TextField("SEARCH TITLE · ID · BODY", text: $storySearch)
+                    .font(AppTheme.mono(10, weight: .bold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                if !storySearch.isEmpty {
+                    Button(action: { storySearch = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.40))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(AppTheme.backgroundSecondary)
+            .overlay(alignment: .bottom) { TechDivider() }
+
             sectionHeader("BEAT CATALOG  ·  \(beats.count) / \(StoryBeatCatalog.beats.count)")
 
             if beats.isEmpty {
@@ -2789,6 +3166,13 @@ struct DevMenuView: View {
                     .lineLimit(1)
 
                 Spacer()
+
+                // Image asset indicator
+                Image(systemName: beat.imageName != nil ? "photo.fill" : "photo")
+                    .font(.system(size: 7))
+                    .foregroundStyle(beat.imageName != nil
+                        ? accent.opacity(isSeen ? 0.35 : 0.65)
+                        : AppTheme.textSecondary.opacity(0.25))
 
                 Text(isSeen ? "SEEN" : "UNSEEN")
                     .font(AppTheme.mono(6, weight: .bold)).kerning(0.5)
@@ -2848,6 +3232,11 @@ struct DevMenuView: View {
             .padding(.horizontal, 14).padding(.vertical, 8)
         }
         .background(isSeen ? AppTheme.backgroundPrimary : AppTheme.surface)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(isSeen ? AppTheme.sage.opacity(0.12) : accent)
+                .frame(width: 2)
+        }
     }
 
     private func storyActionBtn(_ icon: String, _ label: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -2857,10 +3246,10 @@ struct DevMenuView: View {
                 Text(label).font(AppTheme.mono(7, weight: .bold)).kerning(0.4)
             }
             .foregroundStyle(color)
-            .padding(.horizontal, 7).padding(.vertical, 4)
-            .background(color.opacity(0.08))
-            .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(color.opacity(0.25), lineWidth: 0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 2))
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(color.opacity(0.09))
+            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(color.opacity(0.32), lineWidth: 0.6))
+            .clipShape(RoundedRectangle(cornerRadius: 3))
         }
         .buttonStyle(.plain)
     }
@@ -2870,7 +3259,14 @@ struct DevMenuView: View {
     private var filteredStoryBeats: [StoryBeat] {
         _ = storyRefreshID
         let seenSet = StoryStore.seenIDs
+        let q = storySearch.lowercased().trimmingCharacters(in: .whitespaces)
         return StoryBeatCatalog.beats.filter { beat in
+            if !q.isEmpty {
+                let hit = beat.title.lowercased().contains(q)
+                       || beat.id.lowercased().contains(q)
+                       || beat.body.lowercased().contains(q)
+                if !hit { return false }
+            }
             switch storySeenFilter {
             case .all:    break
             case .seen:   if !seenSet.contains(beat.id) { return false }
@@ -2930,29 +3326,46 @@ struct DevMenuView: View {
     private var resetPanel: some View {
         ScrollView {
             VStack(spacing: 0) {
-                sectionHeader("DANGER ZONE")
-
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(AppTheme.danger)
-                    TechLabel(
-                        text: "ALL ACTIONS ARE PERMANENT AND CANNOT BE UNDONE",
-                        color: AppTheme.danger.opacity(0.80)
-                    )
+                // ── Danger banner ─────────────────────────────────────────
+                VStack(spacing: 6) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(AppTheme.danger)
+                        Text("DANGER ZONE")
+                            .font(AppTheme.mono(13, weight: .black))
+                            .foregroundStyle(AppTheme.danger)
+                            .kerning(2)
+                    }
+                    Text("All actions are permanent and cannot be undone.\nA confirmation dialog will appear before any action executes.")
+                        .font(AppTheme.mono(8))
+                        .foregroundStyle(AppTheme.danger.opacity(0.65))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(3)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(AppTheme.danger.opacity(0.06))
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16).padding(.vertical, 16)
+                .background(AppTheme.danger.opacity(0.07))
                 .overlay(alignment: .bottom) { TechDivider() }
+
+                // ── NUCLEAR — full wipe ───────────────────────────────────
+                sectionHeaderDanger("NUCLEAR — FULL WIPE")
 
                 VStack(spacing: 8) {
                     resetRow(
                         "RESET ALL PROGRESS",
-                        sub: "level · missions · passes · mechanics",
+                        sub: "level · missions · passes · mechanics · story · onboarding",
                         color: AppTheme.danger
                     ) { pendingReset = .all }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
 
+                TechDivider()
+
+                // ── SELECTIVE — partial resets ────────────────────────────
+                sectionHeader("SELECTIVE")
+
+                VStack(spacing: 8) {
                     resetRow(
                         "RESET MISSION DATA",
                         sub: "clears completions, keeps level",
@@ -2967,18 +3380,17 @@ struct DevMenuView: View {
 
                     resetRow(
                         "RESET MECHANIC UNLOCKS",
-                        sub: "all 8 messages will show again",
+                        sub: "all 8 unlock messages will show again",
                         color: AppTheme.sage
                     ) { pendingReset = .mechanics }
 
                     resetRow(
                         "RESET STORY BEATS",
-                        sub: "all \(StoryBeatCatalog.beats.count) beats fire again from triggers",
+                        sub: "all \(StoryBeatCatalog.beats.count) beats fire again from their triggers",
                         color: Color(hex: "7EC8E3")
                     ) { pendingReset = .story }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+                .padding(.horizontal, 16).padding(.vertical, 12)
             }
         }
     }
@@ -2991,8 +3403,22 @@ struct DevMenuView: View {
             TechLabel(text: title, color: AppTheme.accentPrimary)
             Spacer()
         }
-        .padding(.horizontal, 16).padding(.vertical, 8)
+        .padding(.horizontal, 16).padding(.vertical, 9)
         .background(AppTheme.backgroundSecondary)
+        .overlay(alignment: .bottom) { TechDivider() }
+    }
+
+    private func sectionHeaderDanger(_ title: String) -> some View {
+        HStack(spacing: 7) {
+            Rectangle().fill(AppTheme.danger).frame(width: 2, height: 10)
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(AppTheme.danger)
+            TechLabel(text: title, color: AppTheme.danger)
+            Spacer()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .background(AppTheme.danger.opacity(0.06))
         .overlay(alignment: .bottom) { TechDivider() }
     }
 
@@ -3007,8 +3433,8 @@ struct DevMenuView: View {
     }
 
     private func miniStat(_ label: String, _ value: String) -> some View {
-        VStack(spacing: 2) {
-            TechLabel(text: label, color: AppTheme.textSecondary)
+        VStack(spacing: 3) {
+            TechLabel(text: label, color: AppTheme.textSecondary.opacity(0.55))
             Text(value)
                 .font(AppTheme.mono(9, weight: .bold))
                 .foregroundStyle(AppTheme.sage)
@@ -3059,10 +3485,23 @@ struct DevMenuView: View {
 
     // MARK: - Actions
 
+    private func showToast(_ message: String, style: DevToast.Style = .success) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            devToast = DevToast(message: message, style: style)
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(2400))
+            await MainActor.run {
+                withAnimation(.easeOut(duration: 0.25)) { devToast = nil }
+            }
+        }
+    }
+
     private func applyLevelJump() {
         ProgressionStore.devSetLevel(devLevel)
         TicketCache.shared.invalidateAll()
         refreshID = UUID()
+        showToast("LVL \(devLevel) · \(rankLabel(for: devLevel))")
     }
 
     private func executeReset(_ action: ResetAction) {
@@ -3074,17 +3513,22 @@ struct DevMenuView: View {
             EntitlementStore.shared.setPremium(false)
             EntitlementStore.shared.resetDailyCount()
             TicketCache.shared.invalidateAll()
+            showToast("All progress cleared", style: .warning)
         case .missions:
             ProgressionStore.devResetMissions()
             TicketCache.shared.invalidateAll()
+            showToast("Mission data cleared")
         case .passes:
             PassStore.reset()
             TicketCache.shared.invalidateAll()
+            showToast("Planet passes cleared")
         case .mechanics:
             MechanicUnlockStore.reset()
+            showToast("Mechanic unlocks cleared")
         case .story:
             StoryStore.reset()
             storyRefreshID = UUID()
+            showToast("Story beats reset")
         }
         devLevel     = ProgressionStore.profile.level
         refreshID    = UUID()
