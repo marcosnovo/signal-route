@@ -864,7 +864,7 @@ struct PlanetTicketView: View {
                         }
                         Image(systemName: revealed ? "square.and.arrow.up" : "lock")
                             .font(.system(size: 11, weight: revealed ? .bold : .regular))
-                        Text(S.sharePass)
+                        Text(S.shareProgress)
                             .font(AppTheme.mono(12, weight: .bold))
                             .kerning(2)
                     }
@@ -1058,7 +1058,8 @@ struct PlanetTicketView: View {
             // Brief pause: lets the border flash play and idle settle before the sheet opens.
             try? await Task.sleep(nanoseconds: 300_000_000)
 
-            let vc = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+            let shareText = S.shareProgressText(level: profile.level)
+            let vc = UIActivityViewController(activityItems: [shareText, image], applicationActivities: nil)
             guard let windowScene = UIApplication.shared.connectedScenes
                 .compactMap({ $0 as? UIWindowScene })
                 .first(where: { $0.activationState == .foregroundActive }),

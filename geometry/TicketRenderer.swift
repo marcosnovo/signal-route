@@ -35,7 +35,7 @@ enum TicketRenderer {
 
         // Layer order: background → planet → astronaut → bars → text
         drawBackground(in: size)
-        drawPlanetVisual(accent: accent, in: size)
+        drawPlanetVisual(planetIndex: pass.planetIndex, accent: accent, in: size)
         drawAstronautSilhouette(accent: accent, in: size)
         drawLeftBar(accent: accent, height: size.height)
         drawTopBar(pass: pass, planet: planet, in: size, accent: accent)
@@ -48,148 +48,202 @@ enum TicketRenderer {
 
     // MARK: - Planet Visual
 
-    /// Astronomically-treated planetary sphere — CGGradient-based 3D illusion.
-    /// Light source upper-left. Lit hemisphere + terminator + night shadow + specular.
-    /// No craters, no latitude lines, no cartoon shapes.
-    private static func drawPlanetVisual(accent: UIColor, in size: CGSize) {
+    /// Cinematic planet integration — no circular mask.
+    ///
+    /// **Official asset path** (all current planets):
+    ///   The image fills the full 1080×1080 canvas, then two directional gradients
+    ///   fade it back toward the ticket background colour:
+    ///     • Horizontal — left side fully dark (text zone), fades to transparent at ~62%
+    ///     • Vertical   — bottom fully dark (stats zone), fades to transparent above ~52%
+    ///   A subtle accent-tinted atmospheric overlay ties the image to the pass colour.
+    ///   A soft right-edge glow replaces the visual presence the old circular ring gave.
+    ///
+    /// **Procedural fallback** (no asset assigned):
+    ///   Original CGGradient sphere — lit hemisphere + terminator + specular + limb.
+    ///   Preserved as a safety net; no current planet uses it.
+    private static func drawPlanetVisual(planetIndex: Int, accent: UIColor, in size: CGSize) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
-
-        // Planet: large arc dominant on right, partially off-canvas
-        // cx=1032 means left edge at ≈592 — planet occupies ~45% of canvas width
-        let cx: CGFloat = size.width  * 0.956   // ≈1032
-        let cy: CGFloat = size.height * 0.252   // ≈272
-        let r:  CGFloat = 440
-
         let colorSpace = CGColorSpaceCreateDeviceRGB()
+        // Matches drawBackground's fill so gradient edges are seamless.
+        let bg = UIColor(red: 0.040, green: 0.047, blue: 0.059, alpha: 1)
+        let fullRect = CGRect(origin: .zero, size: size)
 
-        // ── Atmospheric glow ring ──────────────────────────────────────────────────
-        // Even-odd clipping: outer ellipse minus planet body = ring region
-        let atmosOuter: CGFloat = r + 90
-        ctx.saveGState()
-        let ringPath = CGMutablePath()
-        ringPath.addEllipse(in: CGRect(x: cx - atmosOuter, y: cy - atmosOuter,
-                                       width: atmosOuter * 2, height: atmosOuter * 2))
-        ringPath.addEllipse(in: CGRect(x: cx - r, y: cy - r,
-                                       width: r * 2, height: r * 2))
-        ctx.addPath(ringPath)
-        ctx.clip(using: .evenOdd)
+        if let img = PlanetVisualResolver.image(for: planetIndex) {
+            // ── 1. Full-canvas planet image ───────────────────────────────────────
+            // Square source drawn into the square canvas — no distortion, no crop.
+            drawImageAspectFill(img, in: fullRect)
 
-        // Radial gradient from planet edge outward — peaks near the planet rim
-        let atmosColors: [CGColor] = [
-            accent.withAlphaComponent(0.0).cgColor,
-            accent.withAlphaComponent(0.20).cgColor,
-            accent.withAlphaComponent(0.0).cgColor,
-        ]
-        let atmosLocations: [CGFloat] = [0.0, 0.32, 1.0]
-        if let grad = CGGradient(colorsSpace: colorSpace,
-                                  colors: atmosColors as CFArray,
-                                  locations: atmosLocations) {
-            ctx.drawRadialGradient(grad,
-                                   startCenter: CGPoint(x: cx, y: cy), startRadius: r - 2,
-                                   endCenter:   CGPoint(x: cx, y: cy), endRadius:   atmosOuter,
-                                   options: [])
+            // ── 2. Horizontal fade — text protection ──────────────────────────────
+            // x=0–35%: fully covered  →  x=35–62%: fade  →  x=62%+: transparent
+            if let hGrad = CGGradient(
+                colorsSpace: colorSpace,
+                colors: [bg.withAlphaComponent(1.0).cgColor,
+                         bg.withAlphaComponent(1.0).cgColor,
+                         bg.withAlphaComponent(0.0).cgColor] as CFArray,
+                locations: [0.0, 0.35, 0.62]
+            ) {
+                ctx.drawLinearGradient(hGrad,
+                    start: .zero, end: CGPoint(x: size.width, y: 0),
+                    options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+            }
+
+            // ── 3. Vertical fade — stats/footer protection ────────────────────────
+            // y=0–52%: transparent  →  y=52–72%: fade  →  y=72%+: fully covered
+            if let vGrad = CGGradient(
+                colorsSpace: colorSpace,
+                colors: [bg.withAlphaComponent(0.0).cgColor,
+                         bg.withAlphaComponent(0.0).cgColor,
+                         bg.withAlphaComponent(0.80).cgColor,
+                         bg.withAlphaComponent(1.0).cgColor] as CFArray,
+                locations: [0.0, 0.52, 0.72, 1.0]
+            ) {
+                ctx.drawLinearGradient(vGrad,
+                    start: .zero, end: CGPoint(x: 0, y: size.height),
+                    options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+            }
+
+            // ── 4. Atmospheric tint ───────────────────────────────────────────────
+            // Thin planet-colour wash binds the image to the pass's accent palette.
+            accent.withAlphaComponent(0.13).setFill()
+            UIRectFill(fullRect)
+
+            // ── 5. Right-edge ambient glow ────────────────────────────────────────
+            // Replaces the visual presence the old circular atmosphere ring gave.
+            if let glow = CGGradient(
+                colorsSpace: colorSpace,
+                colors: [accent.withAlphaComponent(0.0).cgColor,
+                         accent.withAlphaComponent(0.10).cgColor] as CFArray,
+                locations: [0.0, 1.0]
+            ) {
+                ctx.drawLinearGradient(glow,
+                    start: CGPoint(x: size.width * 0.60, y: 0),
+                    end: CGPoint(x: size.width, y: 0),
+                    options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+            }
+
+        } else {
+            // ── Procedural fallback: CGGradient sphere ────────────────────────────
+            let cx: CGFloat = size.width  * 0.956
+            let cy: CGFloat = size.height * 0.252
+            let r:  CGFloat = 440
+            let bodyRect    = CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
+
+            // Atmospheric glow ring (even-odd clip)
+            let atmosOuter: CGFloat = r + 90
+            ctx.saveGState()
+            let ringPath = CGMutablePath()
+            ringPath.addEllipse(in: CGRect(x: cx - atmosOuter, y: cy - atmosOuter,
+                                           width: atmosOuter * 2, height: atmosOuter * 2))
+            ringPath.addEllipse(in: bodyRect)
+            ctx.addPath(ringPath)
+            ctx.clip(using: .evenOdd)
+            if let grad = CGGradient(colorsSpace: colorSpace,
+                                      colors: [accent.withAlphaComponent(0.0).cgColor,
+                                               accent.withAlphaComponent(0.20).cgColor,
+                                               accent.withAlphaComponent(0.0).cgColor] as CFArray,
+                                      locations: [0.0, 0.32, 1.0]) {
+                ctx.drawRadialGradient(grad,
+                                       startCenter: CGPoint(x: cx, y: cy), startRadius: r - 2,
+                                       endCenter:   CGPoint(x: cx, y: cy), endRadius:   atmosOuter,
+                                       options: [])
+            }
+            ctx.restoreGState()
+
+            // Planet body (circle clip)
+            ctx.saveGState()
+            ctx.addEllipse(in: bodyRect)
+            ctx.clip()
+            UIColor(red: 0.022, green: 0.026, blue: 0.040, alpha: 1).setFill()
+            UIRectFill(bodyRect)
+
+            let lightDx: CGFloat = -0.58
+            let lightDy: CGFloat = -0.65
+            let lightX = cx + lightDx * r
+            let lightY = cy + lightDy * r
+            if let litGrad = CGGradient(
+                colorsSpace: colorSpace,
+                colors: [accent.withAlphaComponent(0.70).cgColor,
+                         accent.withAlphaComponent(0.32).cgColor,
+                         accent.withAlphaComponent(0.0).cgColor] as CFArray,
+                locations: [0.0, 0.40, 0.82]
+            ) {
+                ctx.drawRadialGradient(litGrad,
+                                       startCenter: CGPoint(x: lightX, y: lightY), startRadius: 0,
+                                       endCenter:   CGPoint(x: cx, y: cy),         endRadius:   r * 1.25,
+                                       options: [.drawsAfterEndLocation])
+            }
+            let termStart = CGPoint(x: cx - 0.12 * r, y: cy - 0.12 * r)
+            let termEnd   = CGPoint(x: cx + 0.68 * r, y: cy + 0.74 * r)
+            if let nightGrad = CGGradient(
+                colorsSpace: colorSpace,
+                colors: [UIColor.black.withAlphaComponent(0.0).cgColor,
+                         UIColor.black.withAlphaComponent(0.58).cgColor,
+                         UIColor.black.withAlphaComponent(0.92).cgColor] as CFArray,
+                locations: [0.0, 0.44, 1.0]
+            ) {
+                ctx.drawLinearGradient(nightGrad, start: termStart, end: termEnd,
+                                       options: [.drawsAfterEndLocation])
+            }
+            let specX = cx + lightDx * r * 0.46
+            let specY = cy + lightDy * r * 0.46
+            if let specGrad = CGGradient(
+                colorsSpace: colorSpace,
+                colors: [UIColor.white.withAlphaComponent(0.48).cgColor,
+                         UIColor.white.withAlphaComponent(0.0).cgColor] as CFArray,
+                locations: [0.0, 1.0]
+            ) {
+                ctx.drawRadialGradient(specGrad,
+                                       startCenter: CGPoint(x: specX, y: specY), startRadius: 0,
+                                       endCenter:   CGPoint(x: specX, y: specY), endRadius:   r * 0.24,
+                                       options: [])
+            }
+            if let limbGrad = CGGradient(
+                colorsSpace: colorSpace,
+                colors: [UIColor.black.withAlphaComponent(0.0).cgColor,
+                         UIColor.black.withAlphaComponent(0.0).cgColor,
+                         UIColor.black.withAlphaComponent(0.48).cgColor] as CFArray,
+                locations: [0.0, 0.62, 1.0]
+            ) {
+                ctx.drawRadialGradient(limbGrad,
+                                       startCenter: CGPoint(x: cx, y: cy), startRadius: 0,
+                                       endCenter:   CGPoint(x: cx, y: cy), endRadius:   r,
+                                       options: [.drawsAfterEndLocation])
+            }
+            ctx.restoreGState()
+            ctx.setStrokeColor(accent.withAlphaComponent(0.20).cgColor)
+            ctx.setLineWidth(1.5)
+            ctx.addEllipse(in: bodyRect)
+            ctx.strokePath()
+            ctx.setStrokeColor(accent.withAlphaComponent(0.18).cgColor)
+            ctx.setLineWidth(8)
+            ctx.addArc(center: CGPoint(x: cx, y: cy), radius: r - 4,
+                       startAngle: .pi * 0.52, endAngle: .pi * 1.50, clockwise: false)
+            ctx.strokePath()
         }
-        ctx.restoreGState()
+    }
 
-        // ── Planet body ────────────────────────────────────────────────────────────
-        ctx.saveGState()
-        ctx.addEllipse(in: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2))
-        ctx.clip()
-
-        let bodyRect = CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)
-
-        // 1. Deep-space dark base
-        UIColor(red: 0.022, green: 0.026, blue: 0.040, alpha: 1).setFill()
-        UIRectFill(bodyRect)
-
-        // 2. Lit hemisphere — radial gradient from upper-left light source
-        //    Strong accent at the lit pole, softening toward the terminator
-        let lightDx: CGFloat = -0.58
-        let lightDy: CGFloat = -0.65
-        let lightX = cx + lightDx * r
-        let lightY = cy + lightDy * r
-
-        let litColors: [CGColor] = [
-            accent.withAlphaComponent(0.70).cgColor,
-            accent.withAlphaComponent(0.32).cgColor,
-            accent.withAlphaComponent(0.0).cgColor,
-        ]
-        let litLocations: [CGFloat] = [0.0, 0.40, 0.82]
-        if let litGrad = CGGradient(colorsSpace: colorSpace,
-                                     colors: litColors as CFArray,
-                                     locations: litLocations) {
-            ctx.drawRadialGradient(litGrad,
-                                   startCenter: CGPoint(x: lightX, y: lightY), startRadius: 0,
-                                   endCenter:   CGPoint(x: cx, y: cy),         endRadius:   r * 1.25,
-                                   options: [.drawsAfterEndLocation])
+    /// Draws `image` scaled to aspect-fill `rect`, centring the crop.
+    /// Used to place official planet images inside the circular planet clip region.
+    private static func drawImageAspectFill(_ image: UIImage, in rect: CGRect) {
+        let imgSize = image.size
+        guard imgSize.width > 0, imgSize.height > 0 else { return }
+        let imgAspect  = imgSize.width / imgSize.height
+        let rectAspect = rect.width / rect.height
+        let drawRect: CGRect
+        if imgAspect > rectAspect {
+            // Image is wider: crop left/right, fill height
+            let h = rect.height
+            let w = h * imgAspect
+            drawRect = CGRect(x: rect.minX - (w - rect.width) / 2,
+                              y: rect.minY, width: w, height: h)
+        } else {
+            // Image is taller: crop top/bottom, fill width
+            let w = rect.width
+            let h = w / imgAspect
+            drawRect = CGRect(x: rect.minX, y: rect.minY - (h - rect.height) / 2,
+                              width: w, height: h)
         }
-
-        // 3. Night side — linear gradient terminator sweeping from centre toward lower-right
-        let termStart = CGPoint(x: cx - 0.12 * r, y: cy - 0.12 * r)
-        let termEnd   = CGPoint(x: cx + 0.68 * r, y: cy + 0.74 * r)
-        let nightColors: [CGColor] = [
-            UIColor.black.withAlphaComponent(0.0).cgColor,
-            UIColor.black.withAlphaComponent(0.58).cgColor,
-            UIColor.black.withAlphaComponent(0.92).cgColor,
-        ]
-        let nightLocations: [CGFloat] = [0.0, 0.44, 1.0]
-        if let nightGrad = CGGradient(colorsSpace: colorSpace,
-                                       colors: nightColors as CFArray,
-                                       locations: nightLocations) {
-            ctx.drawLinearGradient(nightGrad,
-                                   start: termStart, end: termEnd,
-                                   options: [.drawsAfterEndLocation])
-        }
-
-        // 4. Specular highlight — concentrated bright point at the light reflection spot
-        let specX = cx + lightDx * r * 0.46
-        let specY = cy + lightDy * r * 0.46
-        let specColors: [CGColor] = [
-            UIColor.white.withAlphaComponent(0.48).cgColor,
-            UIColor.white.withAlphaComponent(0.0).cgColor,
-        ]
-        let specLocations: [CGFloat] = [0.0, 1.0]
-        if let specGrad = CGGradient(colorsSpace: colorSpace,
-                                      colors: specColors as CFArray,
-                                      locations: specLocations) {
-            ctx.drawRadialGradient(specGrad,
-                                   startCenter: CGPoint(x: specX, y: specY), startRadius: 0,
-                                   endCenter:   CGPoint(x: specX, y: specY), endRadius:   r * 0.24,
-                                   options: [])
-        }
-
-        // 5. Limb darkening — physically correct: sphere edges appear darker because
-        //    the surface normal is nearly perpendicular to both viewer and light.
-        //    A radial gradient from center (clear) to edge (dark) achieves this.
-        let limbColors: [CGColor] = [
-            UIColor.black.withAlphaComponent(0.0).cgColor,
-            UIColor.black.withAlphaComponent(0.0).cgColor,
-            UIColor.black.withAlphaComponent(0.48).cgColor,
-        ]
-        let limbLocations: [CGFloat] = [0.0, 0.62, 1.0]
-        if let limbGrad = CGGradient(colorsSpace: colorSpace,
-                                      colors: limbColors as CFArray,
-                                      locations: limbLocations) {
-            ctx.drawRadialGradient(limbGrad,
-                                   startCenter: CGPoint(x: cx, y: cy), startRadius: 0,
-                                   endCenter:   CGPoint(x: cx, y: cy), endRadius:   r,
-                                   options: [.drawsAfterEndLocation])
-        }
-
-        ctx.restoreGState()
-
-        // ── Planet rim stroke ──────────────────────────────────────────────────────
-        ctx.setStrokeColor(accent.withAlphaComponent(0.20).cgColor)
-        ctx.setLineWidth(1.5)
-        ctx.addEllipse(in: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2))
-        ctx.strokePath()
-
-        // Limb brightening on the lit arc (upper-left portion)
-        ctx.setStrokeColor(accent.withAlphaComponent(0.18).cgColor)
-        ctx.setLineWidth(8)
-        ctx.addArc(center: CGPoint(x: cx, y: cy), radius: r - 4,
-                   startAngle: .pi * 0.52, endAngle: .pi * 1.50, clockwise: false)
-        ctx.strokePath()
+        image.draw(in: drawRect)
     }
 
     // MARK: - Astronaut Silhouette

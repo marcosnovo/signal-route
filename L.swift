@@ -72,7 +72,15 @@ struct AppStrings {
     // MARK: - Planet ticket
     var planetPass:           String { t("PLANET PASS",                  "PASE PLANETARIO",               "LAISSEZ-PASSER") }
     var trainingClearance:    String { t("TRAINING CLEARANCE",            "AUTORIZACIÓN DE ENTRENAMIENTO", "AUTORISATION D'ENTRAÎNEMENT") }
-    var sharePass:            String { t("SHARE PASS",                   "COMPARTIR PASE",                "PARTAGER LE LAISSEZ-PASSER") }
+    var shareProgress:        String { t("SHARE PROGRESS",               "COMPARTIR PROGRESO",            "PARTAGER LA PROGRESSION") }
+    /// Share sheet body text — personalised with the player's current level.
+    func shareProgressText(level: Int) -> String {
+        t(
+            "I reached level \(level) in SIGNAL ROUTE 🚀\nCan you go further?",
+            "He alcanzado el nivel \(level) en SIGNAL ROUTE 🚀\n¿Puedes llegar más lejos?",
+            "J'ai atteint le niveau \(level) dans SIGNAL ROUTE 🚀\nPeux-tu aller plus loin ?"
+        )
+    }
     var renderingPass:        String { t("RENDERING PASS…",              "GENERANDO PASE…",               "GÉNÉRATION DU LAISSEZ-PASSER…") }
     var preparingPass:        String { t("PREPARING PLANET PASS",        "PREPARANDO PASE PLANETARIO",    "PRÉPARATION DU LAISSEZ-PASSER") }
     var generatingCredential: String { t("GENERATING MISSION CREDENTIAL","GENERANDO CREDENCIAL DE MISIÓN","GÉNÉRATION DES ACCRÉDITATIONS") }

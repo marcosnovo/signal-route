@@ -25,8 +25,9 @@ import SwiftUI
 ///   4. Astronaut depth    — screen-blend catch-lights at helmet position; parallax −4 pt/unit → mid-plane
 ///   5. Inner shadow       — gradient darkening at top / bottom → surface curvature
 ///   6. Gloss overlay      — angled gradient whose anchors shift with tilt → fixed light source
-///   7. Specular dot       — tight radial highlight that travels with tilt
-///   8. Bevel stroke       — light top-left / dark bottom-right → machined edge
+///   7. Specular band      — wide elongated ellipse; tracks light source across wider travel range
+///   8. Specular dot       — tight radial highlight at the highlight core
+///   9. Bevel stroke       — light top-left / dark bottom-right → machined edge
 ///   9. Export border      — bright white flash on isExporting → "capture" cue
 ///  10. Tap glow           — brief white flash on tap → physical press feedback
 ///  11. Sheen sweep        — one-time diagonal flash on appear → premium reveal
@@ -81,6 +82,12 @@ struct PlanetPass3DView: View {
     /// Animated scale applied to the motion contribution.
     /// Springs to 0 during export so the card settles to its canonical rest.
     @State private var motionScale: Double = 1.0
+    /// Damping factor applied to motion during an active drag gesture.
+    /// Springs to 0.15 on drag start (drag dominates) and back to 1.0 on end.
+    @State private var motionDragScale: Double = 1.0
+    /// True while a drag gesture is active. Suppresses idle drift updates
+    /// and dampens device-motion contribution so the drag feels deterministic.
+    @State private var isDragging: Bool = false
 
     // ── Tilt parameters ───────────────────────────────────────────────────
     private let restTiltX:    Double  =  3.5
@@ -99,13 +106,42 @@ struct PlanetPass3DView: View {
     private var normY: Double { norm(tilt.height) }
 
     /// Smoothed, scaled device-motion contributions. Zero when not available.
-    private var mX: Double { motion.isAvailable ? motion.tiltX * motionScale : 0 }
-    private var mY: Double { motion.isAvailable ? motion.tiltY * motionScale : 0 }
+    /// During drag (`isDragging`), `motionDragScale` reduces the contribution to ~0.15
+    /// so the drag gesture reads cleanly without motion fighting it.
+    private var mX: Double { motion.isAvailable ? motion.tiltX * motionScale * motionDragScale : 0 }
+    private var mY: Double { motion.isAvailable ? motion.tiltY * motionScale * motionDragScale : 0 }
 
-    // Active tilt = editorial rest + drag + entry boost + idle drift + device motion
+    /// Y-axis rotation driven by horizontal drag — two zones:
+    ///
+    /// **Zone 1** (|drag| ≤ 80 pt): linear 0 → ±8°, preserving the existing
+    ///   premium tilt feel for everyday interaction.
+    ///
+    /// **Zone 2** (|drag| > 80 pt): tanh ramp toward ±108°. The hyperbolic
+    ///   tangent gives natural resistance that stiffens as the card approaches
+    ///   vertical — the back face first appears around 185–195 pt, requiring a
+    ///   clearly intentional gesture.
+    private var flipYDegrees: Double {
+        let x    = Double(tilt.width)
+        let sign: Double = x >= 0 ? 1.0 : -1.0
+        let mag  = abs(x)
+        guard mag > 0 else { return 0 }
+        if mag <= 80 {
+            return sign * (mag / 80.0) * 8.0
+        }
+        let excess = mag - 80
+        let extra  = tanh(excess / 140.0 * 2.0) * 100.0
+        return sign * (8.0 + extra)
+    }
+
+    /// True when the card has rotated past vertical and the back face is facing
+    /// the viewer. Content swaps to `backFaceLayer` at this threshold; at 90°
+    /// the card is edge-on so the transition is always invisible.
+    private var isShowingBack: Bool { abs(activeTiltY) > 90 }
+
+    // Active tilt = editorial rest + drag (flip ramp) + entry boost + idle drift + device motion
     // motion.tiltX (left/right phone tilt) drives Y rotation; tiltY drives X rotation.
     private var activeTiltX: Double { restTiltX + normY * maxTilt + entryTiltX + idleTiltX + mY * motionMaxTilt }
-    private var activeTiltY: Double { restTiltY + normX * maxTilt + entryTiltY + idleTiltY + mX * motionMaxTilt }
+    private var activeTiltY: Double { restTiltY + flipYDegrees  + entryTiltY + idleTiltY + mX * motionMaxTilt }
 
     private var glossShiftX: Double { -normX * 0.14 - mX * 0.11 }
     private var glossShiftY: Double { -normY * 0.10 - mY * 0.08 }
@@ -123,6 +159,24 @@ struct PlanetPass3DView: View {
         let dx = specularX - 0.30
         let dy = specularY - 0.18
         return max(0.30, 1.0 - sqrt(dx * dx + dy * dy) * 2.4)
+    }
+
+    // ── Specular band ─────────────────────────────────────────────────────
+    // The band uses wider travel (0.30 / 0.22) than the specular dot (0.18 / 0.12)
+    // so it sweeps more expressively across the card surface, simulating the
+    // broad reflection of a distant light source (e.g. a window or studio lamp).
+
+    /// Band centre X — rests at 0.28 (upper-left), shifts right as card tilts left.
+    private var bandX: Double { 0.28 - normX * 0.30 - mX * 0.22 }
+    /// Band centre Y — rests at 0.26, drops as card tilts down.
+    private var bandY: Double { 0.26 - normY * 0.20 - mY * 0.15 }
+
+    /// Band intensity 0.0–1.0. Peaks at rest; dims as the band drifts from its
+    /// natural upper-left position, matching the physics of surface reflection.
+    private var specularBandIntensity: Double {
+        let dx = bandX - 0.28
+        let dy = bandY - 0.26
+        return max(0.0, 1.0 - sqrt(dx * dx + dy * dy) * 2.6)
     }
 
     /// Gloss strip brightness 0.60–1.25.
@@ -152,18 +206,27 @@ struct PlanetPass3DView: View {
 
     var body: some View {
         ZStack {
-            edgeSlab             //  1
-            ticketImage          //  2
-            planetDepthLayer     //  3
-            astronautDepthLayer  //  4
-            innerShadow          //  5
-            glossOverlay         //  6
-            specularDot          //  7
-            bevelOverlay         //  8
-            exportBorder         //  9
-            tapGlow              // 10
-            sheenSweep           // 11
-            if !revealed { scanOverlay }   // 12
+            edgeSlab                                         //  1 — always
+            ticketImage                                      //  2 — always (anchors layout size)
+                .opacity(isShowingBack ? 0 : 1)
+            if isShowingBack {
+                backFaceLayer                                //  back — pre-mirrored
+                    .scaleEffect(x: -1, y: 1)
+            } else {
+                planetDepthLayer                             //  3
+                astronautDepthLayer                          //  4
+                innerShadow                                  //  5
+                glossOverlay                                 //  6
+                specularBand                                 //  7
+                specularDot                                  //  8
+            }
+            bevelOverlay                                     //  8 — always
+            exportBorder                                     //  9 — always
+            tapGlow                                          // 10 — always
+            if !isShowingBack {
+                sheenSweep                                   // 11
+                if !revealed { scanOverlay }                 // 12
+            }
         }
         .rotation3DEffect(.degrees(activeTiltX), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
         .rotation3DEffect(.degrees(activeTiltY), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
@@ -180,21 +243,42 @@ struct PlanetPass3DView: View {
         .onTapGesture { handleTap() }
         .gesture(
             DragGesture(minimumDistance: 8)
-                .onChanged { value in tilt = value.translation }
-                .onEnded   { _ in
+                .onChanged { value in
+                    if !isDragging {
+                        isDragging = true
+                        // Freeze any in-flight idle drift so it doesn't fight the gesture.
+                        // Dampen motion to 15% — just enough to feel alive, not enough to blur drag intent.
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            idleTiltX      = 0
+                            idleTiltY      = 0
+                            motionDragScale = 0.15
+                        }
+                    }
+                    tilt = value.translation
+                }
+                .onEnded { _ in
+                    isDragging = false
                     withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
                         tilt = .zero
+                    }
+                    // Restore full motion contribution after the spring settles
+                    withAnimation(.spring(response: 0.65, dampingFraction: 0.78).delay(0.30)) {
+                        motionDragScale = 1.0
                     }
                 }
         )
         // Respond to export mode: settle idle + silence motion + flash border
         .onChange(of: isExporting) { _, exporting in
             if exporting {
-                // Kill idle drift and motion tilt so the card sits at its canonical rest
+                // Reset any in-progress drag and kill idle/motion so the card sits
+                // at its canonical front-face rest before the share sheet opens.
+                isDragging      = false
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) {
+                    tilt        = .zero
                     idleTiltX   = 0
                     idleTiltY   = 0
                     motionScale = 0
+                    motionDragScale = 1.0
                 }
                 motion.decayToZero()
                 // Brief bright border flash — "capture" signal
@@ -257,14 +341,15 @@ struct PlanetPass3DView: View {
         try? await Task.sleep(nanoseconds: 950_000_000)
         var flip = false
         while !Task.isCancelled {
-            // Skip a cycle if exporting so idle doesn't fight the settle animation
-            if !isExporting {
+            // Skip a cycle if exporting or if the user is actively dragging —
+            // avoids idle animations fighting the settle/spring animations.
+            if !isExporting && !isDragging {
                 let y: Double = flip ? -1.1 : 1.1
                 let x: Double = flip ? 0.6  : -0.6
                 withAnimation(.easeInOut(duration: 3.2)) { idleTiltY = y }
                 try? await Task.sleep(nanoseconds: 1_600_000_000)
                 guard !Task.isCancelled else { return }
-                if !isExporting {
+                if !isExporting && !isDragging {
                     withAnimation(.easeInOut(duration: 4.5)) { idleTiltX = x }
                 }
             }
@@ -454,6 +539,44 @@ struct PlanetPass3DView: View {
         .allowsHitTesting(false)
     }
 
+    /// 7. Specular band — a wide, elongated ellipse representing the broad reflection
+    /// of a fixed light source on the card's laminated surface.
+    ///
+    /// Design rationale:
+    ///   • `EllipticalGradient` ensures the falloff follows the ellipse shape, so
+    ///     opacity reaches zero exactly at the edge — no hard boundary.
+    ///   • The `rotationEffect` skews slightly with `normX` and `normY`, mimicking
+    ///     how an anisotropic surface (brushed metal, holographic foil) changes its
+    ///     reflection angle as the viewing direction changes.
+    ///   • Max centre opacity is 0.17 — visible but never legibility-blocking.
+    ///   • `.screen` blend adds light without multiplying or covering content.
+    private var specularBand: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let a = specularBandIntensity
+            Ellipse()
+                .fill(
+                    EllipticalGradient(
+                        colors: [
+                            .white.opacity(0.17 * a),
+                            .white.opacity(0.06 * a),
+                            .clear,
+                        ],
+                        center:              .center,
+                        startRadiusFraction: 0.0,
+                        endRadiusFraction:   0.85
+                    )
+                )
+                .frame(width: w * 0.26, height: h * 0.56)
+                .rotationEffect(.degrees(-20.0 + normX * 8.0 + normY * 3.0))
+                .position(x: w * CGFloat(bandX), y: h * CGFloat(bandY))
+        }
+        .blendMode(.screen)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .allowsHitTesting(false)
+    }
+
     private var bevelOverlay: some View {
         let lo = bevelLightOpacity
         let do_ = bevelDarkOpacity
@@ -510,6 +633,160 @@ struct PlanetPass3DView: View {
         .onAppear {
             withAnimation(.easeIn(duration: 0.55).delay(0.4)) { sheenX = 1.5 }
         }
+    }
+
+    // MARK: - Back face
+
+    /// Reverse side of the pass — visible only during a deliberate lateral flip
+    /// gesture (~185 pt of horizontal drag). Pre-mirrored at the call site with
+    /// `scaleEffect(x: -1)` so content reads correctly once `rotation3DEffect`
+    /// reflects it from behind.
+    ///
+    /// Visual hierarchy (top → bottom):
+    ///   1. Dark navy gradient background
+    ///   2. Telemetry canvas — horizontal scan lines + corner registration marks
+    ///   3. Brand identity — icon + system name
+    ///   4. Accent rule separator
+    ///   5. Data strip — deterministic barcode-like pattern
+    ///   6. System code line
+    ///   7. Clearance line
+    ///   8. Gradient border (accent top-left → white bottom-right)
+    private var backFaceLayer: some View {
+        ZStack {
+            // 1. Background
+            RoundedRectangle(cornerRadius: 8)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.036, green: 0.052, blue: 0.090),
+                            Color(red: 0.018, green: 0.026, blue: 0.046),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint:   .bottomTrailing
+                    )
+                )
+
+            // 2. Telemetry canvas
+            let accent = accentColor
+            Canvas { ctx, size in
+                // Horizontal scan lines
+                let ls: CGFloat = 9
+                for y in stride(from: ls * 2, through: size.height - ls, by: ls) {
+                    var p = Path()
+                    p.move(to: CGPoint(x: 18, y: y))
+                    p.addLine(to: CGPoint(x: size.width - 18, y: y))
+                    ctx.stroke(p, with: .color(Color.white.opacity(0.025)), lineWidth: 0.5)
+                }
+                // Corner registration marks
+                let m: CGFloat = 20; let arm: CGFloat = 7
+                for (ox, oy): (CGFloat, CGFloat) in [
+                    (m, m), (size.width - m, m),
+                    (m, size.height - m), (size.width - m, size.height - m)
+                ] {
+                    var h = Path()
+                    h.move(to: CGPoint(x: ox - arm, y: oy))
+                    h.addLine(to: CGPoint(x: ox + arm, y: oy))
+                    var v = Path()
+                    v.move(to: CGPoint(x: ox, y: oy - arm))
+                    v.addLine(to: CGPoint(x: ox, y: oy + arm))
+                    ctx.stroke(h, with: .color(accent.opacity(0.28)), lineWidth: 0.75)
+                    ctx.stroke(v, with: .color(accent.opacity(0.28)), lineWidth: 0.75)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            // 3 – 7. Identity + data content
+            VStack(spacing: 0) {
+                Spacer()
+
+                // Brand
+                VStack(spacing: 7) {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .font(.system(size: 22, weight: .thin))
+                        .foregroundStyle(accentColor.opacity(0.70))
+
+                    Text("SIGNAL ROUTE")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(5)
+                        .foregroundStyle(Color.white.opacity(0.52))
+                }
+
+                Spacer().frame(height: 14)
+
+                // 4. Accent rule
+                Rectangle()
+                    .fill(accentColor.opacity(0.42))
+                    .frame(height: 0.75)
+                    .padding(.horizontal, 28)
+
+                Spacer().frame(height: 12)
+
+                // 5. Data strip
+                HStack(spacing: 2) {
+                    ForEach(0..<20, id: \.self) { i in
+                        Rectangle()
+                            .fill(Color.white.opacity(Self.stripOpacity(i)))
+                            .frame(width: Self.stripWidth(i), height: 14)
+                    }
+                }
+                .padding(.horizontal, 28)
+
+                Spacer().frame(height: 11)
+
+                // 6. System code
+                HStack(spacing: 6) {
+                    Text("SRX-7")
+                        .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(accentColor.opacity(0.52))
+                    Text("·")
+                        .font(.system(size: 8, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.18))
+                    Text("SECTOR TRANSIT PASS")
+                        .font(.system(size: 8, weight: .regular, design: .monospaced))
+                        .tracking(1.5)
+                        .foregroundStyle(Color.white.opacity(0.28))
+                }
+
+                Spacer().frame(height: 9)
+
+                // 7. Clearance
+                Text("AUTHORIZED BEARER")
+                    .font(.system(size: 7, weight: .medium, design: .monospaced))
+                    .tracking(3)
+                    .foregroundStyle(Color.white.opacity(0.16))
+
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+
+            // 8. Gradient border
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [accentColor.opacity(0.20), Color.white.opacity(0.05)],
+                        startPoint: .topLeading,
+                        endPoint:   .bottomTrailing
+                    ),
+                    lineWidth: 0.75
+                )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .allowsHitTesting(false)
+    }
+
+    // Deterministic barcode-like data strip — opacity and width patterns chosen so
+    // the strip reads as "technical data" at a glance without being a real barcode.
+    private static func stripOpacity(_ i: Int) -> Double {
+        let p = [0.20, 0.06, 0.16, 0.04, 0.24, 0.08, 0.18, 0.05,
+                 0.22, 0.04, 0.18, 0.08, 0.12, 0.22, 0.06, 0.16,
+                 0.04, 0.20, 0.07, 0.14]
+        return p[i % p.count]
+    }
+
+    private static func stripWidth(_ i: Int) -> CGFloat {
+        let p: [CGFloat] = [1.5, 1, 3, 1, 2.5, 1.5, 1, 2, 1, 3.5,
+                            1, 2, 1.5, 1, 3, 1.5, 1, 2.5, 1, 2]
+        return p[i % p.count]
     }
 
     private var scanOverlay: some View {
