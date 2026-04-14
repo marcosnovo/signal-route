@@ -14,6 +14,7 @@
 		6A4FDB9D2F8CECFE0069C7B0 /* StoryBeatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDB9C2F8CECFE0069C7B0 /* StoryBeatView.swift */; };
 		6A4FDB9F2F8CEE700069C7B0 /* NarrativeIntroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDB9E2F8CEE700069C7B0 /* NarrativeIntroView.swift */; };
 		6A4FDBA12F8CEE830069C7B0 /* MissionClearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDBA02F8CEE830069C7B0 /* MissionClearanceView.swift */; };
+		6A89C9132F8E433500CF3706 /* StoryAssetValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C9122F8E433500CF3706 /* StoryAssetValidator.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -44,6 +45,7 @@
 		6A68C0EC2F890D860077D0E0 /* geometry.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = geometry.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6A68C0F92F890D870077D0E0 /* geometryTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = geometryTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6A68C1032F890D870077D0E0 /* geometryUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = geometryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6A89C9122F8E433500CF3706 /* StoryAssetValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryAssetValidator.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -103,6 +105,7 @@
 				6A4FDB9C2F8CECFE0069C7B0 /* StoryBeatView.swift */,
 				6A4FDB9E2F8CEE700069C7B0 /* NarrativeIntroView.swift */,
 				6A4FDBA02F8CEE830069C7B0 /* MissionClearanceView.swift */,
+				6A89C9122F8E433500CF3706 /* StoryAssetValidator.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -267,6 +270,7 @@
 				6A4FDB9D2F8CECFE0069C7B0 /* StoryBeatView.swift in Sources */,
 				6A4FDB972F8C15EA0069C7B0 /* DeviceMotionManager.swift in Sources */,
 				6A4FDB932F8BAD690069C7B0 /* L.swift in Sources */,
+				6A89C9132F8E433500CF3706 /* StoryAssetValidator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -538,31 +538,36 @@ struct VictoryTelemetryView: View {
         )
     }
 
-    /// Renders a ticket image and presents the system share sheet.
+    /// Renders a ticket image on a background thread, then presents the system share sheet.
     private func shareTicket() {
         let profile = ProgressionStore.profile
         let pass    = makeEphemeralPass()
-        let image   = TicketRenderer.render(pass: pass, profile: profile)
-
-        let vc = UIActivityViewController(activityItems: [image], applicationActivities: nil)
-
-        // Find the key window's root view controller
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive }),
-              let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
-        else { return }
-
-        // iPad requires a source rect for the popover
-        vc.popoverPresentationController?.sourceView = rootVC.view
-        vc.popoverPresentationController?.sourceRect = CGRect(
-            x: rootVC.view.bounds.midX,
-            y: rootVC.view.bounds.maxY - 80,
-            width: 0, height: 0
-        )
-
-        rootVC.present(vc, animated: true)
         HapticsManager.light()
+
+        Task {
+            // Heavy CG draw (1080×1080) happens off the main actor.
+            let image = await Task.detached(priority: .userInitiated) {
+                TicketRenderer.render(pass: pass, profile: profile)
+            }.value
+
+            // Back on main actor for UIKit presentation.
+            let vc = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+
+            guard let windowScene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }),
+                  let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
+            else { return }
+
+            vc.popoverPresentationController?.sourceView = rootVC.view
+            vc.popoverPresentationController?.sourceRect = CGRect(
+                x: rootVC.view.bounds.midX,
+                y: rootVC.view.bounds.maxY - 80,
+                width: 0, height: 0
+            )
+
+            rootVC.present(vc, animated: true)
+        }
     }
 }
 

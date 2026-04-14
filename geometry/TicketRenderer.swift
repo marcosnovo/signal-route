@@ -506,10 +506,14 @@ enum TicketRenderer {
         return floor(base * maxWidth / w)
     }
 
-    private static func formattedDate(_ date: Date) -> String {
+    private static let ticketDateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "dd MMM yyyy"
-        return f.string(from: date).uppercased()
+        return f
+    }()
+
+    private static func formattedDate(_ date: Date) -> String {
+        ticketDateFormatter.string(from: date).uppercased()
     }
 }
 

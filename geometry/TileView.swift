@@ -27,6 +27,9 @@ struct TileView: View {
     /// True for the one tile currently at the signal front during the win sweep.
     /// Triggers a brief bright flash that travels through the circuit path.
     let signalHighlight: Bool
+    /// True when this tile caused or contributed to the mission failure.
+    /// Shows a coloured highlight on the loss screen so the player understands why they failed.
+    let isFailureCulprit: Bool
     let onTap: () -> Void
 
     @State private var tapScale: CGFloat = 1.0
@@ -142,6 +145,22 @@ struct TileView: View {
                             interferenceFlicker = 1.0
                         }
                     }
+            }
+
+            // ── Failure culprit highlight ─────────────────────────────────
+            // Shown on game-over when this tile caused or contributed to the loss:
+            //   burned fragile tile → red ring + tint
+            //   uncharged gate      → amber ring + tint
+            if isFailureCulprit {
+                let culpritColor: Color = tile.isBurned ? fragileRed : mechanicAmber
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .fill(culpritColor.opacity(0.18))
+                    .allowsHitTesting(false)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .strokeBorder(culpritColor.opacity(0.90), lineWidth: 2.0)
+                    .padding(-3.0)
+                    .shadow(color: culpritColor.opacity(0.50), radius: 8)
+                    .allowsHitTesting(false)
             }
 
             // ── Connection snap flash ─────────────────────────────────────

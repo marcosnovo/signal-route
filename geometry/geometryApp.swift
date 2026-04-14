@@ -19,6 +19,9 @@ struct geometryApp: App {
                     // Restore premium across reinstalls / new devices
                     await storeKit.checkEntitlements()
                     await storeKit.loadProduct()
+                    #if DEBUG
+                    StoryAssetValidator.validate()
+                    #endif
                 }
         }
     }

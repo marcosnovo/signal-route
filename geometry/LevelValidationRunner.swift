@@ -141,38 +141,38 @@ enum LevelValidationRunner {
             warnings.append("NO_CAP: expected rotationCap at id ≥ 31 but none applied "
                 + "(all relay relays may already be in solved position)")
         }
-        if level.id >= 91 && !hasOverloaded {
-            warnings.append("NO_OVERLOAD: expected overloaded relay at id ≥ 91 but none applied")
+        if level.id >= 81 && !hasOverloaded {
+            warnings.append("NO_OVERLOAD: expected overloaded relay at id ≥ 81 but none applied")
         }
-        if level.id >= 131 && !hasAutoDrift {
-            warnings.append("NO_DRIFT: expected autoDrift at id ≥ 131 but none applied")
+        if level.id >= 121 && !hasAutoDrift {
+            warnings.append("NO_DRIFT: expected autoDrift at id ≥ 121 but none applied")
         }
-        if level.id >= 146 && !hasOneWayRelay {
-            warnings.append("NO_ONEWAY: expected oneWayRelay at id ≥ 146 but none applied "
+        if level.id >= 136 && !hasOneWayRelay {
+            warnings.append("NO_ONEWAY: expected oneWayRelay at id ≥ 136 but none applied "
                 + "(no eligible 2-connection relay with known approach direction)")
         }
-        if level.id < 146 && hasOneWayRelay {
-            warnings.append("UNEXPECTED_ONEWAY: oneWayRelay present at id < 146")
+        if level.id < 136 && hasOneWayRelay {
+            warnings.append("UNEXPECTED_ONEWAY: oneWayRelay present at id < 136")
         }
-        if level.id >= 151 && !hasFragileTile {
-            warnings.append("NO_FRAGILE: expected fragileTile at id ≥ 151 but none applied "
+        if level.id >= 146 && !hasFragileTile {
+            warnings.append("NO_FRAGILE: expected fragileTile at id ≥ 146 but none applied "
                 + "(no candidate relay tiles remaining after earlier mechanics)")
         }
-        if level.id < 151 && hasFragileTile {
-            warnings.append("UNEXPECTED_FRAGILE: fragileTile present at id < 151")
+        if level.id < 146 && hasFragileTile {
+            warnings.append("UNEXPECTED_FRAGILE: fragileTile present at id < 146")
         }
-        if level.id >= 164 && !hasChargeGate {
-            warnings.append("NO_GATE: expected chargeGate at id ≥ 164 but none applied "
+        if level.id >= 158 && !hasChargeGate {
+            warnings.append("NO_GATE: expected chargeGate at id ≥ 158 but none applied "
                 + "(no candidate relay tiles remaining)")
         }
-        if level.id < 164 && hasChargeGate {
-            warnings.append("UNEXPECTED_GATE: chargeGate present at id < 164")
+        if level.id < 158 && hasChargeGate {
+            warnings.append("UNEXPECTED_GATE: chargeGate present at id < 158")
         }
-        if level.id >= 171 && !hasInterferenceZone {
-            warnings.append("NO_INTERFERENCE: expected interferenceZone at id ≥ 171 but none applied")
+        if level.id >= 164 && !hasInterferenceZone {
+            warnings.append("NO_INTERFERENCE: expected interferenceZone at id ≥ 164 but none applied")
         }
-        if level.id < 171 && hasInterferenceZone {
-            warnings.append("UNEXPECTED_INTERFERENCE: interferenceZone present at id < 171")
+        if level.id < 164 && hasInterferenceZone {
+            warnings.append("UNEXPECTED_INTERFERENCE: interferenceZone present at id < 164")
         }
 
         // ── Objective quality ─────────────────────────────────────────────

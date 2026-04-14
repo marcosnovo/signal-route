@@ -7,10 +7,14 @@ enum DailyStore {
 
     private static let defaults = UserDefaults.standard
 
-    private static var todayKey: String {
+    private static let dailyKeyFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
-        return "daily-result-\(f.string(from: Date()))"
+        return f
+    }()
+
+    private static var todayKey: String {
+        "daily-result-\(dailyKeyFormatter.string(from: Date()))"
     }
 
     static var hasPlayedToday: Bool {

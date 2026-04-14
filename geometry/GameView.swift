@@ -121,8 +121,11 @@ struct GameView: View {
             }
 
             // Mechanic story beat — appears after the tutorial overlay closes
+            // .id(beat.id) forces a fresh StoryBeatView instance (clean @State) on each new beat,
+            // matching the same pattern used by StoryModal in ContentView.
             if let beat = mechanicStoryQueue.current {
                 StoryBeatView(beat: beat) { mechanicStoryQueue.advance() }
+                    .id(beat.id)
                     .transition(.opacity)
                     .zIndex(200)
             }
@@ -182,7 +185,7 @@ struct GameView: View {
             let stepMs = min(110, max(40, 900 / path.count))
             let stepNs = UInt64(stepMs) * 1_000_000
 
-            for (i, pos) in path.enumerated() {
+            for (_, pos) in path.enumerated() {
                 signalFrontRow = pos.0
                 signalFrontCol = pos.1
 
@@ -460,12 +463,14 @@ struct GameView: View {
                         HStack(spacing: gap) {
                             ForEach(0..<vm.gridSize, id: \.self) { col in
                                 TileView(
-                                    tile:            vm.tiles[row][col],
-                                    size:            tileSize,
-                                    winPulse:        winPulse,
-                                    animationDelay:  Double(row + col) * 0.038,
-                                    signalHighlight: signalFrontRow == row && signalFrontCol == col,
-                                    onTap:           { vm.tap(row: row, col: col) }
+                                    tile:             vm.tiles[row][col],
+                                    size:             tileSize,
+                                    winPulse:         winPulse,
+                                    animationDelay:   Double(row + col) * 0.038,
+                                    signalHighlight:  signalFrontRow == row && signalFrontCol == col,
+                                    isFailureCulprit: vm.status == .lost
+                                        && vm.culpritTiles.contains { $0.0 == row && $0.1 == col },
+                                    onTap:            { vm.tap(row: row, col: col) }
                                 )
                             }
                         }
@@ -631,6 +636,10 @@ struct MissionOverlay: View {
                             .font(AppTheme.mono(22, weight: .black))
                             .foregroundStyle(AppTheme.textPrimary)
                             .kerning(1)
+                        if !won {
+                            TechLabel(text: vm.failureCauseLabel,
+                                      color: AppTheme.danger.opacity(0.75))
+                        }
                     }
                     .padding(.leading, 14)
                     Spacer()

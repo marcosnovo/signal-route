@@ -137,7 +137,8 @@ struct ContentView: View {
                         collectStoryBeats(for: wonLevel, event: event)
                     },
                     onUpgrade: {
-                        activeLevel = nil
+                        activeLevel    = nil
+                        paywallContext = .standard
                         withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
                             showingPaywall = true
                         }
@@ -160,6 +161,7 @@ struct ContentView: View {
                     },
                     onDismiss: { showingLevelSelect = false },
                     onUpgrade: {
+                        paywallContext = .standard
                         withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
                             showingPaywall = true
                         }
@@ -174,6 +176,7 @@ struct ContentView: View {
                     onPlay:     { level in tryPlay(level) },
                     onMissions: { showingLevelSelect = true },
                     onUpgrade:  {
+                        paywallContext = .standard
                         withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
                             showingPaywall = true
                         }
@@ -188,6 +191,7 @@ struct ContentView: View {
             // ── Daily limit paywall overlay ────────────────────────────────
             if showingPaywall {
                 PaywallView(context: paywallContext) {
+                    StoreKitManager.shared.clearState()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.90)) {
                         showingPaywall = false
                     }
@@ -202,7 +206,7 @@ struct ContentView: View {
             // ── Story beat overlay ─────────────────────────────────────────
             // Visible during normal play (introStep == nil) and during the two
             // intro steps that rely on the queue to drive their flow.
-            if let beat = storyQueue.current, activeLevel == nil,
+            if let beat = storyQueue.current, activeLevel == nil, !showingPaywall,
                (introStep == nil
                 || introStep == .firstLaunchBeats
                 || introStep == .firstMissionReadyBeat) {
@@ -216,6 +220,11 @@ struct ContentView: View {
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: showingLevelSelect)
         .animation(.spring(response: 0.44, dampingFraction: 0.88), value: introStep)
         .animation(.easeInOut(duration: 0.30), value: storyQueue.current?.id)
+        // Dispatch deferred post-win beat batches when returning to Home
+        .onChange(of: activeLevel?.id) { oldID, newID in
+            guard oldID != nil, newID == nil else { return }
+            storyQueue.dispatchPendingBatches()
+        }
         // Drive intro-step transitions when the story queue empties
         .onChange(of: storyQueue.current) { _, newBeat in
             guard newBeat == nil else { return }
@@ -313,7 +322,7 @@ struct ContentView: View {
         }
 
         let beats = StoryStore.pendingQueue(triggers: triggers)
-        storyQueue.enqueue(beats)
+        storyQueue.enqueueBatch(beats)
     }
 }
 

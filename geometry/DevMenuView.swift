@@ -17,8 +17,14 @@ struct DevMenuView: View {
     @EnvironmentObject private var storeKit:  StoreKitManager
 
     // ── Tab ───────────────────────────────────────────────────────────────
-    enum DevTab { case state, missions, tools, story, reset }
+    enum DevTab { case state, missions, tools, story, reset, qa, sim }
     @State private var activeTab: DevTab = .state
+
+    // ── QA tab ────────────────────────────────────────────────────────────
+    @StateObject private var qaRunner  = SelfQARunner()
+
+    // ── SIM tab ───────────────────────────────────────────────────────────
+    @StateObject private var simRunner = PlayerSimulationRunner()
 
     // ── Filter state (MISSIONS tab) ───────────────────────────────────────
     @State private var filterDifficulty: DifficultyTier?    = nil
@@ -39,6 +45,8 @@ struct DevMenuView: View {
     @State private var previewingBeat:     StoryBeat?      = nil
     /// Bumped after any seen/unseen toggle to force list recomputation.
     @State private var storyRefreshID:     UUID            = UUID()
+    /// Result of the last StoryAssetValidator run (nil = not yet run).
+    @State private var assetValidation:    StoryAssetValidator.Result? = nil
 
     // ── TOOLS tab ─────────────────────────────────────────────────────────
     /// Language used for inline mechanic message previews (independent of app language).
@@ -162,6 +170,13 @@ struct DevMenuView: View {
                     storyPanel
                 case .reset:
                     resetPanel
+                case .qa:
+                    SelfQAView(runner: qaRunner) { level in
+                        onSelect(level)
+                        onDismiss()
+                    }
+                case .sim:
+                    PlayerSimulationView(runner: simRunner)
                 }
             }
 
@@ -300,6 +315,16 @@ struct DevMenuView: View {
                 quickBtn("MONEY", icon: "infinity", color: AppTheme.accentPrimary) {
                     activeTab = .state
                 }
+                // SELF QA
+                quickBtn("SELF QA", icon: "checkmark.seal.fill", color: Color(hex: "4DB87A")) {
+                    activeTab = .qa
+                    Task { await qaRunner.runQuick() }
+                }
+                // PLAYER SIM
+                quickBtn("PLAYER SIM", icon: "figure.run", color: Color(hex: "7EC8E3")) {
+                    activeTab = .sim
+                    Task { await simRunner.run() }
+                }
                 #if DEBUG
                 // VALIDATE ALL
                 quickBtn("VALIDATE ALL", icon: "checkmark.seal.fill", color: AppTheme.sage) {
@@ -356,6 +381,10 @@ struct DevMenuView: View {
             tabButton("STORY",    icon: "text.bubble",              tab: .story)
             tabSeparator()
             tabButton("RESET",    icon: "exclamationmark.triangle", tab: .reset)
+            tabSeparator()
+            tabButton("QA",       icon: "checkmark.seal.fill",      tab: .qa)
+            tabSeparator()
+            tabButton("SIM",      icon: "figure.run",               tab: .sim)
         }
         .frame(height: 36)
         .background(AppTheme.backgroundSecondary)
@@ -2486,9 +2515,53 @@ struct DevMenuView: View {
             VStack(spacing: 0) {
                 storyHeaderSection
                 TechDivider()
+                storyAssetSection
+                TechDivider()
                 storySimulateSection
                 TechDivider()
                 storyBeatList
+            }
+        }
+    }
+
+    // ── Asset validation ───────────────────────────────────────────────────
+
+    private var storyAssetSection: some View {
+        VStack(spacing: 0) {
+            sectionHeader("ASSET VALIDATION")
+
+            HStack(spacing: 8) {
+                scenarioBtn("VALIDATE STORY ASSETS", icon: "checklist", color: AppTheme.accent) {
+                    assetValidation = StoryAssetValidator.validate()
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+
+            if let result = assetValidation {
+                HStack(spacing: 12) {
+                    if result.isValid {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(AppTheme.sage)
+                        Text("All \(result.checkedCount) assets present")
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .foregroundColor(AppTheme.sage)
+                    } else {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(AppTheme.danger)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Missing \(result.missingAssets.count) of \(result.checkedCount):")
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .foregroundColor(AppTheme.danger)
+                            ForEach(result.missingAssets, id: \.self) { name in
+                                Text("• \(name)")
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundColor(AppTheme.danger)
+                            }
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.bottom, 10)
             }
         }
     }
@@ -2997,6 +3070,9 @@ struct DevMenuView: View {
         case .all:
             ProgressionStore.devResetAll()
             StoryStore.reset()
+            OnboardingStore.resetAll()
+            EntitlementStore.shared.setPremium(false)
+            EntitlementStore.shared.resetDailyCount()
             TicketCache.shared.invalidateAll()
         case .missions:
             ProgressionStore.devResetMissions()
@@ -3030,7 +3106,7 @@ struct DevMenuView: View {
         analysisSuggestions    = []
         analysisPhases         = []
         analysisCurveAnomalies = []
-        Task {
+        Task.detached(priority: .userInitiated) {
             let ds          = DifficultyDataset.build()
             let issues      = LevelIssueDetector.detect(from: ds)
             let suggestions = RebalancingEngine.suggest(from: ds)
@@ -3039,12 +3115,14 @@ struct DevMenuView: View {
             // Always print to console for detailed dev inspection
             DifficultyCurveAnalyzer.printReport(phases: phases, anomalies: curveAnomalies)
 
-            analysisDataset        = ds
-            analysisIssues         = issues
-            analysisSuggestions    = suggestions
-            analysisPhases         = phases
-            analysisCurveAnomalies = curveAnomalies
-            isAnalyzing            = false
+            await MainActor.run {
+                analysisDataset        = ds
+                analysisIssues         = issues
+                analysisSuggestions    = suggestions
+                analysisPhases         = phases
+                analysisCurveAnomalies = curveAnomalies
+                isAnalyzing            = false
+            }
         }
     }
 
@@ -3066,11 +3144,13 @@ struct DevMenuView: View {
     private func runValidation(useSolver: Bool) {
         isValidating      = true
         validationReports = []
-        Task {
+        Task.detached(priority: .userInitiated) {
             let reports = LevelValidationRunner.validateAll(useSolver: useSolver)
             LevelValidationRunner.printReport(reports)
-            validationReports = reports
-            isValidating      = false
+            await MainActor.run {
+                validationReports = reports
+                isValidating      = false
+            }
         }
     }
     #endif
@@ -3182,10 +3262,14 @@ private struct DevPassViewerOverlay: View {
         }
     }
 
-    private var issuedLabel: String {
+    private static let issuedFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "MMM d"
-        return f.string(from: pass.timestamp)
+        return f
+    }()
+
+    private var issuedLabel: String {
+        Self.issuedFormatter.string(from: pass.timestamp)
     }
 
     private func passMetaStat(_ label: String, _ value: String) -> some View {

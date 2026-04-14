@@ -446,6 +446,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 4,
             accentHex:        "FFB800",
             footerHint:       "JUPITER RELAY APPROACH OPEN",
+            imageName:        "asteroid_belt_unlock",
             priority:         20,
             localizedTitle: LocalizedText(
                 en: "DEBRIS CLEARED",
@@ -468,6 +469,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 5,
             accentHex:        "D4A055",
             footerHint:       "SATURN RING SECTOR OPEN",
+            imageName:        "jupiter_unlock",
             priority:         20,
             localizedTitle: LocalizedText(
                 en: "GIANT ONLINE",
@@ -490,6 +492,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 6,
             accentHex:        "E4C87A",
             footerHint:       "URANUS VOID SECTOR OPEN",
+            imageName:        "saturn_unlock",
             priority:         20,
             localizedTitle: LocalizedText(
                 en: "RINGS ALIGNED",
@@ -512,6 +515,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 7,
             accentHex:        "7EC8E3",
             footerHint:       "NEPTUNE DEEP SECTOR OPEN",
+            imageName:        "uranus_unlock",
             priority:         20,
             localizedTitle: LocalizedText(
                 en: "VOID NAVIGATED",
@@ -698,6 +702,7 @@ enum StoryBeatCatalog {
             trigger:          .mechanicUnlocked,
             requiredMechanic: .oneWayRelay,
             footerHint:       "ONE-WAY RELAY ACTIVE",
+            imageName:        "one_way_relay",
             priority:         50,
             localizedTitle: LocalizedText(
                 en: "DIRECTED SIGNAL",
@@ -719,6 +724,7 @@ enum StoryBeatCatalog {
             trigger:          .mechanicUnlocked,
             requiredMechanic: .fragileTile,
             footerHint:       "FRAGILE RELAY ACTIVE",
+            imageName:        "network_decay",
             priority:         50,
             localizedTitle: LocalizedText(
                 en: "NETWORK DECAY",
@@ -740,6 +746,7 @@ enum StoryBeatCatalog {
             trigger:          .mechanicUnlocked,
             requiredMechanic: .chargeGate,
             footerHint:       "CHARGE GATE ACTIVE",
+            imageName:        "locked_subsystem",
             priority:         50,
             localizedTitle: LocalizedText(
                 en: "LOCKED SUBSYSTEM",
@@ -886,6 +893,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 3,
             accentHex:        "FFB800",
             footerHint:       "ASTEROID BELT UNLOCKED",
+            imageName:        "asteroid_belt_transit",
             priority:         30,
             localizedTitle: LocalizedText(
                 en: "BELT TRANSIT",
@@ -908,6 +916,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 4,
             accentHex:        "D4A055",
             footerHint:       "JUPITER RELAY UNLOCKED",
+            imageName:        "giant_approach",
             priority:         30,
             localizedTitle: LocalizedText(
                 en: "GIANT APPROACH",
@@ -930,6 +939,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 5,
             accentHex:        "E4C87A",
             footerHint:       "SATURN RING SECTOR UNLOCKED",
+            imageName:        "ring_transit",
             priority:         30,
             localizedTitle: LocalizedText(
                 en: "RING TRANSIT",
@@ -952,6 +962,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 6,
             accentHex:        "7EC8E3",
             footerHint:       "URANUS VOID UNLOCKED",
+            imageName:        "void_clearance",
             priority:         30,
             localizedTitle: LocalizedText(
                 en: "VOID CLEARANCE",
@@ -1049,6 +1060,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 4,
             accentHex:        "FFB800",
             footerHint:       "SECTOR 4 — ASTEROID BELT",
+            imageName:        "asteroid_belt_entry",
             priority:         40,
             localizedTitle: LocalizedText(
                 en: "BELT ENTRY",
@@ -1071,6 +1083,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 5,
             accentHex:        "D4A055",
             footerHint:       "SECTOR 5 — JUPITER RELAY",
+            imageName:        "gas_giant_grid",
             priority:         40,
             localizedTitle: LocalizedText(
                 en: "GAS GIANT GRID",
@@ -1093,6 +1106,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 6,
             accentHex:        "E4C87A",
             footerHint:       "SECTOR 6 — SATURN RING",
+            imageName:        "ring_system",
             priority:         40,
             localizedTitle: LocalizedText(
                 en: "RING SYSTEM",
@@ -1115,6 +1129,7 @@ enum StoryBeatCatalog {
             requiredSectorID: 7,
             accentHex:        "7EC8E3",
             footerHint:       "SECTOR 7 — URANUS VOID",
+            imageName:        "deep_void",
             priority:         40,
             localizedTitle: LocalizedText(
                 en: "DEEP VOID",

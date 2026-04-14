@@ -66,11 +66,13 @@ struct StoryBeatView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .padding(.horizontal, 22)
                 .scaleEffect(appeared ? 1.0 : 0.95)
-                .opacity(appeared ? 1.0 : 0.0)
 
                 Spacer()
             }
         }
+        // Opacity at ZStack level so backdrop + glow + card all fade together on dismiss.
+        // Prevents the backdrop staying visible after the card animates out.
+        .opacity(appeared ? 1.0 : 0.0)
         .onAppear {
             withAnimation(.spring(response: 0.44, dampingFraction: 0.88)) {
                 appeared = true
@@ -199,7 +201,12 @@ struct StoryBeatView: View {
         guard !dismissed else { return }
         dismissed = true
         withAnimation(.easeOut(duration: 0.22)) { appeared = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { onDismiss() }
+        // Use Task + withAnimation so the structural removal of this view runs inside
+        // a valid animation context — mirrors StoryModal's dismiss pattern.
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            withAnimation(.easeOut(duration: 0.18)) { onDismiss() }
+        }
     }
 }
 
@@ -483,7 +490,8 @@ struct StoryModal: View {
         withAnimation(.easeIn(duration: 0.18)) { isTyping = false }
     }
 
-    /// Character-by-character reveal at 22 ms per character.
+    /// Character-by-character reveal at 28 ms per character (~36 fps).
+    /// Perceptibly identical to 22 ms but reduces SwiftUI body re-evaluations by ~20%.
     @MainActor
     private func runTypewriter() async {
         let localizedBody = beat.displayBody(for: settings.language)
@@ -491,7 +499,7 @@ struct StoryModal: View {
         for char in localizedBody {
             guard !Task.isCancelled else { return }
             displayedBody.append(char)
-            try? await Task.sleep(for: .milliseconds(22))
+            try? await Task.sleep(for: .milliseconds(28))
         }
         guard !Task.isCancelled else { return }
         displayedBody = localizedBody       // ensure exact final string
@@ -660,6 +668,9 @@ final class StoryBeatQueue {
     private(set) var current: StoryBeat? = nil
     private var queue: [StoryBeat] = []
 
+    /// Deferred post-win batches (one per win event). Dispatched on Home return.
+    private var pendingBatches: [[StoryBeat]] = []
+
     /// True when at least one more beat is waiting after `current`.
     var hasNext: Bool { !queue.isEmpty }
 
@@ -672,6 +683,25 @@ final class StoryBeatQueue {
     /// Convenience for a single beat.
     func enqueue(_ beat: StoryBeat) {
         enqueue([beat])
+    }
+
+    /// Stage post-win beats for deferred display on Home return.
+    /// Does nothing if `beats` is empty.
+    func enqueueBatch(_ beats: [StoryBeat]) {
+        guard !beats.isEmpty else { return }
+        pendingBatches.append(beats)
+    }
+
+    /// Call when the player returns to Home. Promotes the most-recent pending
+    /// batch to the live queue and silently marks all older batches seen,
+    /// preventing narrative flooding when multiple wins happened in sequence.
+    func dispatchPendingBatches() {
+        guard !pendingBatches.isEmpty else { return }
+        // Mark all older batches seen (suppress duplicates / stale beats)
+        pendingBatches.dropLast().flatMap { $0 }.forEach { StoryStore.markSeen($0) }
+        // Show only the most recent batch
+        if let batch = pendingBatches.last { enqueue(batch) }
+        pendingBatches.removeAll()
     }
 
     /// Dismiss the current beat (marks it seen) and advance to the next, if any.

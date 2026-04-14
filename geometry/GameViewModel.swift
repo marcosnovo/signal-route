@@ -1,6 +1,18 @@
 import SwiftUI
 import Combine
 
+// MARK: - FailureCause
+/// Identifies which mechanic caused a mission to end in failure.
+/// Used by the loss overlay and tile highlights to surface targeted feedback.
+enum FailureCause {
+    /// One or more fragile tiles depleted all charges before the circuit was complete.
+    case fragileTileDepleted
+    /// The move limit (or timer) expired with at least one charge gate still closed.
+    case chargeGateIncomplete
+    /// Standard move-limit exhaustion with no active mechanic culprit.
+    case moveLimitExhausted
+}
+
 // MARK: - GameViewModel
 @MainActor
 class GameViewModel: ObservableObject {
@@ -10,7 +22,6 @@ class GameViewModel: ObservableObject {
     @Published var movesLeft: Int = 0
     @Published var movesUsed: Int = 0
     @Published var status: GameStatus = .playing
-    @Published var connectedPairs: Set<String> = []
 
     // Cached energy counters — updated once per propagation, not recomputed per access
     @Published private(set) var targetsOnline: Int = 0
@@ -37,14 +48,26 @@ class GameViewModel: ObservableObject {
     /// Read by ContentView's onWin callback to surface rank-up and pass story beats.
     private(set) var lastLevelUpEvent: LevelUpEvent? = nil
 
+    // MARK: Failure feedback
+    /// Why the current attempt failed. Set whenever `status` transitions to `.lost`.
+    private(set) var failureCause: FailureCause = .moveLimitExhausted
+    /// Grid positions of the tile(s) responsible for the failure, for visual highlighting.
+    private(set) var culpritTiles: [(Int, Int)] = []
+
+    /// Short label describing the failure cause for display in the loss overlay.
+    var failureCauseLabel: String {
+        switch failureCause {
+        case .fragileTileDepleted:  return "FRAGILE TILE BURNED OUT"
+        case .chargeGateIncomplete: return "CHARGE GATE NOT ACTIVATED"
+        case .moveLimitExhausted:   return "SIGNAL ROUTE NOT FOUND"
+        }
+    }
+
     // MARK: Level info (read-only from outside)
     private(set) var currentLevel: Level
 
     /// Grid dimension from current level
     var gridSize: Int { currentLevel.gridSize }
-
-    /// Upper bound on adjacent pairs in a gs×gs grid. Used for the progress bar.
-    var estimatedTotalPairs: Int { (gridSize - 1) * gridSize * 2 }
 
     // MARK: Private — async tasks
     private var countdownTask: Task<Void, Never>? = nil
@@ -73,11 +96,12 @@ class GameViewModel: ObservableObject {
         movesUsed = 0
         status = .playing
         signalPath = []
-        connectedPairs = []
         targetsOnline = 0
         activeNodes = 0
         pendingPassGrant = nil
         lastLevelUpEvent = nil
+        failureCause = .moveLimitExhausted
+        culpritTiles = []
         timeRemaining = currentLevel.timeLimit
         updateConnections()
 
@@ -116,11 +140,7 @@ class GameViewModel: ObservableObject {
             movesLeft -= 1
             movesUsed += 1
             if movesLeft == 0 {
-                status = .lost
-                HapticsManager.error()
-                SoundManager.play(.lose)
-                countdownTask?.cancel()
-                saveResultIfDaily(success: false)
+                triggerLoss()
             }
             return
         }
@@ -159,11 +179,7 @@ class GameViewModel: ObservableObject {
                 }
             }
         } else if movesLeft == 0 {
-            status = .lost
-            HapticsManager.error()
-            SoundManager.play(.lose)
-            countdownTask?.cancel()
-            saveResultIfDaily(success: false)
+            triggerLoss()
         } else if targetsOnline > prevTargets {
             // A target just came online — meaningful connection
             HapticsManager.medium()
@@ -173,10 +189,6 @@ class GameViewModel: ObservableObject {
             HapticsManager.selection()
             SoundManager.play(.relayEnergized)
         }
-    }
-
-    func isConnected(row: Int, col: Int, direction: Direction) -> Bool {
-        connectedPairs.contains(pairKey(row: row, col: col, direction: direction))
     }
 
     /// Result snapshot available once the game is no longer in progress.
@@ -241,18 +253,6 @@ class GameViewModel: ObservableObject {
         targetsTotal > 0 && targetsOnline == targetsTotal
     }
 
-    /// Short mission objective shown in the HUD.
-    var objectiveText: String {
-        switch currentLevel.objectiveType {
-        case .normal:
-            return targetsTotal > 1 ? "ACTIVATE \(targetsTotal) TARGETS" : "CONNECT SOURCE TO TARGET"
-        case .maxCoverage:
-            return "MAXIMIZE ACTIVE GRID"
-        case .energySaving:
-            return "SAVE ENERGY"
-        }
-    }
-
     // MARK: - Objective-specific live metrics
 
     /// Active grid coverage as a percentage (0–100). Relevant for maxCoverage.
@@ -273,6 +273,39 @@ class GameViewModel: ObservableObject {
             && energyWaste > 2
     }
 
+    // MARK: - Private: Failure handling
+
+    /// Determines failure cause from current tile state, highlights culprit tiles,
+    /// then transitions to the lost state with haptics/sound.
+    private func triggerLoss() {
+        // Identify which mechanic caused the failure (if any)
+        let burnedPositions: [(Int, Int)] = tiles.enumerated().flatMap { r, row in
+            row.enumerated().compactMap { c, tile in tile.isBurned ? (r, c) : nil }
+        }
+        let closedGatePositions: [(Int, Int)] = tiles.enumerated().flatMap { r, row in
+            row.enumerated().compactMap { c, tile in
+                (tile.gateChargesRequired != nil && !tile.isGateOpen) ? (r, c) : nil
+            }
+        }
+
+        if !burnedPositions.isEmpty {
+            failureCause = .fragileTileDepleted
+            culpritTiles = burnedPositions
+        } else if !closedGatePositions.isEmpty {
+            failureCause = .chargeGateIncomplete
+            culpritTiles = closedGatePositions
+        } else {
+            failureCause = .moveLimitExhausted
+            culpritTiles = []
+        }
+
+        status = .lost
+        HapticsManager.error()
+        SoundManager.play(.lose)
+        countdownTask?.cancel()
+        saveResultIfDaily(success: false)
+    }
+
     // MARK: - Private: Countdown timer
 
     private func startCountdown(seconds: Int) {
@@ -289,10 +322,7 @@ class GameViewModel: ObservableObject {
                     SoundManager.play(.timerTick)
                 }
                 if remaining == 0 {
-                    status = .lost
-                    HapticsManager.error()
-                    SoundManager.play(.lose)
-                    saveResultIfDaily(success: false)
+                    triggerLoss()
                     return
                 }
             }
@@ -323,7 +353,11 @@ class GameViewModel: ObservableObject {
                 countdownTask?.cancel()
                 saveResultIfDaily(success: true)
                 if let result = gameResult {
-                    ProgressionStore.record(result)
+                    let event = ProgressionStore.record(result)
+                    lastLevelUpEvent = event
+                    if let newPass = event?.newPass {
+                        pendingPassGrant = newPass
+                    }
                 }
             }
         }
@@ -419,25 +453,6 @@ class GameViewModel: ObservableObject {
     // MARK: - Private: Energy propagation
 
     private func updateConnections(processMechanics: Bool = false) {
-        var pairs = Set<String>()
-        for row in 0..<gridSize {
-            for col in 0..<gridSize {
-                let tile = tiles[row][col]
-                if col + 1 < gridSize {
-                    let right = tiles[row][col + 1]
-                    if tile.connections.contains(.east) && right.connections.contains(.west) {
-                        pairs.insert("\(row),\(col)-\(row),\(col+1)")
-                    }
-                }
-                if row + 1 < gridSize {
-                    let below = tiles[row + 1][col]
-                    if tile.connections.contains(.south) && below.connections.contains(.north) {
-                        pairs.insert("\(row),\(col)-\(row+1),\(col)")
-                    }
-                }
-            }
-        }
-        connectedPairs = pairs
         propagateEnergy()
 
         // After propagation, process fragile decay and charge gate logic.
@@ -615,12 +630,4 @@ class GameViewModel: ObservableObject {
         return opened
     }
 
-    private func pairKey(row: Int, col: Int, direction: Direction) -> String {
-        switch direction {
-        case .east:  return "\(row),\(col)-\(row),\(col+1)"
-        case .south: return "\(row),\(col)-\(row+1),\(col)"
-        case .west:  return "\(row),\(col-1)-\(row),\(col)"
-        case .north: return "\(row-1),\(col)-\(row),\(col)"
-        }
-    }
 }

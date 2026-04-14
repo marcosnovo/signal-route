@@ -183,21 +183,46 @@ struct LevelGenerator {
             candidates.swapAt(i, rng.nextInt(i + 1))
         }
 
-        var available = candidates
+        // ── Reserve mandatory mechanic slots before early mechanics consume candidates ──
+        // Fragile (id ≥ 146) and charge gate (id ≥ 158) are load-bearing for their
+        // level segments. Without reservation, cap + ovl + drift + oneWay can exhaust
+        // all candidates, silently skipping fragile and gate (mechanic starvation).
+        //
+        // Fix: split the shuffled pool into two disjoint halves —
+        //   earlyPool     → cap, ovl, drift, oneWay consume from here
+        //   mandatoryPool → fragile and gate guaranteed slots from here
+        // mandatoryPool is taken from the end of the shuffled array; the split is
+        // deterministic and does not affect earlier mechanic assignments.
+
+        let fragileNeeded: Int = {
+            guard levelId >= 146 else { return 0 }
+            if levelId >= 165 { return 3 }   // was 168; moved earlier so L165–167 warm up 3-fragile without interference
+            if levelId >= 156 { return 2 }
+            return 1
+        }()
+        let gateNeeded: Int = {
+            guard levelId >= 158 else { return 0 }
+            return levelId >= 171 ? 2 : 1
+        }()
+        let mandatoryNeeded = fragileNeeded + gateNeeded
+
+        let splitPoint    = max(0, candidates.count - mandatoryNeeded)
+        var earlyPool     = Array(candidates.prefix(splitPoint))
+        let mandatoryPool = Array(candidates.suffix(candidates.count - splitPoint))
 
         // Rotation Cap — medium+ (id ≥ 31)
         // 1 cap, scaling to 4 caps by endgame. maxRotations = minTaps + 1 → 1 slack, always solvable.
-        if !available.isEmpty {
+        if !earlyPool.isEmpty {
             let capCount: Int
-            if levelId >= 151      { capCount = min(4, available.count) }
-            else if levelId >= 111 { capCount = min(3, available.count) }
-            else if levelId >= 61  { capCount = min(2, available.count) }
+            if levelId >= 151      { capCount = min(4, earlyPool.count) }
+            else if levelId >= 111 { capCount = min(3, earlyPool.count) }
+            else if levelId >= 61  { capCount = min(2, earlyPool.count) }
             else                   { capCount = 1 }
             for i in 0..<capCount {
-                let info = available[i]
+                let info = earlyPool[i]
                 grid[info.r][info.c].maxRotations = info.minTaps + 1
             }
-            available.removeFirst(capCount)
+            earlyPool.removeFirst(capCount)
         }
 
         // Overloaded Relay — mid-hard+ (id ≥ 81, was 91)
@@ -205,12 +230,12 @@ struct LevelGenerator {
         // Scales to 3 tiles at id ≥ 156.
         if levelId >= 81 {
             let overloadCount: Int
-            if levelId >= 156      { overloadCount = min(3, available.count) }
-            else if levelId >= 111 { overloadCount = min(2, available.count) }
-            else                   { overloadCount = min(1, available.count) }
+            if levelId >= 156      { overloadCount = min(3, earlyPool.count) }
+            else if levelId >= 111 { overloadCount = min(2, earlyPool.count) }
+            else                   { overloadCount = min(1, earlyPool.count) }
             for _ in 0..<overloadCount {
-                guard !available.isEmpty else { break }
-                let info = available.removeFirst()
+                guard !earlyPool.isEmpty else { break }
+                let info = earlyPool.removeFirst()
                 grid[info.r][info.c].isOverloaded = true
                 minMoves += info.minTaps
             }
@@ -219,11 +244,11 @@ struct LevelGenerator {
         // Auto-Drift — expert mid-tier (id ≥ 121, was 131)
         // Tile drifts +1 clockwise after a delay; player must sequence timing.
         // Delay tightens at id ≥ 141. Second drifting tile added at id ≥ 156.
-        if levelId >= 121 && !available.isEmpty {
-            let driftCount = levelId >= 156 ? min(2, available.count) : 1
+        if levelId >= 121 && !earlyPool.isEmpty {
+            let driftCount = levelId >= 156 ? min(2, earlyPool.count) : 1
             for _ in 0..<driftCount {
-                guard !available.isEmpty else { break }
-                let info = available.removeFirst()
+                guard !earlyPool.isEmpty else { break }
+                let info = earlyPool.removeFirst()
                 let delay: Double = levelId >= 141 ? 3.5 : 4.0
                 grid[info.r][info.c].autoDriftDelay = delay
             }
@@ -236,10 +261,10 @@ struct LevelGenerator {
         // the puzzle remains solvable via the intended source-side path.
         if levelId >= 136 {
             // Find the first eligible 2-connection relay with a known approach dir
-            if let idx = available.firstIndex(where: {
+            if let idx = earlyPool.firstIndex(where: {
                 $0.solvedConns.count == 2 && $0.approachDir != nil
             }) {
-                let info = available.remove(at: idx)
+                let info = earlyPool.remove(at: idx)
                 let approachDir = info.approachDir!
                 // Exit direction = the solved connection that is NOT the approach direction
                 if let exitDir = info.solvedConns.first(where: { $0 != approachDir }) {
@@ -254,36 +279,33 @@ struct LevelGenerator {
 
         // Fragile Tile — expert late (id ≥ 146, was 151)
         // Tile burns out after being on the energized network for 3 player taps.
-        // Two fragile tiles at id ≥ 156 (was 158); three at id ≥ 168 (new).
-        if levelId >= 146 && !available.isEmpty {
-            let fragileCount: Int
-            if levelId >= 168      { fragileCount = min(3, available.count) }
-            else if levelId >= 156 { fragileCount = min(2, available.count) }
-            else                   { fragileCount = 1 }
-            for _ in 0..<fragileCount {
-                guard !available.isEmpty else { break }
-                let info = available.removeFirst()
-                grid[info.r][info.c].fragileCharges = 3
+        // Two fragile tiles at id ≥ 156 (was 158); three at id ≥ 165 (was 168).
+        // Guaranteed placement via mandatoryPool reservation above.
+        if levelId >= 146 {
+            let fragileCount = min(fragileNeeded, mandatoryPool.count)
+            for i in 0..<fragileCount {
+                grid[mandatoryPool[i].r][mandatoryPool[i].c].fragileCharges = 3
             }
         }
 
         // Charge Gate — endgame (id ≥ 158, was 164)
         // Gate relay only conducts energy after 2 charge cycles.
         // Second gate at id ≥ 171 (new).
-        if levelId >= 158 && !available.isEmpty {
-            let gateCount = levelId >= 171 ? min(2, available.count) : 1
-            for _ in 0..<gateCount {
-                guard !available.isEmpty else { break }
-                let info = available.removeFirst()
-                grid[info.r][info.c].gateChargesRequired = 2
+        // Guaranteed placement via mandatoryPool reservation above (tiles after fragile slots).
+        if levelId >= 158 {
+            let gateStart = min(fragileNeeded, mandatoryPool.count)
+            let gateCount = min(gateNeeded, mandatoryPool.count - gateStart)
+            for i in gateStart..<(gateStart + gateCount) {
+                grid[mandatoryPool[i].r][mandatoryPool[i].c].gateChargesRequired = 2
                 minMoves += 1
             }
         }
 
-        // Interference Zone — endgame (id ≥ 164, was 171)
+        // Interference Zone — endgame (id ≥ 168, was 164)
         // Visual static overlay applied to relay tiles; no BFS or move-count effect.
-        // Applied to a seeded-random subset of relay tiles (noise and path tiles).
-        if levelId >= 164 {
+        // Delayed past L165–167 so those levels serve as a warm-up for 3 fragile tiles
+        // without the added visual noise of interference — the full combination arrives at L168.
+        if levelId >= 168 {
             let gs = grid.count
             let pathSet = Set(relayPath.map { $0.r * gs + $0.c })
             var noiseTiles: [(Int, Int)] = []
