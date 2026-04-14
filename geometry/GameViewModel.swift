@@ -69,6 +69,34 @@ class GameViewModel: ObservableObject {
     /// Grid dimension from current level
     var gridSize: Int { currentLevel.gridSize }
 
+    // MARK: Attempt tracking
+    /// How many times the player has attempted the current level (1 = first try).
+    private var attemptCount: Int = 0
+
+    // MARK: Adaptive difficulty
+    /// Adjustments computed once per level session (first attempt) from the player's skill score.
+    private(set) var activeAdjustments: DifficultyAdjustments = .none
+
+    // MARK: Anti-frustration
+    /// Number of consecutive losses on the current level without a win in between.
+    /// Resets to 0 on win or when a new level is loaded.
+    @Published private(set) var consecutiveFailures: Int = 0
+    /// When true, the next setupLevel() grants +2 extra moves as a silent boost.
+    private var pendingFrustrationBoost: Bool = false
+
+    // MARK: Soft hint system
+    /// True when hint conditions are met (low skill or 3+ attempts).
+    var hintEnabled: Bool {
+        HintEngine.isActive(skillScore: PlayerSkillStore.shared.skillScore,
+                            attemptCount: attemptCount)
+    }
+    /// Position of the tile currently being softly highlighted. Nil when hints are off or not needed.
+    @Published private(set) var hintTileRow: Int = -1
+    @Published private(set) var hintTileCol: Int = -1
+    /// True after 12 s of inactivity — triggers the slightly stronger delayed hint pulse.
+    @Published private(set) var hintPulsing: Bool = false
+    private var inactivityTask: Task<Void, Never>? = nil
+
     // MARK: Private — async tasks
     private var countdownTask: Task<Void, Never>? = nil
     private var driftTasks: [String: Task<Void, Never>] = [:]
@@ -82,6 +110,13 @@ class GameViewModel: ObservableObject {
     // MARK: - Public API
 
     func setupLevel() {
+        // Lock in difficulty adjustments once per session — stable across retries
+        if attemptCount == 0 {
+            activeAdjustments = AdaptiveDifficultyEngine.adjustments(
+                for: PlayerSkillStore.shared.skillScore
+            )
+        }
+        attemptCount += 1
         // Cancel any in-flight mechanic tasks before rebuilding the board
         countdownTask?.cancel()
         countdownTask = nil
@@ -92,7 +127,11 @@ class GameViewModel: ObservableObject {
         // Cache target count once — it never changes during play
         targetsTotal = board.flatMap { $0 }.filter { $0.role == .target }.count
         tiles = board
-        movesLeft = currentLevel.maxMoves
+        let frustrationBoost = pendingFrustrationBoost ? 2 : 0
+        pendingFrustrationBoost = false   // consume — valid for one attempt only
+        let rawMoves = currentLevel.maxMoves + activeAdjustments.extraMoves + frustrationBoost
+        // Clamp: hard mode tightens the limit but never below the theoretical minimum
+        movesLeft = max(currentLevel.minimumRequiredMoves, rawMoves)
         movesUsed = 0
         status = .playing
         signalPath = []
@@ -102,12 +141,21 @@ class GameViewModel: ObservableObject {
         lastLevelUpEvent = nil
         failureCause = .moveLimitExhausted
         culpritTiles = []
-        timeRemaining = currentLevel.timeLimit
+        inactivityTask?.cancel()
+        inactivityTask = nil
+        hintTileRow = -1
+        hintTileCol = -1
+        hintPulsing = false
+        if let tl = currentLevel.timeLimit {
+            timeRemaining = Int(Double(tl) * activeAdjustments.timeFactor)
+        } else {
+            timeRemaining = nil
+        }
         updateConnections()
 
         // Start countdown if this level has a time limit
-        if let tl = currentLevel.timeLimit {
-            startCountdown(seconds: tl)
+        if let tr = timeRemaining {
+            startCountdown(seconds: tr)
         }
 
         // Show mechanic unlock message if this is the player's first encounter
@@ -116,6 +164,10 @@ class GameViewModel: ObservableObject {
 
     func loadLevel(_ level: Level) {
         currentLevel = level
+        attemptCount = 0          // will become 1 inside setupLevel()
+        activeAdjustments = .none // will be recomputed on first attempt
+        consecutiveFailures = 0
+        pendingFrustrationBoost = false
         setupLevel()
     }
 
@@ -168,6 +220,8 @@ class GameViewModel: ObservableObject {
 
         if checkWin() {
             status = .won
+            consecutiveFailures = 0
+            pendingFrustrationBoost = false
             signalPath = computeSignalPath()
             countdownTask?.cancel()
             saveResultIfDaily(success: true)
@@ -177,6 +231,12 @@ class GameViewModel: ObservableObject {
                 if let newPass = event?.newPass {
                     pendingPassGrant = newPass
                 }
+                PlayerSkillStore.shared.recordWin(
+                    efficiency:   result.efficiency,
+                    movesUsed:    movesUsed,
+                    minimumMoves: currentLevel.minimumRequiredMoves,
+                    attempts:     attemptCount
+                )
             }
         } else if movesLeft == 0 {
             triggerLoss()
@@ -188,6 +248,37 @@ class GameViewModel: ObservableObject {
             // New relay tile energized
             HapticsManager.selection()
             SoundManager.play(.relayEnergized)
+        }
+        updateHint()
+    }
+
+    // MARK: - Soft hint update
+
+    /// Recomputes the hint target and resets the inactivity timer after every tap.
+    /// On win/loss, clears all hint state automatically (status check).
+    private func updateHint() {
+        inactivityTask?.cancel()
+        hintPulsing = false
+
+        guard hintEnabled && status == .playing else {
+            hintTileRow = -1
+            hintTileCol = -1
+            return
+        }
+
+        if let pos = HintEngine.frontierTile(in: tiles) {
+            hintTileRow = pos.row
+            hintTileCol = pos.col
+        } else {
+            hintTileRow = -1
+            hintTileCol = -1
+        }
+
+        // After 12 s of inactivity, escalate to the pulsing hint
+        inactivityTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            guard !Task.isCancelled && status == .playing else { return }
+            hintPulsing = true
         }
     }
 
@@ -268,9 +359,10 @@ class GameViewModel: ObservableObject {
     }
 
     /// True when energySaving constraint is violated (too many nodes energized).
+    /// After 3+ consecutive failures the limit is relaxed by one node.
     var energyWasteExceeded: Bool {
-        currentLevel.objectiveType == .energySaving
-            && energyWaste > 2
+        guard currentLevel.objectiveType == .energySaving else { return false }
+        return energyWaste > (consecutiveFailures >= 3 ? 3 : 2)
     }
 
     // MARK: - Private: Failure handling
@@ -304,6 +396,8 @@ class GameViewModel: ObservableObject {
         SoundManager.play(.lose)
         countdownTask?.cancel()
         saveResultIfDaily(success: false)
+        consecutiveFailures += 1
+        if consecutiveFailures >= 3 { pendingFrustrationBoost = true }
     }
 
     // MARK: - Private: Countdown timer
@@ -349,6 +443,8 @@ class GameViewModel: ObservableObject {
             // Drift can complete the circuit if the player set everything else up correctly
             if checkWin() {
                 status = .won
+                consecutiveFailures = 0
+                pendingFrustrationBoost = false
                 signalPath = computeSignalPath()
                 countdownTask?.cancel()
                 saveResultIfDaily(success: true)
@@ -532,9 +628,11 @@ class GameViewModel: ObservableObject {
             : allConnectionsValid()
         guard targetsReached else { return false }
 
-        // energySaving: also require total active nodes ≤ solutionPathLength + 2
+        // energySaving: also require total active nodes ≤ limit.
+        // After 3+ consecutive failures grant one extra node of slack silently.
         if currentLevel.objectiveType == .energySaving {
-            return activeNodes <= currentLevel.energySavingLimit
+            let bonusSlack = consecutiveFailures >= 3 ? 1 : 0
+            return activeNodes <= currentLevel.energySavingLimit + bonusSlack
         }
         return true
     }

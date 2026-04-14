@@ -30,6 +30,14 @@ struct TileView: View {
     /// True when this tile caused or contributed to the mission failure.
     /// Shows a coloured highlight on the loss screen so the player understands why they failed.
     let isFailureCulprit: Bool
+    /// Opacity scale for the interference static overlay (1.0 = full noise, lower = reduced for low-skill players).
+    var interferenceScale: Double = 1.0
+    /// Very faint ambient warmth for tiles adjacent to the signal (energy bias hint layer).
+    var isNearSignal: Bool = false
+    /// This tile is the current soft hint target — receives a barely-perceptible glow.
+    var isHintTarget: Bool = false
+    /// Delayed hint active — hint target receives a slow breathing pulse after 12 s of inactivity.
+    var isHintPulsing: Bool = false
     let onTap: () -> Void
 
     @State private var tapScale: CGFloat = 1.0
@@ -139,12 +147,38 @@ struct TileView: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .opacity(0.35 + interferenceFlicker * 0.65)
+                    .opacity((0.35 + interferenceFlicker * 0.65) * interferenceScale)
                     .onAppear {
                         withAnimation(.easeInOut(duration: 0.20).repeatForever(autoreverses: true)) {
                             interferenceFlicker = 1.0
                         }
                     }
+            }
+
+            // ── Near-signal energy bias ──────────────────────────────────────
+            // Tiles adjacent to the signal frontier get a barely-visible warm tint,
+            // creating a subtle "pull" toward areas where signal wants to flow.
+            if isNearSignal && !isHintTarget {
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .fill(AppTheme.accentPrimary.opacity(0.04))
+                    .allowsHitTesting(false)
+            }
+
+            // ── Soft hint overlay ─────────────────────────────────────────────
+            // When hints are active, the frontier tile receives a faint warmth.
+            // After 12 s of inactivity the warmth intensifies to a slow pulse.
+            // Opacity ceiling is kept far below any mechanic indicator so it feels
+            // like a natural quality of the tile rather than an explicit marker.
+            if isHintTarget {
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .fill(AppTheme.accentPrimary.opacity(isHintPulsing ? 0.11 : 0.05))
+                    .allowsHitTesting(false)
+                if isHintPulsing {
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .strokeBorder(AppTheme.accentPrimary.opacity(0.20), lineWidth: 0.5)
+                        .pulsingGlow(color: AppTheme.accentPrimary, duration: 2.2)
+                        .allowsHitTesting(false)
+                }
             }
 
             // ── Failure culprit highlight ─────────────────────────────────

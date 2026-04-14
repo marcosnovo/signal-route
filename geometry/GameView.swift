@@ -130,6 +130,12 @@ struct GameView: View {
                     .zIndex(200)
             }
         }
+        .onDisappear {
+            // If the player exits mid-game (not via win or loss), record as abandon
+            if vm.status == .playing {
+                PlayerSkillStore.shared.recordAbandon()
+            }
+        }
         .onChange(of: vm.status) { _, newStatus in
             switch newStatus {
             case .won:
@@ -293,8 +299,11 @@ struct GameView: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                TechLabel(text: S.usedLabel, color: AppTheme.sage)
-                Text("\(vm.movesUsed)")
+                TechLabel(text: vm.activeAdjustments.isHardMode ? S.parLabel : S.usedLabel,
+                          color: AppTheme.sage)
+                Text(vm.activeAdjustments.isHardMode
+                     ? "\(vm.currentLevel.minimumRequiredMoves)"
+                     : "\(vm.movesUsed)")
                     .font(AppTheme.mono(22, weight: .bold))
                     .foregroundStyle(AppTheme.sage.opacity(0.55))
                     .monospacedDigit()
@@ -306,7 +315,11 @@ struct GameView: View {
     }
 
     private var movesColor: Color {
-        let ratio = Double(vm.movesLeft) / Double(max(1, vm.currentLevel.maxMoves))
+        // Use actual starting moves (clamped by setupLevel) rather than raw maxMoves,
+        // so colour thresholds remain correct in hard mode.
+        let startingMoves = max(vm.currentLevel.minimumRequiredMoves,
+                                vm.currentLevel.maxMoves + vm.activeAdjustments.extraMoves)
+        let ratio = Double(vm.movesLeft) / Double(max(1, startingMoves))
         if ratio > 0.4 { return AppTheme.textPrimary }
         if ratio > 0.2 { return AppTheme.accentPrimary }
         return AppTheme.danger
@@ -470,6 +483,10 @@ struct GameView: View {
                                     signalHighlight:  signalFrontRow == row && signalFrontCol == col,
                                     isFailureCulprit: vm.status == .lost
                                         && vm.culpritTiles.contains { $0.0 == row && $0.1 == col },
+                                    interferenceScale: vm.activeAdjustments.interferenceScale,
+                                    isNearSignal:     isNearSignal(row: row, col: col),
+                                    isHintTarget:     vm.hintEnabled && vm.hintTileRow == row && vm.hintTileCol == col,
+                                    isHintPulsing:    vm.hintPulsing,
                                     onTap:            { vm.tap(row: row, col: col) }
                                 )
                             }
@@ -559,6 +576,18 @@ struct GameView: View {
         }
     }
 
+    /// Returns true when the tile at (row, col) is adjacent to at least one energized tile
+    /// but is not itself energized — used to drive the energy-bias hint layer.
+    private func isNearSignal(row: Int, col: Int) -> Bool {
+        guard vm.hintEnabled && !vm.tiles[row][col].isEnergized else { return false }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let nr = row + dr, nc = col + dc
+            guard nr >= 0, nr < vm.gridSize, nc >= 0, nc < vm.gridSize else { continue }
+            if vm.tiles[nr][nc].isEnergized { return true }
+        }
+        return false
+    }
+
     private var metricDivider: some View {
         Rectangle()
             .fill(AppTheme.sage.opacity(0.22))
@@ -637,8 +666,19 @@ struct MissionOverlay: View {
                             .foregroundStyle(AppTheme.textPrimary)
                             .kerning(1)
                         if !won {
-                            TechLabel(text: vm.failureCauseLabel,
+                            TechLabel(text: S.failureCauseLabel(vm.failureCause),
                                       color: AppTheme.danger.opacity(0.75))
+                            Text(S.failureCauseHint(vm.failureCause))
+                                .font(.system(size: 9, weight: .regular))
+                                .foregroundStyle(AppTheme.sage.opacity(0.60))
+                                .kerning(0.5)
+                            if vm.consecutiveFailures >= 2 {
+                                Text(S.frustrationMessage(failures: vm.consecutiveFailures))
+                                    .font(AppTheme.mono(9, weight: .semibold))
+                                    .foregroundStyle(AppTheme.accentPrimary.opacity(0.80))
+                                    .kerning(1.5)
+                                    .padding(.top, 2)
+                            }
                         }
                     }
                     .padding(.leading, 14)
@@ -681,15 +721,16 @@ struct MissionOverlay: View {
                         HStack(spacing: 8) {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.system(size: 11, weight: .bold))
-                            Text(won ? S.retryLevel : S.tryAgain)
-                                .font(AppTheme.mono(12, weight: .bold))
+                            Text(won ? S.retryLevel : S.retryLabel)
+                                .font(AppTheme.mono(won ? 12 : 14, weight: .bold))
                                 .kerning(1.5)
                         }
                         .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(won ? AppTheme.success : AppTheme.danger)
+                        .frame(height: won ? 48 : 64)
+                        .background(won ? AppTheme.success : AppTheme.accentPrimary)
                         .foregroundStyle(.white)
                     }
+                    .breathingCTA()
 
                     TechDivider()
 

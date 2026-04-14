@@ -134,6 +134,7 @@ struct AppStrings {
     // MARK: - Game HUD
     var movesRemaining:    String { t("MOVES REMAINING",  "MOVIMIENTOS RESTANTES", "MOUVEMENTS RESTANTS") }
     var usedLabel:         String { t("USED",             "USADOS",                "UTILISÉS") }
+    var parLabel:          String { t("PAR",              "PAR",                   "PAR") }
     var timeRemaining:     String { t("TIME REMAINING",   "TIEMPO RESTANTE",       "TEMPS RESTANT") }
     var elapsed:           String { t("ELAPSED",          "TRANSCURRIDO",          "ÉCOULÉ") }
     var objectiveHUD:      String { t("OBJECTIVE",        "OBJETIVO",              "OBJECTIF") }
@@ -313,9 +314,24 @@ struct AppStrings {
     }
 
     // MARK: - Upgrade / monetization CTAs
-    var unlimitedAccess:       String { t("UNLIMITED ACCESS",        "ACCESO ILIMITADO",         "ACCÈS ILLIMITÉ") }
-    var continueWithoutLimits: String { t("CONTINUE WITHOUT LIMITS", "CONTINÚA SIN LÍMITES",     "CONTINUER SANS LIMITES") }
-    var upgradeLabel:          String { t("UPGRADE",                 "MEJORAR",                  "AMÉLIORER") }
+    var unlimitedAccess:          String { t("UNLIMITED ACCESS",          "ACCESO ILIMITADO",          "ACCÈS ILLIMITÉ") }
+    var continueWithoutLimits:    String { t("CONTINUE WITHOUT LIMITS",   "CONTINÚA SIN LÍMITES",      "CONTINUER SANS LIMITES") }
+    var upgradeLabel:             String { t("UPGRADE",                   "MEJORAR",                   "AMÉLIORER") }
+    var unlockUnlimitedAccess:    String { t("UNLOCK UNLIMITED ACCESS",   "DESBLOQUEAR ACCESO",        "DÉBLOQUER L'ACCÈS") }
+    var playWithoutDailyLimit:    String { t("Play without daily limit",  "Juega sin límite diario",   "Joue sans limite quotidienne") }
+
+    // MARK: - Home V2 / V3
+    var play:        String { t("PLAY",          "JUGAR",               "JOUER") }
+    var viewFullMap: String { t("VIEW FULL MAP", "VER MAPA COMPLETO",   "VOIR LA CARTE COMPLÈTE") }
+    var inProgress:  String { t("IN PROGRESS",   "EN PROGRESO",         "EN COURS") }
+    func resumeMissionLabel(_ id: String) -> String {
+        t("CONTINUE MISSION \(id)", "CONTINUAR MISIÓN \(id)", "CONTINUER MISSION \(id)")
+    }
+    func missionsCompleted(done: Int, total: Int) -> String {
+        t("\(done) of \(total) missions completed",
+          "\(done) de \(total) misiones completadas",
+          "\(done) sur \(total) missions terminées")
+    }
 
     // MARK: - Victory telemetry
     var missionDebrief:  String { t("MISSION\nDEBRIEF",  "INFORME\nDE MISIÓN",  "COMPTE-RENDU\nDE MISSION") }
@@ -367,6 +383,33 @@ struct AppStrings {
         case 5...6:  return t("NAVIGATOR", "NAVEGANTE",  "NAVIGATEUR")
         case 7...9:  return t("COMMANDER", "COMANDANTE", "COMMANDANT")
         default:     return t("ADMIRAL",   "ALMIRANTE",  "AMIRAL")
+        }
+    }
+
+    // MARK: - Anti-frustration messages (loss overlay)
+    /// Encouraging micro-message shown from the 2nd consecutive failure onward.
+    func frustrationMessage(failures: Int) -> String {
+        switch failures {
+        case 2:  return t("ALMOST THERE",          "CASI LO TIENES",      "VOUS Y ÊTES PRESQUE")
+        case 3:  return t("TRY A DIFFERENT ROUTE",  "PRUEBA OTRA RUTA",    "ESSAYEZ UN AUTRE CHEMIN")
+        default: return t("YOU'VE GOT THIS",        "TÚ PUEDES HACERLO",   "VOUS POUVEZ LE FAIRE")
+        }
+    }
+
+    // MARK: - Failure cause (loss overlay)
+    func failureCauseLabel(_ cause: FailureCause) -> String {
+        switch cause {
+        case .fragileTileDepleted:  return t("FRAGILE TILE BURNED OUT",   "NODO FRÁGIL AGOTADO",         "NŒUD FRAGILE ÉPUISÉ")
+        case .chargeGateIncomplete: return t("CHARGE GATE NOT ACTIVATED", "COMPUERTA DE CARGA INACTIVA", "PORTE DE CHARGE INACTIVE")
+        case .moveLimitExhausted:   return t("SIGNAL ROUTE NOT FOUND",    "RUTA DE SEÑAL NO ENCONTRADA", "ROUTE DU SIGNAL INTROUVABLE")
+        }
+    }
+
+    func failureCauseHint(_ cause: FailureCause) -> String {
+        switch cause {
+        case .fragileTileDepleted:  return t("Use this node last",           "Usa este nodo al final",      "Utilisez ce nœud en dernier")
+        case .chargeGateIncomplete: return t("Activate all gates first",     "Activa todas las compuertas", "Activez toutes les portes d'abord")
+        case .moveLimitExhausted:   return t("Plan your route before moving", "Planifica antes de mover",   "Planifiez avant de bouger")
         }
     }
 }
