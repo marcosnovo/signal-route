@@ -147,6 +147,73 @@ struct LevelGenerator {
             sum + (0..<gs).reduce(0) { s, c in s + (connMap[r][c].isEmpty ? 0 : 1) }
         }
 
+        // ── Starts-solved invariant ────────────────────────────────────────
+        // Checked AFTER applyMechanics so gate tiles (which block energy)
+        // are already in place. Only rescues if the board is genuinely solved
+        // at the initial state the player sees.
+        //
+        // Root cause: straight tiles with scramble=2 land on their alt-solved
+        // rotation (taps needed = 0), and when ALL relay path tiles share this
+        // property, minMoves=0 and the circuit is complete before the first tap.
+        //
+        // Rescue — two passes:
+        //  1. Relay path tiles: rotate +1; adjusts minMoves so optimal-play cost
+        //     reflects the forced re-alignment.
+        //  2. Noise tiles (fallback): rotate +1; no minMoves change because
+        //     the player never needs to tap a noise tile to win. This pass
+        //     handles rare cases where noise tiles form a persistent alternate
+        //     path from source to target even after all relay tiles are misaligned.
+        if boardStartsSolved(grid: grid, gridSize: gs,
+                             objectiveType: level.objectiveType,
+                             solutionPathLength: solutionPathLength) {
+            let relaySet = Set(relayPathInfo.map { $0.r * gs + $0.c })
+            var rescued = false
+
+            // Pass 1: relay path tiles
+            for info in relayPathInfo where grid[info.r][info.c].type != .cross {
+                let (type, solvedRot) = tileSpec(for: info.solvedConns)
+                let newRot  = (grid[info.r][info.c].rotation + 1) % 4
+                let newTaps = minTapsToSolve(type: type, from: newRot, solvedRot: solvedRot)
+                grid[info.r][info.c].rotation = newRot
+                minMoves += newTaps
+                #if DEBUG
+                print("[LevelGen] L\(level.id): rescue (relay) — (\(info.r),\(info.c)) +1 (type=\(type), newTaps=\(newTaps))")
+                #endif
+                if !boardStartsSolved(grid: grid, gridSize: gs,
+                                      objectiveType: level.objectiveType,
+                                      solutionPathLength: solutionPathLength) {
+                    rescued = true; break
+                }
+            }
+
+            // Pass 2: noise tiles — fallback for persistent alternate paths
+            if !rescued {
+                for r in 0..<gs {
+                    for c in 0..<gs {
+                        guard !relaySet.contains(r * gs + c) else { continue }
+                        guard grid[r][c].role != .source && grid[r][c].role != .target else { continue }
+                        guard grid[r][c].type != .cross else { continue }
+                        grid[r][c].rotation = (grid[r][c].rotation + 1) % 4
+                        #if DEBUG
+                        print("[LevelGen] L\(level.id): rescue (noise) — (\(r),\(c)) +1")
+                        #endif
+                        if !boardStartsSolved(grid: grid, gridSize: gs,
+                                              objectiveType: level.objectiveType,
+                                              solutionPathLength: solutionPathLength) {
+                            rescued = true; break
+                        }
+                    }
+                    if rescued { break }
+                }
+            }
+
+            #if DEBUG
+            if !rescued {
+                print("[LevelGen] L\(level.id): starts-solved — rescue exhausted all candidates")
+            }
+            #endif
+        }
+
         return (grid, minMoves, solutionPathLength)
     }
 
@@ -424,6 +491,12 @@ struct LevelGenerator {
         if conns == [.north, .east, .south]  { return (.tShape, 1) }
         if conns == [.east, .south, .west]   { return (.tShape, 2) }
         if conns == [.north, .south, .west]  { return (.tShape, 3) }
+        // Single-direction path endpoints (source/target at corners always exit in
+        // one direction). Using .straight keeps connections to 2 directions, preventing
+        // the tile from acting as a 4-way cross that feeds noise-tile alternate paths.
+        // The second straight connection points out-of-bounds and is harmlessly ignored.
+        if conns == [.north] || conns == [.south] { return (.straight, 0) }
+        if conns == [.east]  || conns == [.west]  { return (.straight, 1) }
         return (.cross, 0)
     }
 
@@ -457,6 +530,77 @@ struct LevelGenerator {
             return (source, tgts)
         } else {
             return (source, [corners[(si + 2) % 4]])
+        }
+    }
+
+    // MARK: - Public: Starts-solved QA API
+
+    /// Returns true when `level`'s initial board satisfies the win condition before any player tap.
+    /// Used by QA checks and regression tests; always available (not debug-gated).
+    static func startsSolved(level: Level) -> Bool {
+        let board = buildBoard(for: level)
+        return boardStartsSolved(grid: board, gridSize: level.gridSize,
+                                 objectiveType: level.objectiveType,
+                                 solutionPathLength: level.solutionPathLength)
+    }
+
+    // MARK: - Private: Starts-solved check
+
+    /// Returns true when the board's initial connectivity satisfies the win condition
+    /// before any player input. Mirrors GameViewModel.propagateEnergy() + checkWin().
+    /// Used as a post-build invariant check in buildBoardInternal.
+    private static func boardStartsSolved(
+        grid: [[Tile]],
+        gridSize gs: Int,
+        objectiveType: LevelObjectiveType,
+        solutionPathLength: Int
+    ) -> Bool {
+        var local = grid
+        for r in 0..<gs { for c in 0..<gs { local[r][c].isEnergized = false } }
+
+        var queue: [(Int, Int)] = []
+        for r in 0..<gs {
+            for c in 0..<gs where local[r][c].role == .source {
+                local[r][c].isEnergized = true
+                queue.append((r, c))
+            }
+        }
+
+        var visited = Set<Int>()
+        while !queue.isEmpty {
+            let (r, c) = queue.removeFirst()
+            let key = r * gs + c
+            guard visited.insert(key).inserted else { continue }
+            for dir in local[r][c].connections {
+                let (nr, nc) = gridNeighbor(r: r, c: c, dir: dir)
+                guard nr >= 0, nr < gs, nc >= 0, nc < gs else { continue }
+                guard local[nr][nc].connections.contains(dir.opposite) else { continue }
+                guard !local[nr][nc].isBurned else { continue }
+                guard !local[nr][nc].blockedInboundDirections.contains(dir.opposite) else { continue }
+                guard !local[nr][nc].isEnergized else { continue }
+                local[nr][nc].isEnergized = true
+                let isBlockedGate = local[nr][nc].gateChargesRequired != nil && !local[nr][nc].isGateOpen
+                if !isBlockedGate { queue.append((nr, nc)) }
+            }
+        }
+
+        let targetsTotal  = local.flatMap { $0 }.filter { $0.role == .target }.count
+        let onlineTargets = local.flatMap { $0 }.filter { $0.role == .target && $0.isEnergized }.count
+        guard targetsTotal > 0, onlineTargets == targetsTotal else { return false }
+
+        if objectiveType == .energySaving {
+            let activeNodes = local.flatMap { $0 }.filter { $0.isEnergized }.count
+            return activeNodes <= solutionPathLength + 2
+        }
+        return true
+    }
+
+    private static func gridNeighbor(r: Int, c: Int, dir: Direction) -> (Int, Int) {
+        switch dir {
+        case .north: return (r - 1, c)
+        case .south: return (r + 1, c)
+        case .east:  return (r, c + 1)
+        case .west:  return (r, c - 1)
         }
     }
 

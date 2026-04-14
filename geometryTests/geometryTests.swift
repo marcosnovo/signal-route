@@ -372,3 +372,92 @@ struct MechanicSmokeTests {
     }
 }
 #endif
+
+// MARK: - Starts-Solved Regression Tests
+// Validates that the starts-solved invariant introduced in LevelGenerator.buildBoardInternal
+// is upheld across the entire catalogue.
+//
+// Covers the two levels originally reported as broken (M18 and M25) as explicit regression
+// guards, plus a full catalogue sweep to prevent future regressions.
+@Suite("Starts-Solved Regression Tests")
+struct StartsSolvedRegressionTests {
+
+    private static let levels = LevelGenerator.levels
+
+    // MARK: - Explicit regression guards for reported levels
+
+    /// Mission 18 (dense / energySaving) was seen starting with the circuit already complete.
+    /// Root cause: all relay path tiles were straight tiles that landed on their alt-solved
+    /// rotation (scramble=2), giving minimumRequiredMoves=0 and active nodes within the
+    /// energySaving limit — so checkWin() would pass on the very first tap.
+    @Test("Mission 18: does not start pre-solved (regression guard)")
+    func mission18NotPreSolved() {
+        guard let level = Self.levels.first(where: { $0.id == 18 }) else {
+            Issue.record("Level 18 not found in catalogue"); return
+        }
+        #expect(!LevelGenerator.startsSolved(level: level),
+                "L18: board starts with win condition satisfied — rescue invariant failed")
+    }
+
+    /// Mission 25 (singlePath / normal) was seen starting with the full circuit connected.
+    /// Same root cause as M18: all relay path straight tiles got scramble=2 from the seeded
+    /// RNG, placing every one in its alt-solved rotation (minTapsToSolve=0 for each).
+    @Test("Mission 25: does not start pre-solved (regression guard)")
+    func mission25NotPreSolved() {
+        guard let level = Self.levels.first(where: { $0.id == 25 }) else {
+            Issue.record("Level 25 not found in catalogue"); return
+        }
+        #expect(!LevelGenerator.startsSolved(level: level),
+                "L25: board starts with win condition satisfied — rescue invariant failed")
+    }
+
+    // MARK: - Post-fix property checks for reported levels
+
+    @Test("Mission 18: minimumRequiredMoves > 0 after fix")
+    func mission18RequiresAtLeastOneTap() {
+        guard let level = Self.levels.first(where: { $0.id == 18 }) else { return }
+        #expect(level.minimumRequiredMoves > 0,
+                "L18: minimumRequiredMoves=\(level.minimumRequiredMoves) — rescue must add ≥ 1 tap")
+    }
+
+    @Test("Mission 25: minimumRequiredMoves > 0 after fix")
+    func mission25RequiresAtLeastOneTap() {
+        guard let level = Self.levels.first(where: { $0.id == 25 }) else { return }
+        #expect(level.minimumRequiredMoves > 0,
+                "L25: minimumRequiredMoves=\(level.minimumRequiredMoves) — rescue must add ≥ 1 tap")
+    }
+
+    @Test("Mission 18: move buffer is positive (still playable)")
+    func mission18HasPositiveMoveBuffer() {
+        guard let level = Self.levels.first(where: { $0.id == 18 }) else { return }
+        #expect(level.moveBuffer > 0,
+                "L18: moveBuffer=\(level.moveBuffer) — level became unplayable after rescue")
+    }
+
+    @Test("Mission 25: move buffer is positive (still playable)")
+    func mission25HasPositiveMoveBuffer() {
+        guard let level = Self.levels.first(where: { $0.id == 25 }) else { return }
+        #expect(level.moveBuffer > 0,
+                "L25: moveBuffer=\(level.moveBuffer) — level became unplayable after rescue")
+    }
+
+    // MARK: - Full catalogue sweep
+
+    /// No level in the 180-level catalogue should produce a board where the win condition is
+    /// satisfied before the player makes a single tap.
+    @Test("Full catalogue: no level starts pre-solved")
+    func fullCatalogueNoPresentSolvedBoards() {
+        let broken = Self.levels.filter { LevelGenerator.startsSolved(level: $0) }.map { $0.id }
+        #expect(broken.isEmpty,
+                "Pre-solved levels found: \(broken) — boardStartsSolved rescue invariant failed for these seeds")
+    }
+
+    /// Every level must require at least one tap. minimumRequiredMoves=0 is the generator-side
+    /// symptom of a starts-solved board. The rescue increments this to ≥ 1.
+    @Test("Full catalogue: minimumRequiredMoves > 0 for all levels")
+    func fullCatalogueAllLevelsRequireAtLeastOneTap() {
+        let zero = Self.levels.filter { $0.minimumRequiredMoves == 0 }.map { $0.id }
+        #expect(zero.isEmpty,
+                "Levels with minimumRequiredMoves=0: \(zero)")
+    }
+}

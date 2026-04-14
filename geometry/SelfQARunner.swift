@@ -216,6 +216,23 @@ final class SelfQARunner: ObservableObject {
                   fix:       "Board must have exactly 1 source and numTargets targets.",
                   level:     badBoards.first?.id)
 
+        // Starts-solved: no board should satisfy the win condition before the first tap.
+        // Checks the same sample set as board generation. Uses LevelGenerator.startsSolved
+        // which mirrors GameViewModel.propagateEnergy() + checkWin() on the initial board.
+        // Status: .fail (CRITICAL) — a pre-solved board is a broken gameplay experience.
+        let preSolved = sampleIDs.compactMap { id -> Level? in
+            guard let level = levels.first(where: { $0.id == id }) else { return nil }
+            return LevelGenerator.startsSolved(level: level) ? level : nil
+        }
+        let solvedLabel = quick ? "No pre-solved boards (7 samples)" : "No pre-solved boards (all 180)"
+        r += pass(solvedLabel, .gameplay,
+                  condition: preSolved.isEmpty,
+                  detail:    preSolved.isEmpty
+                      ? "\(sampleIDs.count) levels OK"
+                      : "\(preSolved.count) pre-solved: \(preSolved.prefix(5).map { $0.id })",
+                  fix:       "buildBoardInternal must apply the starts-solved rescue. Check LevelGenerator.boardStartsSolved invariant.",
+                  level:     preSolved.first?.id)
+
         return r
     }
 

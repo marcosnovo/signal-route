@@ -27,6 +27,8 @@ struct LevelValidationReport {
 
     /// Heuristic pass: source count == 1, target count matches spec, path ≥ 3.
     let isSolvable:           Bool
+    /// True when the initial board (before any player tap) already satisfies the win condition.
+    let startsSolved:         Bool
     let warnings:             [String]
 
     /// Solver result — nil when validation ran without solver (useSolver: false).
@@ -84,6 +86,14 @@ enum LevelValidationRunner {
         let targetCount         = tiles.filter   { $0.role == .target }.count
 
         var warnings: [String] = []
+
+        // ── Starts-solved check ───────────────────────────────────────────
+        // Mirrors GameViewModel.propagateEnergy() + checkWin() on the initial board.
+        // A true result means the player sees a completed circuit from the first frame.
+        let startsSolved = checkStartsSolved(board: board, level: level)
+        if startsSolved {
+            warnings.append("STARTS_SOLVED: initial board satisfies win condition with 0 player taps")
+        }
 
         // ── Solvability heuristic ─────────────────────────────────────────
         // The generator guarantees a valid path, so failures here indicate
@@ -258,6 +268,7 @@ enum LevelValidationRunner {
             hasChargeGate:        hasChargeGate,
             hasInterferenceZone:  hasInterferenceZone,
             isSolvable:           isSolvable,
+            startsSolved:         startsSolved,
             warnings:             warnings,
             solverResult:         solverResult,
             complexityScore:      score
@@ -273,6 +284,7 @@ enum LevelValidationRunner {
         let trivial     = reports.filter { $0.isTrivial }.count
         let unsolvable  = reports.filter { !$0.isSolvable }.count
         let noMech      = reports.filter { !$0.hasMechanics && $0.levelID >= 31 }.count
+        let preSolved   = reports.filter { $0.startsSolved }.count
 
         print("")
         print("╔══════════════════════════════════════════════════════════╗")
@@ -283,6 +295,7 @@ enum LevelValidationRunner {
         print(String(format: "║  Trivial (min ≤ 1): %-36d║", trivial))
         print(String(format: "║  Heuristic fails  : %-36d║", unsolvable))
         print(String(format: "║  Missing mechanics: %-36d║", noMech))
+        print(String(format: "║  Starts solved    : %-36d║", preSolved))
         print("╚══════════════════════════════════════════════════════════╝")
 
         var lastDiff: DifficultyTier? = nil
@@ -310,6 +323,7 @@ enum LevelValidationRunner {
             let timerStr = r.timeLimit.map { String(format: "%3ds", $0) } ?? "    "
             let warnMark = r.warnings.isEmpty ? " " : "⚠"
             let trivMark = r.isTrivial        ? "T" : " "
+            let solvMark = r.startsSolved     ? "S" : " "
             let obj: String
             switch r.objectiveType {
             case .normal:       obj = "NRM"
@@ -333,8 +347,8 @@ enum LevelValidationRunner {
                 solverStr = "     "       // solver not run
             }
 
-            print(String(format: " %@ %@  L%03d  %dx%d  min=%-3d max=%-3d buf=%-3d path=%-3d tgt=%d  cx=%-5.1f  %@⏱%@  %@%@",
-                warnMark, trivMark,
+            print(String(format: " %@ %@%@  L%03d  %dx%d  min=%-3d max=%-3d buf=%-3d path=%-3d tgt=%d  cx=%-5.1f  %@⏱%@  %@%@",
+                warnMark, trivMark, solvMark,
                 r.levelID, r.gridSize, r.gridSize,
                 r.minimumRequiredMoves, r.moveLimit, r.buffer,
                 r.solutionPathLength, r.numTargets,
@@ -349,7 +363,7 @@ enum LevelValidationRunner {
 
         print("")
         print("  Legend:")
-        print("  T = trivial (min ≤ 1)  ⚠ = has warnings  cx = complexity score")
+        print("  T = trivial (min ≤ 1)  S = starts solved  ⚠ = has warnings  cx = complexity score")
         print("  CAP = rotationCap  OVL = overloaded  DRF = autoDrift  OWR = oneWayRelay")
         print("  FRG = fragileTile  CGT = chargeGate  INF = interferenceZone")
         print("  NRM = normal  COV = maxCoverage  SAV = energySaving")
@@ -467,7 +481,89 @@ enum LevelValidationRunner {
         print("")
     }
 
+    // MARK: - Starts-solved API
+
+    /// Scans every level in the catalogue and returns those whose initial board
+    /// already satisfies the win condition before any player input.
+    static func findStartsSolvedLevels() -> [Level] {
+        LevelGenerator.levels.filter { level in
+            let board = LevelGenerator.buildBoard(for: level)
+            return checkStartsSolved(board: board, level: level)
+        }
+    }
+
     // MARK: - Private helpers
+
+    /// Returns true when the board's initial state already satisfies the win condition
+    /// with zero player input. Mirrors GameViewModel.propagateEnergy() + checkWin().
+    private static func checkStartsSolved(board: [[Tile]], level: Level) -> Bool {
+        let gridSize = level.gridSize
+        var local = board
+
+        // Reset energized state on the local copy
+        for r in 0..<gridSize { for c in 0..<gridSize { local[r][c].isEnergized = false } }
+
+        // BFS from all source tiles — mirrors propagateEnergy()
+        var queue: [(Int, Int)] = []
+        for r in 0..<gridSize {
+            for c in 0..<gridSize where local[r][c].role == .source {
+                local[r][c].isEnergized = true
+                queue.append((r, c))
+            }
+        }
+
+        var visited = Set<Int>()
+        while !queue.isEmpty {
+            let (r, c) = queue.removeFirst()
+            let key = r * gridSize + c
+            guard visited.insert(key).inserted else { continue }
+            for dir in local[r][c].connections {
+                let (nr, nc) = neighboringCell(row: r, col: c, dir: dir)
+                guard nr >= 0, nr < gridSize, nc >= 0, nc < gridSize else { continue }
+                guard local[nr][nc].connections.contains(dir.opposite) else { continue }
+                guard !local[nr][nc].isBurned else { continue }
+                guard !local[nr][nc].blockedInboundDirections.contains(dir.opposite) else { continue }
+                guard !local[nr][nc].isEnergized else { continue }
+                local[nr][nc].isEnergized = true
+                let isBlockedGate = local[nr][nc].gateChargesRequired != nil && !local[nr][nc].isGateOpen
+                if !isBlockedGate { queue.append((nr, nc)) }
+            }
+        }
+
+        // Mirror checkWin(): all targets must be energized
+        let targetsTotal  = local.flatMap { $0 }.filter { $0.role == .target }.count
+        let onlineTargets = local.flatMap { $0 }.filter { $0.role == .target && $0.isEnergized }.count
+
+        if targetsTotal > 0 {
+            guard onlineTargets == targetsTotal else { return false }
+            if level.objectiveType == .energySaving {
+                let activeNodes = local.flatMap { $0 }.filter { $0.isEnergized }.count
+                return activeNodes <= level.energySavingLimit
+            }
+            return true
+        } else {
+            // allConnectionsValid fallback (mirrors GameViewModel)
+            for row in 0..<gridSize {
+                for col in 0..<gridSize {
+                    for dir in local[row][col].connections {
+                        let (nr, nc) = neighboringCell(row: row, col: col, dir: dir)
+                        if nr < 0 || nr >= gridSize || nc < 0 || nc >= gridSize { return false }
+                        if !local[nr][nc].connections.contains(dir.opposite) { return false }
+                    }
+                }
+            }
+            return true
+        }
+    }
+
+    private static func neighboringCell(row: Int, col: Int, dir: Direction) -> (Int, Int) {
+        switch dir {
+        case .north: return (row - 1, col)
+        case .south: return (row + 1, col)
+        case .east:  return (row, col + 1)
+        case .west:  return (row, col - 1)
+        }
+    }
 
     /// Acceptable move-buffer range per difficulty tier (matches proportional formula).
     /// Buffers outside this range get a GENEROUS or TIGHT warning.

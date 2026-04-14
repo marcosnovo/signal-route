@@ -92,10 +92,15 @@ struct DevMenuView: View {
 
     /// Filter applied to the validation results summary.
     enum ValidationResultFilter: String, CaseIterable {
-        case all, failed, trivial, warnings, expert
-        var label: String { rawValue.uppercased() }
+        case all, failed, startsSolved, trivial, warnings, expert
+        var label: String { rawValue == "startsSolved" ? "PRE-SOLVED" : rawValue.uppercased() }
     }
     @State private var validationFilter: ValidationResultFilter = .all
+
+    // Starts-solved scan
+    @State private var startsSolvedBroken: [Level] = []
+    @State private var startsSolvedChecked: Bool = false
+    @State private var isCheckingStartsSolved: Bool = false
 
     // Per-level inspector (MISSIONS tab)
     @State private var inspectLevelID: Int?  = nil
@@ -626,11 +631,12 @@ struct DevMenuView: View {
         } else if validationReports.isEmpty {
             validStat  = .warning; validDetail = "NOT RUN"
         } else {
-            let issues = validationReports.filter { !$0.isSolvable || !$0.warnings.isEmpty || $0.isTrivial }
-            validStat  = issues.isEmpty ? .pass : .warning
-            validDetail = issues.isEmpty
-                ? "ALL \(validationReports.count) OK"
-                : "\(issues.count) ISSUES IN \(validationReports.count)"
+            let criticals = validationReports.filter { !$0.isSolvable || $0.startsSolved }
+            let issues    = validationReports.filter { !$0.isSolvable || !$0.warnings.isEmpty || $0.isTrivial || $0.startsSolved }
+            validStat  = !criticals.isEmpty ? .fail : (issues.isEmpty ? .pass : .warning)
+            validDetail = !criticals.isEmpty
+                ? "\(criticals.count) CRITICAL IN \(validationReports.count)"
+                : (issues.isEmpty ? "ALL \(validationReports.count) OK" : "\(issues.count) ISSUES IN \(validationReports.count)")
         }
         #else
         let validStat  = QAStatus.warning
@@ -1871,6 +1877,8 @@ struct DevMenuView: View {
                 TechDivider()
                 validationSection
                 TechDivider()
+                startsSolvedSection
+                TechDivider()
                 #endif
                 mechanicMessagesSection
             }
@@ -2384,17 +2392,19 @@ struct DevMenuView: View {
                 .padding(.vertical, 24)
             } else if !validationReports.isEmpty {
                 // Filter pills
+                let startsSolvedCt = validationReports.filter { $0.startsSolved }.count
                 let failedCt  = validationReports.filter { !$0.isSolvable || $0.solverResult?.isSolvable == false }.count
                 let trivialCt = validationReports.filter { $0.isTrivial }.count
                 let warnCt    = validationReports.filter { !$0.warnings.isEmpty }.count
                 let expertCt  = validationReports.filter { $0.difficulty == .expert }.count
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 5) {
-                        validationFilterPill(.all,      count: validationReports.count)
-                        validationFilterPill(.failed,   count: failedCt)
-                        validationFilterPill(.trivial,  count: trivialCt)
-                        validationFilterPill(.warnings, count: warnCt)
-                        validationFilterPill(.expert,   count: expertCt)
+                        validationFilterPill(.all,          count: validationReports.count)
+                        validationFilterPill(.failed,       count: failedCt)
+                        validationFilterPill(.startsSolved, count: startsSolvedCt)
+                        validationFilterPill(.trivial,      count: trivialCt)
+                        validationFilterPill(.warnings,     count: warnCt)
+                        validationFilterPill(.expert,       count: expertCt)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 8)
                 }
@@ -2414,10 +2424,147 @@ struct DevMenuView: View {
         .background(AppTheme.surface)
     }
 
+    // ── Starts-solved scanner ──────────────────────────────────────────────
+
+    private var startsSolvedSection: some View {
+        VStack(spacing: 0) {
+            sectionHeader("BUG DETECTION — STARTS SOLVED")
+
+            // Scan button
+            Button(action: runStartsSolvedCheck) {
+                HStack(spacing: 6) {
+                    if isCheckingStartsSolved {
+                        ProgressView().progressViewStyle(.circular).scaleEffect(0.65)
+                        Text("SCANNING \(LevelGenerator.levels.count) LEVELS...")
+                    } else {
+                        Image(systemName: "bolt.fill").font(.system(size: 9, weight: .bold))
+                        Text("CHECK STARTS-SOLVED LEVELS")
+                    }
+                }
+                .font(AppTheme.mono(9, weight: .bold))
+                .kerning(0.8)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .foregroundStyle(isCheckingStartsSolved ? AppTheme.textSecondary : AppTheme.danger)
+                .background(AppTheme.danger.opacity(0.07))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .strokeBorder(AppTheme.danger.opacity(0.22), lineWidth: 0.5)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            }
+            .buttonStyle(.plain)
+            .disabled(isCheckingStartsSolved)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+
+            // Results
+            if startsSolvedChecked {
+                if startsSolvedBroken.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(AppTheme.success)
+                        TechLabel(
+                            text: "ALL \(LevelGenerator.levels.count) LEVELS OK — NO PRE-SOLVED BOARDS",
+                            color: AppTheme.success
+                        )
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 20)
+                } else {
+                    // Summary bar
+                    HStack(spacing: 0) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(AppTheme.danger)
+                            .padding(.trailing, 6)
+                        TechLabel(
+                            text: "\(startsSolvedBroken.count) PRE-SOLVED LEVEL\(startsSolvedBroken.count == 1 ? "" : "S") DETECTED",
+                            color: AppTheme.danger
+                        )
+                        Spacer()
+                        Text("OF \(LevelGenerator.levels.count)")
+                            .font(AppTheme.mono(7))
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(AppTheme.danger.opacity(0.06))
+                    .overlay(alignment: .bottom) { TechDivider() }
+
+                    // Level rows
+                    ForEach(startsSolvedBroken) { level in
+                        let sector = SpatialRegion.catalog
+                            .last(where: { $0.levelRange.contains(level.id) })?.name ?? "UNKNOWN"
+                        HStack(spacing: 0) {
+                            // ID badge
+                            Text(String(format: "L%03d", level.id))
+                                .font(AppTheme.mono(9, weight: .bold))
+                                .foregroundStyle(AppTheme.danger)
+                                .frame(width: 44, alignment: .leading)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(sector.uppercased())
+                                    .font(AppTheme.mono(8, weight: .bold))
+                                    .foregroundStyle(AppTheme.textPrimary)
+                                HStack(spacing: 6) {
+                                    Text(level.difficulty.fullLabel.uppercased())
+                                        .font(AppTheme.mono(7))
+                                        .foregroundStyle(level.difficulty.color)
+                                    Text("·")
+                                        .font(AppTheme.mono(7))
+                                        .foregroundStyle(AppTheme.textSecondary.opacity(0.35))
+                                    Text(level.objectiveType.hudLabel.uppercased())
+                                        .font(AppTheme.mono(7))
+                                        .foregroundStyle(AppTheme.textSecondary)
+                                    Text("·")
+                                        .font(AppTheme.mono(7))
+                                        .foregroundStyle(AppTheme.textSecondary.opacity(0.35))
+                                    Text("\(level.gridSize)×\(level.gridSize)")
+                                        .font(AppTheme.mono(7))
+                                        .foregroundStyle(AppTheme.textSecondary)
+                                }
+                            }
+                            Spacer(minLength: 0)
+
+                            // Jump button
+                            Button(action: {
+                                jumpToLevelID = level.id
+                                withAnimation(.easeInOut(duration: 0.14)) { activeTab = .missions }
+                            }) {
+                                Image(systemName: "arrow.right.circle")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(AppTheme.accentPrimary.opacity(0.7))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(AppTheme.backgroundPrimary)
+                        .overlay(alignment: .bottom) {
+                            Rectangle().fill(AppTheme.sage.opacity(0.07)).frame(height: 0.5)
+                        }
+                    }
+                }
+            } else if !isCheckingStartsSolved {
+                TechLabel(
+                    text: "NOT SCANNED — TAP BUTTON TO CHECK ALL LEVELS",
+                    color: AppTheme.textSecondary.opacity(0.45)
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+            }
+        }
+        .background(AppTheme.surface)
+    }
+
     private func validationFilterPill(_ filter: ValidationResultFilter, count: Int) -> some View {
         let active = validationFilter == filter
-        let color: Color = filter == .failed ? AppTheme.danger
-                         : filter == .trivial ? Color.orange
+        let color: Color = filter == .failed       ? AppTheme.danger
+                         : filter == .startsSolved ? AppTheme.danger
+                         : filter == .trivial      ? Color.orange
                          : AppTheme.accentPrimary
         return Button(action: { validationFilter = filter }) {
             HStack(spacing: 4) {
@@ -2470,14 +2617,16 @@ struct DevMenuView: View {
 
     @ViewBuilder
     private var validationSummary: some View {
-        let total          = validationReports.count
-        let failed         = validationReports.filter { !$0.isSolvable || $0.solverResult?.isSolvable == false }
-        let solvable       = total - failed.count
-        let trivialLevels  = validationReports.filter { $0.isTrivial }
-        let withMechs      = validationReports.filter { $0.hasMechanics }.count
-        let solverImproved = validationReports.filter { $0.solverFoundShorterPath }.count
-        let avgComplexity  = validationReports.map { $0.complexityScore }.reduce(0, +) / Float(total)
-        let hasSolverData  = validationReports.first?.solverResult != nil
+        let total              = validationReports.count
+        let failed             = validationReports.filter { !$0.isSolvable || $0.solverResult?.isSolvable == false }
+        let startsSolvedLevels = validationReports.filter { $0.startsSolved }
+        let solvable           = total - failed.count
+        let trivialLevels      = validationReports.filter { $0.isTrivial }
+        let withMechs          = validationReports.filter { $0.hasMechanics }.count
+        let solverImproved     = validationReports.filter { $0.solverFoundShorterPath }.count
+        let avgComplexity      = validationReports.map { $0.complexityScore }.reduce(0, +) / Float(total)
+        let hasSolverData      = validationReports.first?.solverResult != nil
+        let anyCritical        = !failed.isEmpty || !startsSolvedLevels.isEmpty
 
         // All level-tagged warnings for the detail section (using IssueItem defined below)
         let levelWarnings: [IssueItem] = validationReports.flatMap { r in
@@ -2487,17 +2636,18 @@ struct DevMenuView: View {
         VStack(spacing: 0) {
             // ── Row 1: core health stats ───────────────────────────────────
             HStack(spacing: 0) {
-                miniStat("TOTAL",   "\(total)")
+                miniStat("TOTAL",     "\(total)")
                 statDivider()
-                miniStat("SOLVABLE", "\(solvable)/\(total)")
+                miniStat("SOLVABLE",  "\(solvable)/\(total)")
                 statDivider()
-                miniStat("FAILED",  "\(failed.count)")
-                    // colour the failed cell red when there are failures
+                miniStatC("FAILED",   "\(failed.count)",
+                          failed.isEmpty ? AppTheme.textPrimary : AppTheme.danger)
                 statDivider()
-                miniStat("TRIVIAL", "\(trivialLevels.count)")
+                miniStatC("PRE-SOLVED", "\(startsSolvedLevels.count)",
+                          startsSolvedLevels.isEmpty ? AppTheme.textPrimary : AppTheme.danger)
             }
             .padding(.vertical, 10)
-            .background(failed.isEmpty ? Color.clear : AppTheme.danger.opacity(0.04))
+            .background(anyCritical ? AppTheme.danger.opacity(0.04) : Color.clear)
 
             TechDivider()
 
@@ -2515,12 +2665,30 @@ struct DevMenuView: View {
             }
             .padding(.vertical, 10)
 
-            // ── CRITICAL: unsolvable levels ────────────────────────────────
-            let showFailed   = validationFilter == .all || validationFilter == .failed
-            let showTrivial  = validationFilter == .all || validationFilter == .trivial
-            let showWarnings = validationFilter == .all || validationFilter == .warnings
-            let showExpert   = validationFilter == .expert
+            // ── CRITICAL sections ──────────────────────────────────────────
+            let showFailed      = validationFilter == .all || validationFilter == .failed
+            let showStartsSolved = validationFilter == .all || validationFilter == .startsSolved
+            let showTrivial     = validationFilter == .all || validationFilter == .trivial
+            let showWarnings    = validationFilter == .all || validationFilter == .warnings
+            let showExpert      = validationFilter == .expert
 
+            // CRITICAL: board starts already solved
+            if !startsSolvedLevels.isEmpty && showStartsSolved {
+                TechDivider()
+                issueSection(
+                    title: "CRITICAL — STARTS SOLVED (\(startsSolvedLevels.count))",
+                    color: AppTheme.danger,
+                    icon: "bolt.circle.fill",
+                    items: startsSolvedLevels.map { r in
+                        IssueItem(
+                            levelID: r.levelID,
+                            label: "LVL \(r.levelID) · \(r.difficulty.label) · \(r.objectiveType.hudLabel) · \(r.gridSize)×\(r.gridSize) — WIN BEFORE FIRST TAP"
+                        )
+                    }
+                )
+            }
+
+            // CRITICAL: unsolvable levels
             if !failed.isEmpty && showFailed {
                 TechDivider()
                 issueSection(
@@ -2580,7 +2748,7 @@ struct DevMenuView: View {
             }
 
             // ── All-clear message ──────────────────────────────────────────
-            if failed.isEmpty && trivialLevels.isEmpty && levelWarnings.isEmpty && validationFilter == .all {
+            if failed.isEmpty && startsSolvedLevels.isEmpty && trivialLevels.isEmpty && levelWarnings.isEmpty && validationFilter == .all {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.seal.fill")
                         .font(.system(size: 11))
@@ -3594,6 +3762,37 @@ struct DevMenuView: View {
             await MainActor.run {
                 validationReports = reports
                 isValidating      = false
+            }
+        }
+    }
+
+    private func runStartsSolvedCheck() {
+        isCheckingStartsSolved = true
+        startsSolvedBroken     = []
+        startsSolvedChecked    = false
+        let totalCount = LevelGenerator.levels.count
+        Task.detached(priority: .userInitiated) {
+            let broken = LevelValidationRunner.findStartsSolvedLevels()
+            if broken.isEmpty {
+                print("✅ [StartsSolved] All \(totalCount) levels OK — no pre-solved boards")
+            } else {
+                print("❌ [StartsSolved] \(broken.count) pre-solved level(s) detected:")
+                for level in broken {
+                    print(String(format: "   L%03d  %@  %@  %dx%d",
+                        level.id,
+                        level.difficulty.fullLabel,
+                        level.objectiveType.hudLabel,
+                        level.gridSize, level.gridSize))
+                }
+            }
+            await MainActor.run {
+                startsSolvedBroken     = broken
+                startsSolvedChecked    = true
+                isCheckingStartsSolved = false
+                let msg = broken.isEmpty
+                    ? "ALL \(totalCount) OK — NO PRE-SOLVED LEVELS"
+                    : "\(broken.count) PRE-SOLVED LEVEL\(broken.count == 1 ? "" : "S") FOUND"
+                showToast(msg, style: broken.isEmpty ? .success : .fail)
             }
         }
     }
