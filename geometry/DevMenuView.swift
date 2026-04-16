@@ -2147,6 +2147,7 @@ struct DevMenuView: View {
 
     // ── Validation & Solver ────────────────────────────────────────────────
 
+    #if DEBUG
     // MARK: - Difficulty Analysis section
 
     private var difficultyAnalysisSection: some View {
@@ -2527,7 +2528,6 @@ struct DevMenuView: View {
         }
     }
 
-    #if DEBUG
     private var validationSection: some View {
         VStack(spacing: 0) {
             sectionHeader("VALIDATION & SOLVER")
