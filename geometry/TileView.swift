@@ -38,8 +38,12 @@ struct TileView: View {
     var isHintTarget: Bool = false
     /// Delayed hint active — hint target receives a slow breathing pulse after 12 s of inactivity.
     var isHintPulsing: Bool = false
+    /// True for one brief frame after a tap that didn't improve the circuit.
+    /// Drives a subtle red flash so the player understands the tap didn't help.
+    var isWrongTap: Bool = false
     let onTap: () -> Void
 
+    @State private var wrongFlash: Double = 0.0
     @State private var tapScale: CGFloat = 1.0
     @State private var energyScale: CGFloat = 1.0
     @State private var tapBounceTask: Task<Void, Never>? = nil
@@ -218,6 +222,15 @@ struct TileView: View {
                                   lineWidth: 2.0)
                     .padding(-2.5)
                     .shadow(color: AppTheme.accentPrimary.opacity(signalFlash * 0.65), radius: 10)
+                    .allowsHitTesting(false)
+            }
+
+            // ── Wrong-tap flash ──────────────────────────────────────────
+            // Very faint red warmth that fades in 350 ms — tells the player this
+            // tap didn't help without being punitive or alarming.
+            if wrongFlash > 0 {
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .fill(Color.red.opacity(wrongFlash * 0.22))
                     .allowsHitTesting(false)
             }
 
@@ -412,6 +425,11 @@ struct TileView: View {
                 guard !Task.isCancelled else { return }
                 withAnimation(.spring(response: 0.30, dampingFraction: 0.72)) { energyScale = 1.0 }
             }
+        }
+        .onChange(of: isWrongTap) { _, wrong in
+            guard wrong else { return }
+            wrongFlash = 1.0
+            withAnimation(.easeOut(duration: 0.35)) { wrongFlash = 0 }
         }
     }
 

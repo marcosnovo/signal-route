@@ -30,6 +30,10 @@ struct GameView: View {
 
     /// Queue for mechanic-unlock story beats shown right after the tutorial overlay closes.
     @State private var mechanicStoryQueue = StoryBeatQueue()
+    /// Brief red ring flash when a working circuit connection is broken by a rotation.
+    @State private var circuitErrorFlash: Double = 0
+    /// Shown after mission 3 (first hook): "SIGNAL ESTABLISHED" + progress counter.
+    @State private var showMilestone: Bool = false
 
     init(level: Level,
          isIntro: Bool = false,
@@ -120,6 +124,16 @@ struct GameView: View {
                 .onAppear { SoundManager.play(.mechanicUnlock) }
             }
 
+            // First-hook milestone — auto-dismissed after 2.2 s, then VictoryTelemetryView appears
+            if showMilestone {
+                MilestoneView(
+                    completedCount: vm.currentLevel.id,
+                    totalCount: LevelGenerator.levels.count
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .zIndex(80)
+            }
+
             // Mechanic story beat — appears after the tutorial overlay closes
             // .id(beat.id) forces a fresh StoryBeatView instance (clean @State) on each new beat,
             // matching the same pattern used by StoryModal in ContentView.
@@ -136,6 +150,13 @@ struct GameView: View {
                 PlayerSkillTracker.shared.recordAbandon()
                 SessionTracker.shared.recordAbandon()
             }
+        }
+        .onChange(of: vm.targetsOnline) { old, new in
+            // Circuit broke — a rotation just disconnected a previously working target.
+            // Brief red ring pulse so the player understands the tap was harmful.
+            guard new < old, vm.status == .playing else { return }
+            circuitErrorFlash = 1.0
+            withAnimation(.easeOut(duration: 0.45)) { circuitErrorFlash = 0 }
         }
         .onChange(of: vm.status) { _, newStatus in
             switch newStatus {
@@ -182,8 +203,10 @@ struct GameView: View {
                 HapticsManager.medium()
                 try? await Task.sleep(nanoseconds: 450_000_000)
                 let navigated1 = await showSectorCompleteIfNeeded()
-                if navigated1 { onMissions?() } else {
-                    withAnimation(.spring(response: 0.44, dampingFraction: 0.80)) { overlayVisible = true }
+                if navigated1 {
+                    onMissions?()
+                } else {
+                    autoAdvanceOrOverlay()
                 }
                 return
             }
@@ -218,9 +241,42 @@ struct GameView: View {
             if navigated {
                 onMissions?()
             } else {
+                autoAdvanceOrOverlay()
+            }
+        }
+    }
+
+    /// Flow-loop routing after the win animation settles.
+    ///
+    /// - Intro level: jump directly to the next step (no overlay).
+    /// - Missions 1–2: auto-advance to next mission after a short pause — addictive loop, no overlay.
+    /// - Mission 3 (first time): show the "SIGNAL ESTABLISHED" milestone for 2.2 s, then VictoryTelemetryView.
+    /// - Mission 3+: show the standard VictoryTelemetryView overlay.
+    @MainActor
+    private func autoAdvanceOrOverlay() {
+        if isIntro {
+            (onIntroComplete ?? onDismiss)()
+        } else if vm.currentLevel.id <= 2 {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                (onNextMission ?? onDismiss)()
+            }
+        } else if vm.currentLevel.id == 3 && !OnboardingStore.hasShownFirstHook {
+            OnboardingStore.markFirstHookShown()
+            withAnimation(.spring(response: 0.44, dampingFraction: 0.76)) {
+                showMilestone = true
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 2_200_000_000)
+                withAnimation(.easeOut(duration: 0.30)) { showMilestone = false }
+                try? await Task.sleep(nanoseconds: 320_000_000)
                 withAnimation(.spring(response: 0.44, dampingFraction: 0.80)) {
                     overlayVisible = true
                 }
+            }
+        } else {
+            withAnimation(.spring(response: 0.44, dampingFraction: 0.80)) {
+                overlayVisible = true
             }
         }
     }
@@ -488,6 +544,7 @@ struct GameView: View {
                                     isNearSignal:     isNearSignal(row: row, col: col),
                                     isHintTarget:     vm.hintEnabled && vm.hintTileRow == row && vm.hintTileCol == col,
                                     isHintPulsing:    vm.hintPulsing,
+                                    isWrongTap:       vm.wrongTapRow == row && vm.wrongTapCol == col,
                                     onTap:            { vm.tap(row: row, col: col) }
                                 )
                             }
@@ -504,6 +561,11 @@ struct GameView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: AppTheme.cardRadius)
                         .strokeBorder(AppTheme.success.opacity(boardSuccessOpacity), lineWidth: 2.5)
+                )
+                // Circuit error ring — brief red pulse when a working connection breaks
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                        .strokeBorder(Color.red.opacity(circuitErrorFlash * 0.55), lineWidth: 2.0)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
             }
@@ -596,17 +658,15 @@ struct GameView: View {
     }
 
     // MARK: - Hint
+    // Invisible learning: no explanatory text for the first 3 levels (intro + missions 1-2).
+    // The subtle tile glow teaches the mechanic without words.
+    // From mission 3 onward the standard TAP TO ROTATE label reappears.
     private var hint: some View {
         Group {
-            if isIntro {
-                VStack(spacing: 5) {
-                    TechLabel(text: S.rotateTilesToRouteSignal,
-                              color: AppTheme.accentPrimary)
-                    TechLabel(text: S.tapAnyTileToRotate, color: AppTheme.sage)
-                }
-            } else {
+            if !isIntro && vm.currentLevel.id > 2 {
                 TechLabel(text: S.tapTileToRotate, color: AppTheme.sage)
             }
+            // else: no text — learning happens through the glow hint on the key tile
         }
         .padding(.bottom, 20)
     }
@@ -1110,6 +1170,100 @@ struct SectorCompleteView: View {
             passImage   = await Task.detached(priority: .userInitiated) {
                 TicketRenderer.render(pass: p, profile: profile)
             }.value
+        }
+    }
+}
+
+// MARK: - MilestoneView
+/// Brief first-hook celebration shown after mission 3 is won for the first time.
+/// Displays "SIGNAL ESTABLISHED" + a progress counter (e.g. "3 / 180 MISSIONS").
+/// Auto-dismissed by the parent after 2.2 s; no CTA required.
+struct MilestoneView: View {
+    let completedCount: Int
+    let totalCount: Int
+
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
+    @State private var iconScale: CGFloat = 0.4
+    @State private var titleRevealed  = false
+    @State private var counterRevealed = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.88).ignoresSafeArea()
+
+            VStack(spacing: 28) {
+
+                // ── Animated success icon ───────────────────────────────
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.success.opacity(0.10))
+                        .frame(width: 96, height: 96)
+                    Circle()
+                        .strokeBorder(AppTheme.success.opacity(0.30), lineWidth: 1.5)
+                        .frame(width: 96, height: 96)
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 46, weight: .bold))
+                        .foregroundStyle(AppTheme.success)
+                        .pulsingGlow(color: AppTheme.success, duration: 1.4)
+                }
+                .scaleEffect(iconScale)
+
+                // ── Title ──────────────────────────────────────────────
+                VStack(spacing: 6) {
+                    TechLabel(text: S.statusSuccess, color: AppTheme.success)
+                    Text(S.signalEstablished)
+                        .font(AppTheme.mono(22, weight: .black))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .kerning(1.5)
+                }
+                .opacity(titleRevealed ? 1 : 0)
+                .offset(y: titleRevealed ? 0 : 10)
+
+                // ── Progress counter + bar ─────────────────────────────
+                VStack(spacing: 12) {
+                    Text(S.missionProgress(completedCount, totalCount))
+                        .font(AppTheme.mono(12, weight: .semibold))
+                        .foregroundStyle(AppTheme.accentSecondary)
+                        .kerning(2)
+                        .monospacedDigit()
+
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(AppTheme.stroke)
+                                .frame(height: 3)
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(AppTheme.success)
+                                .frame(
+                                    width: counterRevealed
+                                        ? g.size.width * CGFloat(completedCount) / CGFloat(max(1, totalCount))
+                                        : 0,
+                                    height: 3
+                                )
+                                .animation(.easeOut(duration: 0.90), value: counterRevealed)
+                        }
+                    }
+                    .frame(height: 3)
+                    .frame(maxWidth: 200)
+                }
+                .opacity(counterRevealed ? 1 : 0)
+                .offset(y: counterRevealed ? 0 : 8)
+            }
+            .padding(44)
+        }
+        .onAppear {
+            HapticsManager.success()
+            withAnimation(.spring(response: 0.50, dampingFraction: 0.58)) {
+                iconScale = 1.0
+            }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82).delay(0.22)) {
+                titleRevealed = true
+            }
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82).delay(0.45)) {
+                counterRevealed = true
+            }
         }
     }
 }

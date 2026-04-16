@@ -84,11 +84,19 @@ class GameViewModel: ObservableObject {
     /// When true, the next setupLevel() grants +2 extra moves as a silent boost.
     private var pendingFrustrationBoost: Bool = false
 
+    // MARK: Wrong-tap feedback
+    /// Row/col of the most recently "wrong" tap (didn't improve the circuit).
+    /// Drives the brief red flash on TileView. Reset to -1 after ~350 ms.
+    @Published private(set) var wrongTapRow: Int = -1
+    @Published private(set) var wrongTapCol: Int = -1
+
     // MARK: Soft hint system
     /// True when hint conditions are met (low skill or 3+ attempts).
+    /// Always true on the intro level — invisible learning relies on the glow, not text.
     var hintEnabled: Bool {
-        HintEngine.isActive(skillScore: PlayerSkillTracker.shared.skillScore,
-                            attemptCount: attemptCount)
+        if currentLevel.id == 0 { return true }
+        return HintEngine.isActive(skillScore: PlayerSkillTracker.shared.skillScore,
+                                   attemptCount: attemptCount)
     }
     /// Position of the tile currently being softly highlighted. Nil when hints are off or not needed.
     @Published private(set) var hintTileRow: Int = -1
@@ -160,6 +168,11 @@ class GameViewModel: ObservableObject {
 
         // Show mechanic unlock message if this is the player's first encounter
         checkMechanicAnnouncements(for: board)
+
+        // Invisible learning: show hint glow immediately from board load (no wait required).
+        // For the intro level this also starts the pulsing animation straight away.
+        updateHint()
+        if currentLevel.id == 0 { hintPulsing = true }
     }
 
     func loadLevel(_ level: Level) {
@@ -249,6 +262,15 @@ class GameViewModel: ObservableObject {
             // New relay tile energized
             HapticsManager.selection()
             SoundManager.play(.relayEnergized)
+        } else if status == .playing && movesLeft > 0 {
+            // No improvement — mark as wrong tap for the brief flash feedback
+            wrongTapRow = row
+            wrongTapCol = col
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 350_000_000)
+                wrongTapRow = -1
+                wrongTapCol = -1
+            }
         }
         updateHint()
     }
@@ -275,9 +297,10 @@ class GameViewModel: ObservableObject {
             hintTileCol = -1
         }
 
-        // After 12 s of inactivity, escalate to the pulsing hint
+        // Inactivity threshold: 4 s on early missions (learning curve), 12 s on later ones.
+        let inactivityNs: UInt64 = currentLevel.id <= 5 ? 4_000_000_000 : 12_000_000_000
         inactivityTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            try? await Task.sleep(nanoseconds: inactivityNs)
             guard !Task.isCancelled && status == .playing else { return }
             hintPulsing = true
         }
@@ -390,6 +413,18 @@ class GameViewModel: ObservableObject {
         } else {
             failureCause = .moveLimitExhausted
             culpritTiles = []
+        }
+
+        // Silent retry for missions 1–2: first failure resets the board quietly.
+        // No loss screen, no error haptic — the board just reloads so the player
+        // can try again without feeling punished. Second failure shows the full overlay.
+        let isSilentRetryMission = currentLevel.id >= 1 && currentLevel.id <= 2
+        if isSilentRetryMission && consecutiveFailures == 0 {
+            consecutiveFailures += 1
+            SessionTracker.shared.recordFailure()
+            HapticsManager.light()
+            setupLevel()
+            return
         }
 
         status = .lost

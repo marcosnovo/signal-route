@@ -217,6 +217,10 @@ struct AppStrings {
     var systemCalibrationComplete: String { t("SYSTEM CALIBRATION COMPLETE", "CALIBRACIÓN DEL SISTEMA COMPLETA","CALIBRATION DU SYSTÈME TERMINÉE") }
     var clearedForDeployment:      String { t("CLEARED FOR DEPLOYMENT",      "AUTORIZADO PARA EL DESPLIEGUE",  "AUTORISÉ POUR LE DÉPLOIEMENT") }
     var accessGranted:             String { t("ACCESS GRANTED",              "ACCESO CONCEDIDO",               "ACCÈS ACCORDÉ") }
+    var signalEstablished:         String { t("SIGNAL ESTABLISHED",          "SEÑAL ESTABLECIDA",              "SIGNAL ÉTABLI") }
+    func missionProgress(_ n: Int, _ total: Int) -> String {
+        t("\(n) / \(total) MISSIONS", "\(n) / \(total) MISIONES", "\(n) / \(total) MISSIONS")
+    }
 
     // MARK: - Mechanic unlock
     var newMechanicUnlocked: String { t("NEW MECHANIC UNLOCKED",    "NUEVA MECÁNICA DESBLOQUEADA", "NOUVELLE MÉCANIQUE DÉBLOQUÉE") }

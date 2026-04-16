@@ -36,11 +36,26 @@ enum OnboardingStore {
         UserDefaults.standard.set(true, forKey: narrativeKey)
     }
 
+    // ── First hook milestone (mission 3) ──────────────────────────────────
+
+    private static let firstHookKey = "hasShownFirstHook"
+
+    /// True once the mission-3 "SIGNAL ESTABLISHED" milestone has been displayed.
+    static var hasShownFirstHook: Bool {
+        UserDefaults.standard.bool(forKey: firstHookKey)
+    }
+
+    /// Call when the milestone overlay is shown — prevents it from appearing again.
+    static func markFirstHookShown() {
+        UserDefaults.standard.set(true, forKey: firstHookKey)
+    }
+
     // ── Dev / testing ─────────────────────────────────────────────────────
 
-    /// Resets both flags — next launch shows narrative intro + gameplay onboarding.
+    /// Resets all flags — next launch shows narrative intro + gameplay onboarding.
     static func resetAll() {
         UserDefaults.standard.removeObject(forKey: introKey)
         UserDefaults.standard.removeObject(forKey: narrativeKey)
+        UserDefaults.standard.removeObject(forKey: firstHookKey)
     }
 }

@@ -109,8 +109,11 @@ struct HomeView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
 
-                    // 6. Monetisation — subtle, below the map
-                    if !entitlement.isPremium, let onUpgrade {
+                    // 6. Monetisation — subtle, below the map.
+                    // Hidden during the onboarding grace period (first 3 missions).
+                    // Shown only after the player has completed mission 3 and felt the hook.
+                    if !entitlement.isPremium, let onUpgrade,
+                       OnboardingStore.hasShownFirstHook {
                         upgradeRow(action: onUpgrade)
                             .padding(.horizontal, 24)
                             .padding(.top, 8)

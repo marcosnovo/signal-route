@@ -32,9 +32,10 @@ struct ContentView: View {
 
     private static func initialIntroStep() -> IntroStep? {
         guard !OnboardingStore.hasCompletedIntro else { return nil }
-        if OnboardingStore.hasSeenNarrativeIntro { return .gameplay }
-        // Show firstLaunch story beats before the narrative panels on the very first run
-        return StoryStore.pendingAll(for: .firstLaunch).isEmpty ? .narrative : .firstLaunchBeats
+        // Instant play: skip story beats and narrative panels — go straight to the intro mission.
+        // Mark narrative as seen so relaunches don't fall back to the panel flow.
+        OnboardingStore.markNarrativeSeen()
+        return .gameplay
     }
 
     var body: some View {
@@ -85,38 +86,19 @@ struct ContentView: View {
                             introStep = nil
                         },
                         onIntroComplete: {
-                            // Win — proceed to clearance modal
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
-                                introStep = .clearance
-                            }
+                            // Flow loop: mark complete and go directly to Mission 1 — no overlay, no beat.
+                            OnboardingStore.markIntroCompleted()
+                            introStep   = nil
+                            activeLevel = LevelGenerator.levels.first
                         }
                     )
                     .transition(.opacity)
                     .zIndex(10)
 
-                // ── Step 3: "you are cleared" confirmation ────────────────
+                // ── Step 3: "you are cleared" confirmation ─────────────────
+                // Kept in enum for dev-replay compatibility; not entered in normal flow.
                 case .clearance:
-                    MissionClearanceView {
-                        OnboardingStore.markIntroCompleted()
-                        // Collect post-onboarding narrative beats in priority order:
-                        // 1. postOnboarding  — "the real work begins" reflection
-                        // 2. firstMissionReady — "you are cleared for Mission 1" directive
-                        let beats = StoryStore.pendingQueue(triggers: [
-                            (.postOnboarding,     StoryContext()),
-                            (.firstMissionReady,  StoryContext()),
-                        ])
-                        if beats.isEmpty {
-                            introStep   = nil
-                            activeLevel = LevelGenerator.levels.first
-                        } else {
-                            storyQueue.enqueue(beats)
-                            withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
-                                introStep = .firstMissionReadyBeat
-                            }
-                        }
-                    }
-                    .transition(.opacity)
-                    .zIndex(10)
+                    Color.clear.zIndex(10)
                 }
 
             } else if let level = activeLevel {
@@ -247,14 +229,13 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .devReplayOnboarding)) { _ in
             activeLevel        = nil
             showingLevelSelect = false
-            storyQueue         = StoryBeatQueue()   // flush any queued beats
-            // Re-surface firstLaunch and firstMissionReady beats so they fire again
+            storyQueue         = StoryBeatQueue()
+            // Re-surface firstMissionReady beat so it fires again after the intro mission
             StoryBeatCatalog.beats
-                .filter { $0.trigger == .firstLaunch || $0.trigger == .firstMissionReady }
+                .filter { $0.trigger == .firstMissionReady }
                 .forEach { StoryStore.markUnseen($0) }
-            // Restart from the very beginning of the flow
-            let hasFirstLaunchBeats = !StoryStore.pendingAll(for: .firstLaunch).isEmpty
-            introStep = hasFirstLaunchBeats ? .firstLaunchBeats : .narrative
+            // Instant-play replay: jump straight to the intro mission
+            withAnimation(.easeIn(duration: 0.35)) { introStep = .gameplay }
         }
     }
 
@@ -298,8 +279,10 @@ struct ContentView: View {
               activeLevel == nil,
               introStep == nil,
               storyQueue.current == nil else { return }
-        // Don't auto-interrupt with a paywall when the player is frustrated.
+        // Never auto-show during the onboarding grace period (first 3 missions).
         // Explicit taps (onNextMission, tryPlay) bypass this check intentionally.
+        guard OnboardingStore.hasShownFirstHook else { return }
+        // Don't auto-interrupt with a paywall when the player is frustrated.
         guard !FrustrationGuard.shouldDeferAutoPaywall() else { return }
         showPaywall(ctx)
     }
