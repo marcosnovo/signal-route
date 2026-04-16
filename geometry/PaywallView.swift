@@ -375,9 +375,6 @@ struct PaywallView: View {
     }
 
     private var subtitleText: String {
-        let n     = entitlement.dailyCompleted
-        let limit = EntitlementStore.shared.dailyLimit
-
         // Empathetic variants — used when FrustrationGuard detects a struggling player.
         // Tone: patient, acknowledging effort. No urgency, no pressure.
         if isFrustrated {

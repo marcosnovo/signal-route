@@ -225,9 +225,9 @@ final class PlayerSimulationRunner: ObservableObject {
             return
         }
 
-        // Earth Orbit is always free regardless of daily limit
-        check(.firstMissions, "Level 1: canPlay = true (Earth Orbit, always free)",
-              "sector=1 isPremium=\(EntitlementStore.shared.isPremium)",
+        // First missions are always free (intro phase)
+        check(.firstMissions, "Level 1: canPlay = true (intro phase)",
+              "freeIntroCompleted=\(EntitlementStore.shared.freeIntroCompleted) isInIntroPhase=\(EntitlementStore.shared.isInIntroPhase)",
               EntitlementStore.shared.canPlay(level1))
 
         // Record mission 1
@@ -258,9 +258,9 @@ final class PlayerSimulationRunner: ObservableObject {
               "level=\(afterM6.level)",
               afterM6.level >= 1)
 
-        // Earth Orbit must NOT drain daily quota
-        check(.firstMissions, "Earth Orbit missions do NOT consume daily quota",
-              "dailyCompleted=\(EntitlementStore.shared.dailyCompleted)",
+        // Intro missions drain intro quota, not daily quota
+        check(.firstMissions, "First 6 missions consumed from intro quota (not daily)",
+              "freeIntroCompleted=\(EntitlementStore.shared.freeIntroCompleted) dailyCompleted=\(EntitlementStore.shared.dailyCompleted)",
               EntitlementStore.shared.dailyCompleted == 0)
 
         // Verify no stuck overlays (no pending beats that would block navigation)
@@ -334,50 +334,58 @@ final class PlayerSimulationRunner: ObservableObject {
             return
         }
 
-        EntitlementStore.shared.resetDailyCount()
-        check(.dailyLimit, "Daily counter reset to 0",
-              "dailyCompleted=\(EntitlementStore.shared.dailyCompleted)",
-              EntitlementStore.shared.dailyCompleted == 0)
-
-        let lunarLevels = SpatialRegion.catalog
-            .first(where: { $0.id == 2 })?.levels ?? []
-
-        guard lunarLevels.count >= 4 else {
-            log(.dailyLimit, "Not enough Lunar levels", "\(lunarLevels.count) found, need ≥4", .fail)
+        let store = EntitlementStore.shared
+        guard let anyLevel = LevelGenerator.levels.first else {
+            log(.dailyLimit, "No levels", "LevelGenerator returned empty array", .fail)
             return
         }
 
-        // Play 3 Lunar missions — fills daily quota exactly
-        for i in 0..<3 {
-            let lvl     = lunarLevels[i]
-            let allowed = EntitlementStore.shared.canPlay(lvl)
-            check(.dailyLimit, "Lunar mission \(i+1)/3: canPlay = true",
-                  "level=\(lvl.id) dailyCompleted=\(EntitlementStore.shared.dailyCompleted)",
+        // ── Phase 1: intro quota ────────────────────────────────────────
+        store.resetIntroCount()
+        store.resetDailyCount()
+
+        check(.dailyLimit, "Intro counter reset to 0",
+              "freeIntroCompleted=\(store.freeIntroCompleted)",
+              store.freeIntroCompleted == 0)
+
+        // All 5 intro missions must be playable
+        for i in 0..<EntitlementStore.freeIntroLimit {
+            let allowed = store.canPlay(anyLevel)
+            check(.dailyLimit, "Intro mission \(i+1)/\(EntitlementStore.freeIntroLimit): canPlay = true",
+                  "freeIntroCompleted=\(store.freeIntroCompleted)",
                   allowed)
-            EntitlementStore.shared.recordMissionCompleted(lvl)
+            store.recordMissionCompleted(anyLevel)
         }
 
-        check(.dailyLimit, "Daily limit reached after 3 Lunar missions",
-              "dailyCompleted=\(EntitlementStore.shared.dailyCompleted)/\(EntitlementStore.shared.dailyLimit)",
-              EntitlementStore.shared.dailyLimitReached)
+        check(.dailyLimit, "Intro quota exhausted after \(EntitlementStore.freeIntroLimit) missions",
+              "freeIntroCompleted=\(store.freeIntroCompleted) isInIntroPhase=\(store.isInIntroPhase)",
+              !store.isInIntroPhase)
 
-        // 4th mission must be blocked → paywall shown
-        let blocked    = lunarLevels[3]
-        let blockedVal = EntitlementStore.shared.canPlay(blocked)
-        check(.dailyLimit, "4th Lunar mission blocked — paywall fires",
-              "canPlay=\(blockedVal) level=\(blocked.id)",
+        // ── Phase 2: daily gate ─────────────────────────────────────────
+        store.resetDailyCount()
+
+        // 3 daily missions allowed
+        for i in 0..<EntitlementStore.dailyLimit {
+            let allowed = store.canPlay(anyLevel)
+            check(.dailyLimit, "Daily mission \(i+1)/\(EntitlementStore.dailyLimit): canPlay = true",
+                  "dailyCompleted=\(store.dailyCompleted)",
+                  allowed)
+            store.recordMissionCompleted(anyLevel)
+        }
+
+        check(.dailyLimit, "Daily limit reached after \(EntitlementStore.dailyLimit) missions",
+              "dailyCompleted=\(store.dailyCompleted)/\(EntitlementStore.dailyLimit)",
+              store.dailyLimitReached)
+
+        // Next attempt must be blocked
+        let blockedVal = store.canPlay(anyLevel)
+        check(.dailyLimit, "Mission \(EntitlementStore.dailyLimit + 1) blocked — paywall fires",
+              "canPlay=\(blockedVal) dailyCompleted=\(store.dailyCompleted)",
               !blockedVal)
 
-        // Earth Orbit must still be free even at daily limit
-        if let earthLevel = LevelGenerator.levels.first(where: { $0.id == 1 }) {
-            check(.dailyLimit, "Earth Orbit still accessible at daily limit",
-                  "canPlay=\(EntitlementStore.shared.canPlay(earthLevel))",
-                  EntitlementStore.shared.canPlay(earthLevel))
-        }
-
         check(.dailyLimit, "remainingToday = 0 at limit",
-              "remaining=\(EntitlementStore.shared.remainingToday)",
-              EntitlementStore.shared.remainingToday == 0)
+              "remaining=\(store.remainingToday)",
+              store.remainingToday == 0)
     }
 
     // MARK: - Phase 6: Premium Flow

@@ -1,89 +1,120 @@
 import SwiftUI
 import Combine
 
-// MARK: - MonetizationGateManager (EntitlementStore)
+// MARK: - EntitlementStore
 //
 // This is the ONLY place in the codebase that makes free/premium decisions.
 //
 // Isolation contract:
-//   - Reads ONLY: isPremium, dailyCompleted, lastPlayDate, level sector.
-//   - Does NOT read skillScore, extraMoves, hints, or any adaptive-difficulty state.
+//   - Reads ONLY: isPremium, freeIntroCompleted, dailyCompleted, lastPlayDate.
+//   - Does NOT read skillScore, extraMoves, hints, sector ID, or any adaptive-difficulty state.
 //   - Difficulty is NEVER made harder for free users or easier for premium users.
 //   - All adaptive difficulty flows through AdaptiveDifficultyManager, which is blind to monetization.
+//
+// ## Free-user access model
+//   Phase 1 — Intro (lifetime):
+//     The first 5 missions ever completed are always free, regardless of time.
+//     `freeIntroCompleted` tracks this (0–5); once it reaches 5, Phase 2 begins.
+//
+//   Phase 2 — Daily gate:
+//     After the intro quota is exhausted, free users can complete up to 3 missions per day.
+//     `dailyCompleted` tracks this and resets at midnight.
+//
+//   Premium:
+//     No limits — `canPlay` always returns true.
 
-/// Tracks the player's monetization state and enforces the daily mission limit.
-///
-/// ## Rules
-/// - Earth Orbit (sector 1, levels 1–30) is always free.
-/// - Lunar and beyond: free users get 6 missions on their first day, then 2 per day.
-/// - Premium users have no limit.
-/// - The daily counter resets automatically at the first check after midnight.
+/// Tracks the player's monetization state and enforces the mission limit.
 @MainActor
 final class EntitlementStore: ObservableObject {
 
     static let shared = EntitlementStore()
 
+    // ── Product constants ──────────────────────────────────────────────────
+    /// Lifetime free missions before daily gating begins.
+    static let freeIntroLimit = 5
+    /// Max missions per day once the intro quota is exhausted.
+    static let dailyLimit     = 3
+
     // ── Persistence keys ──────────────────────────────────────────────────
     private enum Key {
-        static let isPremium      = "entitlement.isPremium"
-        static let dailyCompleted = "entitlement.dailyCompleted"
-        static let lastPlayDate   = "entitlement.lastPlayDate"
-        static let firstPlayDate  = "entitlement.firstPlayDate"
+        static let isPremium          = "entitlement.isPremium"
+        static let freeIntroCompleted = "entitlement.freeIntroCompleted"
+        static let dailyCompleted     = "entitlement.dailyCompleted"
+        static let lastPlayDate       = "entitlement.lastPlayDate"
     }
 
     // ── Published state ───────────────────────────────────────────────────
-    @Published private(set) var isPremium:      Bool
-    @Published private(set) var dailyCompleted: Int
+    @Published private(set) var isPremium:          Bool
+    /// Lifetime missions completed during the intro grace period (caps at freeIntroLimit).
+    @Published private(set) var freeIntroCompleted: Int
+    /// Missions completed today, counted after the intro quota is exhausted.
+    @Published private(set) var dailyCompleted:     Int
 
     private var lastPlayDate: Date
-
-    /// Date of the player's first mission outside Earth Orbit (nil if none yet).
-    private var firstPlayDate: Date?
-
-    /// First-day limit (generous trial) vs subsequent-day limit.
-    static let firstDayLimit   = 6
-    static let standardLimit   = 2
-
-    /// Current daily limit — 6 on the first day, 2 on every subsequent day.
-    var dailyLimit: Int {
-        guard let first = firstPlayDate else { return Self.firstDayLimit }
-        return Calendar.current.isDate(first, inSameDayAs: Date()) ? Self.firstDayLimit : Self.standardLimit
-    }
 
     // ── Init ──────────────────────────────────────────────────────────────
 
     private init() {
-        let d          = UserDefaults.standard
-        isPremium      = d.bool(forKey: Key.isPremium)
-        dailyCompleted = d.integer(forKey: Key.dailyCompleted)
-        lastPlayDate   = (d.object(forKey: Key.lastPlayDate) as? Date) ?? Date()
-        firstPlayDate  = d.object(forKey: Key.firstPlayDate) as? Date
+        let d               = UserDefaults.standard
+        isPremium           = d.bool(forKey: Key.isPremium)
+        freeIntroCompleted  = d.integer(forKey: Key.freeIntroCompleted)
+        dailyCompleted      = d.integer(forKey: Key.dailyCompleted)
+        lastPlayDate        = (d.object(forKey: Key.lastPlayDate) as? Date) ?? Date()
     }
 
-    // MARK: - Computed
+    // MARK: - Derived state
 
+    /// True while the player still has intro quota remaining (lifetime < 5).
+    var isInIntroPhase: Bool { freeIntroCompleted < Self.freeIntroLimit }
+
+    /// Remaining plays before the gate fires.
+    /// During intro: slots left in the intro quota.
+    /// After intro: slots remaining today.
     var remainingToday: Int {
-        isPremium ? Int.max : max(0, dailyLimit - dailyCompleted)
+        if isPremium { return Int.max }
+        if isInIntroPhase { return Self.freeIntroLimit - freeIntroCompleted }
+        return max(0, Self.dailyLimit - dailyCompleted)
     }
 
+    /// True when the free player cannot play another mission right now.
     var dailyLimitReached: Bool {
-        !isPremium && dailyCompleted >= dailyLimit
+        guard !isPremium else { return false }
+        if isInIntroPhase { return false }   // intro never blocks
+        return dailyCompleted >= Self.dailyLimit
+    }
+
+    /// Human-readable reason why the player is blocked (nil if they can play).
+    var reasonBlocked: String? {
+        guard !isPremium, dailyLimitReached else { return nil }
+        return "Daily limit (\(Self.dailyLimit)/day)"
     }
 
     // MARK: - Public API
 
-    /// Returns `true` if the player is allowed to start this level right now.
-    /// Earth Orbit (sector 1) is always permitted.
+    /// Returns `true` if the player may start any mission right now.
+    /// Gate is purely count-based — no sector exception.
     func canPlay(_ level: Level) -> Bool {
         resetIfNewDay()
-        let sectorID = SpatialRegion.catalog
-            .first { $0.levelRange.contains(level.id) }?.id ?? 1
-        if sectorID == 1 { return true }   // Earth Orbit — always free
-        return !dailyLimitReached
+        if isPremium {
+            #if DEBUG
+            print("[ENTITLEMENT] canPlay(id=\(level.id)) → ALLOWED (premium)")
+            #endif
+            return true
+        }
+        if isInIntroPhase {
+            #if DEBUG
+            print("[ENTITLEMENT] canPlay(id=\(level.id)) → ALLOWED (intro: \(freeIntroCompleted)/\(Self.freeIntroLimit))")
+            #endif
+            return true
+        }
+        let blocked = dailyLimitReached
+        #if DEBUG
+        print("[ENTITLEMENT] canPlay(id=\(level.id)) → \(blocked ? "BLOCKED" : "ALLOWED") (daily: \(dailyCompleted)/\(Self.dailyLimit))")
+        #endif
+        return !blocked
     }
 
-    /// Returns `true` if the player is allowed to start the mission that follows `level`.
-    /// Convenience wrapper around `canPlay(_:)` for sequential campaign flow.
+    /// Convenience: can the player start the mission that follows `level`?
     func canPlayNextMission(after level: Level) -> Bool {
         let nextId = level.id + 1
         guard let next = LevelGenerator.levels.first(where: { $0.id == nextId }) else {
@@ -92,34 +123,61 @@ final class EntitlementStore: ObservableObject {
         return canPlay(next)
     }
 
-    /// Call when a non-intro mission outside Earth Orbit is won.
-    /// Increments the daily counter for free users.
+    /// Call when a non-intro mission is successfully completed.
+    /// Increments the correct counter: intro quota first, then daily.
     func recordMissionCompleted(_ level: Level) {
-        guard !isPremium else { return }
-        let sectorID = SpatialRegion.catalog
-            .first { $0.levelRange.contains(level.id) }?.id ?? 1
-        guard sectorID > 1 else { return }  // Earth Orbit doesn't consume quota
-        resetIfNewDay()
-        // Record the very first play date (sets the "first day" generous limit)
-        if firstPlayDate == nil {
-            firstPlayDate = Date()
+        guard !isPremium else {
+            #if DEBUG
+            print("[ENTITLEMENT] recordCompleted(id=\(level.id)) → skipped (premium)")
+            #endif
+            return
         }
-        dailyCompleted += 1
+        if isInIntroPhase {
+            freeIntroCompleted = min(freeIntroCompleted + 1, Self.freeIntroLimit)
+            #if DEBUG
+            print("[ENTITLEMENT] recordCompleted(id=\(level.id)) → intro consumed: \(freeIntroCompleted)/\(Self.freeIntroLimit)")
+            #endif
+        } else {
+            resetIfNewDay()
+            dailyCompleted += 1
+            #if DEBUG
+            print("[ENTITLEMENT] recordCompleted(id=\(level.id)) → daily consumed: \(dailyCompleted)/\(Self.dailyLimit) | limitReached=\(dailyLimitReached)")
+            #endif
+        }
         save()
     }
 
-    // MARK: - Dev / StoreKit stub
+    // MARK: - Dev helpers
 
-    /// Toggle premium (dev menu + future StoreKit receipt validation).
+    /// Toggle premium state.
     func setPremium(_ value: Bool) {
         isPremium = value
-        UserDefaults.standard.set(value, forKey: Key.isPremium)
+        save()
     }
 
-    /// Reset the daily counter to zero (dev helper).
+    /// Reset the daily counter to 0.
     func resetDailyCount() {
         dailyCompleted = 0
         lastPlayDate   = Date()
+        save()
+    }
+
+    /// Reset the lifetime intro counter to 0 (returns player to Phase 1).
+    func resetIntroCount() {
+        freeIntroCompleted = 0
+        save()
+    }
+
+    /// Set the intro counter to an explicit value (clamped 0…freeIntroLimit).
+    func setFreeIntroCompleted(_ value: Int) {
+        freeIntroCompleted = max(0, min(value, Self.freeIntroLimit))
+        save()
+    }
+
+    /// Set the daily counter to an explicit value (clamped 0…dailyLimit).
+    func setDailyCompleted(_ value: Int) {
+        resetIfNewDay()
+        dailyCompleted = max(0, min(value, Self.dailyLimit))
         save()
     }
 
@@ -127,9 +185,7 @@ final class EntitlementStore: ObservableObject {
 
     @discardableResult
     private func resetIfNewDay() -> Bool {
-        guard !Calendar.current.isDate(lastPlayDate, inSameDayAs: Date()) else {
-            return false
-        }
+        guard !Calendar.current.isDate(lastPlayDate, inSameDayAs: Date()) else { return false }
         dailyCompleted = 0
         lastPlayDate   = Date()
         save()
@@ -138,11 +194,9 @@ final class EntitlementStore: ObservableObject {
 
     private func save() {
         let d = UserDefaults.standard
-        d.set(isPremium,      forKey: Key.isPremium)
-        d.set(dailyCompleted, forKey: Key.dailyCompleted)
-        d.set(lastPlayDate,   forKey: Key.lastPlayDate)
-        if let first = firstPlayDate {
-            d.set(first, forKey: Key.firstPlayDate)
-        }
+        d.set(isPremium,          forKey: Key.isPremium)
+        d.set(freeIntroCompleted, forKey: Key.freeIntroCompleted)
+        d.set(dailyCompleted,     forKey: Key.dailyCompleted)
+        d.set(lastPlayDate,       forKey: Key.lastPlayDate)
     }
 }

@@ -393,9 +393,14 @@ final class SelfQARunner: ObservableObject {
         let store = EntitlementStore.shared
 
         r += pass("dailyLimit > 0", .monetization,
-                  condition: EntitlementStore.shared.dailyLimit > 0,
-                  detail:    "limit=\(EntitlementStore.shared.dailyLimit)",
+                  condition: EntitlementStore.dailyLimit > 0,
+                  detail:    "dailyLimit=\(EntitlementStore.dailyLimit)",
                   fix:       "dailyLimit must be a positive integer.")
+
+        r += pass("freeIntroLimit > 0", .monetization,
+                  condition: EntitlementStore.freeIntroLimit > 0,
+                  detail:    "freeIntroLimit=\(EntitlementStore.freeIntroLimit)",
+                  fix:       "freeIntroLimit must be a positive integer.")
 
         r += pass("remainingToday ≥ 0", .monetization,
                   condition: store.remainingToday >= 0,
@@ -407,14 +412,19 @@ final class SelfQARunner: ObservableObject {
                   detail:    "dailyCompleted=\(store.dailyCompleted)",
                   fix:       "dailyCompleted must not be negative.")
 
-        // Earth Orbit always free
-        let earthLevels  = SpatialRegion.catalog.first(where: { $0.id == 1 })?.levels ?? []
-        let earthBlocked = earthLevels.filter { !store.canPlay($0) }
-        r += pass("Earth Orbit levels always free", .monetization,
-                  condition: earthBlocked.isEmpty,
-                  detail:    earthBlocked.isEmpty ? "\(earthLevels.count) levels free" : "\(earthBlocked.count) blocked",
-                  fix:       "canPlay must return true for all sector 1 levels regardless of premium state.",
-                  level:     earthBlocked.first?.id)
+        r += pass("freeIntroCompleted ≥ 0", .monetization,
+                  condition: store.freeIntroCompleted >= 0,
+                  detail:    "freeIntroCompleted=\(store.freeIntroCompleted)",
+                  fix:       "freeIntroCompleted must not be negative.")
+
+        // Intro phase: canPlay must be true while intro quota not exhausted
+        let introPhaseCanPlay = store.isInIntroPhase
+            ? LevelGenerator.levels.prefix(5).allSatisfy { store.canPlay($0) }
+            : true   // past intro — not checked here
+        r += pass("Intro phase: all levels playable while quota remains", .monetization,
+                  condition: introPhaseCanPlay,
+                  detail:    "isInIntroPhase=\(store.isInIntroPhase) freeIntroCompleted=\(store.freeIntroCompleted)",
+                  fix:       "canPlay must return true while freeIntroCompleted < freeIntroLimit.")
 
         // dailyLimitReached coherence
         let limitCoherent = store.dailyLimitReached == (store.remainingToday == 0)
@@ -425,12 +435,12 @@ final class SelfQARunner: ObservableObject {
 
         // Premium bypass check
         if store.isPremium {
-            if let s2Level = SpatialRegion.catalog.first(where: { $0.id == 2 })?.levels.first {
-                r += pass("Premium bypasses daily limit", .monetization,
-                          condition: store.canPlay(s2Level),
-                          detail:    "isPremium=true canPlay=\(store.canPlay(s2Level))",
-                          fix:       "Premium users must always be able to play non-Earth Orbit levels.",
-                          level:     s2Level.id)
+            if let anyLevel = LevelGenerator.levels.first {
+                r += pass("Premium bypasses all limits", .monetization,
+                          condition: store.canPlay(anyLevel),
+                          detail:    "isPremium=true canPlay=\(store.canPlay(anyLevel))",
+                          fix:       "Premium users must always be able to play any level.",
+                          level:     anyLevel.id)
             }
         }
 

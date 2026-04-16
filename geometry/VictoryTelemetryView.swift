@@ -347,11 +347,9 @@ struct VictoryTelemetryView: View {
     // MARK: - CTA strip
     // ══════════════════════════════════════════════════════════════════════
 
-    /// True when the just-completed level is in Lunar sector or beyond (not Earth Orbit).
+    /// True when the player has exhausted their free intro quota — upgrade banner becomes relevant.
     private var isLunarOrBeyond: Bool {
-        let sectorID = SpatialRegion.catalog
-            .first { $0.levelRange.contains(vm.currentLevel.id) }?.id ?? 1
-        return sectorID > 1
+        !EntitlementStore.shared.isInIntroPhase
     }
 
     /// The level immediately after the one just completed.

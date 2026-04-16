@@ -253,6 +253,9 @@ struct ContentView: View {
             let ctx = context ?? PaywallMomentSelector.contextWhenBlocked(level)
             // Always dismiss the game before showing the paywall — cleaner transition.
             activeLevel = nil
+            #if DEBUG
+            print("[PAYWALL] Blocked id=\(level.id) → showing paywall ctx=\(ctx)")
+            #endif
             showPaywall(ctx)
         }
     }

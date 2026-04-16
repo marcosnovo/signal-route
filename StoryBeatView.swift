@@ -96,7 +96,7 @@ struct StoryBeatView: View {
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: .clear, location: 0.0),
-                    .init(color: AppTheme.backgroundSecondary.opacity(0.85), location: 0.7),
+                    .init(color: AppTheme.backgroundSecondary.opacity(0.55), location: 0.78),
                     .init(color: AppTheme.backgroundSecondary, location: 1.0)
                 ]),
                 startPoint: .top,
@@ -159,13 +159,13 @@ struct StoryBeatView: View {
                 .lineSpacing(5)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // Optional footer hint
+            // Optional footer hint — localized via AppStrings
             if let hint = beat.footerHint {
                 HStack(spacing: 5) {
                     Rectangle()
                         .fill(accentColor.opacity(0.50))
                         .frame(width: 14, height: 1)
-                    Text(hint)
+                    Text(S.storyFooterHint(hint))
                         .font(AppTheme.mono(8, weight: .bold))
                         .foregroundStyle(accentColor.opacity(0.70))
                         .kerning(1.0)
@@ -181,7 +181,7 @@ struct StoryBeatView: View {
     private var acknowledgeButton: some View {
         Button(action: dismiss) {
             HStack(spacing: 6) {
-                Text("ACKNOWLEDGE")
+                Text(S.acknowledge)
                     .font(AppTheme.mono(10, weight: .bold))
                     .kerning(2)
                 Image(systemName: "chevron.right")
@@ -393,13 +393,13 @@ struct StoryModal: View {
 
             Spacer(minLength: 0)
 
-            // Footer hint — fades in once typing is complete
+            // Footer hint — fades in once typing is complete; localized via AppStrings
             if let hint = beat.footerHint {
                 HStack(spacing: 6) {
                     Rectangle()
                         .fill(accent.opacity(0.50))
                         .frame(width: 16, height: 1)
-                    Text(hint)
+                    Text(S.storyFooterHint(hint))
                         .font(AppTheme.mono(8, weight: .bold))
                         .foregroundStyle(accent.opacity(0.80))
                         .kerning(1.2)
@@ -553,7 +553,7 @@ private struct AnimatedImageFrame: View {
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: .clear,                                   location: 0.0),
-                    .init(color: AppTheme.backgroundPrimary.opacity(0.55), location: 0.50),
+                    .init(color: AppTheme.backgroundPrimary.opacity(0.22), location: 0.60),
                     .init(color: AppTheme.backgroundPrimary,               location: 1.0),
                 ]),
                 startPoint: .top,

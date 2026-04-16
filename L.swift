@@ -302,6 +302,48 @@ struct AppStrings {
 
     // MARK: - Story beat UI labels
     var incomingTransmission: String { t("INCOMING TRANSMISSION", "TRANSMISIÓN ENTRANTE", "TRANSMISSION ENTRANTE") }
+    var acknowledge:          String { t("ACKNOWLEDGE",           "RECONOCER",            "RECONNAÎTRE") }
+
+    /// Returns the localized version of a story beat footer hint.
+    /// The English text is used as the key; falls back to the original string for unknown hints.
+    func storyFooterHint(_ hint: String) -> String {
+        switch hint {
+        case "EARTH ORBIT SECTOR ACTIVE":     return t(hint, "SECTOR ÓRBITA TERRESTRE ACTIVO",          "SECTEUR ORBITE TERRESTRE ACTIF")
+        case "MISSION 1 LOADED":              return t(hint, "MISIÓN 1 CARGADA",                         "MISSION 1 CHARGÉE")
+        case "LUNAR APPROACH UNLOCKED":       return t(hint, "LLEGADA LUNAR DESBLOQUEADA",               "APPROCHE LUNAIRE DÉBLOQUÉE")
+        case "MARS SECTOR UNLOCKED":          return t(hint, "SECTOR MARTE DESBLOQUEADO",                "SECTEUR MARS DÉBLOQUÉ")
+        case "ASTEROID BELT ROUTE OPEN":      return t(hint, "RUTA DEL CINTURÓN ABIERTA",               "ROUTE DE LA CEINTURE OUVERTE")
+        case "JUPITER RELAY APPROACH OPEN":   return t(hint, "ACCESO AL RELÉ JÚPITER ABIERTO",          "ACCÈS AU RELAIS JUPITER OUVERT")
+        case "SATURN RING SECTOR OPEN":       return t(hint, "SECTOR ANILLOS DE SATURNO ABIERTO",       "SECTEUR ANNEAUX DE SATURNE OUVERT")
+        case "URANUS VOID SECTOR OPEN":       return t(hint, "SECTOR VACÍO DE URANO ABIERTO",           "SECTEUR VIDE D'URANUS OUVERT")
+        case "NEPTUNE DEEP SECTOR OPEN":      return t(hint, "SECTOR PROFUNDO DE NEPTUNO ABIERTO",      "SECTEUR PROFOND DE NEPTUNE OUVERT")
+        case "FULL NETWORK OPERATIONAL":      return t(hint, "RED COMPLETA OPERATIVA",                   "RÉSEAU COMPLET OPÉRATIONNEL")
+        case "RANK: PILOT":                   return t(hint, "RANGO: PILOTO",                             "RANG: PILOTE")
+        case "RANK: NAVIGATOR":               return t(hint, "RANGO: NAVEGANTE",                          "RANG: NAVIGATEUR")
+        case "RANK: COMMANDER":               return t(hint, "RANGO: COMANDANTE",                         "RANG: COMMANDANT")
+        case "ROTATION LIMIT ACTIVE":         return t(hint, "LÍMITE DE ROTACIÓN ACTIVO",                "LIMITE DE ROTATION ACTIVE")
+        case "TWO-TAP PROTOCOL ACTIVE":       return t(hint, "PROTOCOLO DE DOS TOQUES ACTIVO",           "PROTOCOLE À DEUX TOUCHES ACTIF")
+        case "AUTO-DRIFT ACTIVE":             return t(hint, "DERIVA AUTOMÁTICA ACTIVA",                 "DÉRIVE AUTOMATIQUE ACTIVE")
+        case "ONE-WAY RELAY ACTIVE":          return t(hint, "RELÉ UNIDIRECCIONAL ACTIVO",               "RELAIS UNIDIRECTIONNEL ACTIF")
+        case "FRAGILE RELAY ACTIVE":          return t(hint, "RELÉ FRÁGIL ACTIVO",                       "RELAIS FRAGILE ACTIF")
+        case "CHARGE GATE ACTIVE":            return t(hint, "COMPUERTA DE CARGA ACTIVA",                "PORTE DE CHARGE ACTIVE")
+        case "INTERFERENCE ZONE ACTIVE":      return t(hint, "ZONA DE INTERFERENCIA ACTIVA",             "ZONE D'INTERFÉRENCE ACTIVE")
+        case "TIME LIMIT ACTIVE":             return t(hint, "LÍMITE DE TIEMPO ACTIVO",                  "LIMITE DE TEMPS ACTIVE")
+        case "ASTEROID BELT UNLOCKED":        return t(hint, "CINTURÓN DE ASTEROIDES DESBLOQUEADO",     "CEINTURE D'ASTÉROÏDES DÉBLOQUÉE")
+        case "JUPITER RELAY UNLOCKED":        return t(hint, "RELÉ JÚPITER DESBLOQUEADO",                "RELAIS JUPITER DÉBLOQUÉ")
+        case "SATURN RING SECTOR UNLOCKED":   return t(hint, "SECTOR ANILLOS DE SATURNO DESBLOQUEADO",  "SECTEUR ANNEAUX DE SATURNE DÉBLOQUÉ")
+        case "URANUS VOID UNLOCKED":          return t(hint, "VACÍO DE URANO DESBLOQUEADO",              "VIDE D'URANUS DÉBLOQUÉ")
+        case "NEPTUNE DEEP UNLOCKED":         return t(hint, "PROFUNDO NEPTUNO DESBLOQUEADO",            "NEPTUNE PROFOND DÉBLOQUÉ")
+        case "SECTOR 2 — LUNAR APPROACH":    return t(hint, "SECTOR 2 — LLEGADA LUNAR",                 "SECTEUR 2 — APPROCHE LUNAIRE")
+        case "SECTOR 3 — MARS SECTOR":       return t(hint, "SECTOR 3 — SECTOR MARTE",                  "SECTEUR 3 — SECTEUR MARS")
+        case "SECTOR 4 — ASTEROID BELT":     return t(hint, "SECTOR 4 — CINTURÓN DE ASTEROIDES",       "SECTEUR 4 — CEINTURE D'ASTÉROÏDES")
+        case "SECTOR 5 — JUPITER RELAY":     return t(hint, "SECTOR 5 — RELÉ JÚPITER",                 "SECTEUR 5 — RELAIS JUPITER")
+        case "SECTOR 6 — SATURN RING":       return t(hint, "SECTOR 6 — ANILLOS DE SATURNO",           "SECTEUR 6 — ANNEAUX DE SATURNE")
+        case "SECTOR 7 — URANUS VOID":       return t(hint, "SECTOR 7 — VACÍO DE URANO",               "SECTEUR 7 — VIDE D'URANUS")
+        case "SECTOR 8 — NEPTUNE DEEP":      return t(hint, "SECTOR 8 — NEPTUNO PROFUNDO",             "SECTEUR 8 — NEPTUNE PROFOND")
+        default: return hint
+        }
+    }
 
     func storyTriggerLabel(_ trigger: StoryTrigger) -> String {
         switch trigger {

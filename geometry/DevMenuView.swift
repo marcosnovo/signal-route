@@ -357,7 +357,9 @@ struct DevMenuView: View {
                 miniStatC("PLAN",    isPrem ? "PREMIUM" : "FREE",
                           isPrem ? AppTheme.accentPrimary : AppTheme.sage)
                 statDivider()
-                miniStat("DAILY",   isPrem ? "∞" : "\(store.dailyCompleted)/\(EntitlementStore.shared.dailyLimit)")
+                miniStat("DAILY",   isPrem ? "∞" : store.isInIntroPhase
+                          ? "INTRO \(store.freeIntroCompleted)/\(EntitlementStore.freeIntroLimit)"
+                          : "\(store.dailyCompleted)/\(EntitlementStore.dailyLimit)")
                 statDivider()
                 miniStatC("STORY",  unseen > 0 ? "\(unseen) UNSEEN" : "ALL SEEN",
                           unseen > 0 ? Color.orange : AppTheme.success)
@@ -841,9 +843,11 @@ struct DevMenuView: View {
         _ = refreshID
         let store      = EntitlementStore.shared
         let isPremium  = store.isPremium
-        let used       = store.dailyCompleted
-        let limit      = EntitlementStore.shared.dailyLimit
+        let intro      = store.freeIntroCompleted
+        let daily      = store.dailyCompleted
         let remaining  = store.remainingToday
+        let canPlay    = store.canPlay(LevelGenerator.levels.first ?? LevelGenerator.levels[0])
+        let blocked    = store.reasonBlocked
         let skProduct  = storeKit.product
         let skState    = storeKit.purchaseState
         let skill      = PlayerSkillTracker.shared.skillScore
@@ -864,21 +868,50 @@ struct DevMenuView: View {
         return VStack(spacing: 0) {
             sectionHeader("MONETIZATION  ·  STATUS")
 
-            // Row 1 — entitlement
+            // Row 1 — plan + counters
             HStack(spacing: 0) {
-                miniStat("PLAN",    isPremium ? "PREMIUM" : "FREE")
+                miniStatC("PLAN",    isPremium ? "PREMIUM" : "FREE",
+                          isPremium ? AppTheme.accentPrimary : AppTheme.sage)
                 statDivider()
-                miniStat("USED",    "\(used)/\(limit)")
+                miniStat("INTRO",   "\(intro)/\(EntitlementStore.freeIntroLimit)")
+                statDivider()
+                miniStat("DAILY",   isPremium ? "∞" : "\(daily)/\(EntitlementStore.dailyLimit)")
                 statDivider()
                 miniStat("REMAIN",  isPremium ? "∞" : "\(remaining)")
-                statDivider()
-                miniStat("LIMIT",   store.dailyLimitReached ? "HIT" : "OK")
             }
             .padding(.vertical, 10)
 
             TechDivider()
 
-            // Row 2 — skill & frustration
+            // Row 2 — canPlayNow + reasonBlocked
+            HStack(spacing: 0) {
+                miniStatC("CAN PLAY", canPlay ? "YES" : "NO",
+                          canPlay ? AppTheme.success : AppTheme.danger)
+                statDivider()
+                miniStatC("PHASE", store.isInIntroPhase ? "INTRO" : "DAILY",
+                          store.isInIntroPhase ? AppTheme.accentSecondary : AppTheme.sage)
+                statDivider()
+                miniStatC("BLOCKED", blocked != nil ? "YES" : "—",
+                          blocked != nil ? AppTheme.danger : AppTheme.textSecondary)
+            }
+            .padding(.vertical, 10)
+
+            if let reason = blocked {
+                HStack(spacing: 6) {
+                    Image(systemName: "hand.raised.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(AppTheme.danger)
+                    Text(reason)
+                        .font(AppTheme.mono(7))
+                        .foregroundStyle(AppTheme.danger.opacity(0.80))
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.bottom, 6)
+            }
+
+            TechDivider()
+
+            // Row 3 — skill & frustration
             HStack(spacing: 0) {
                 miniStatC("SKILL",   String(format: "%.2f", skill),
                           skill < 0.35 ? AppTheme.danger : AppTheme.success)
@@ -895,11 +928,11 @@ struct DevMenuView: View {
 
             TechDivider()
 
-            // Row 3 — StoreKit & last paywall context
+            // Row 4 — StoreKit & last paywall context
             HStack(spacing: 0) {
-                miniStat("SECTOR",  "\(profile.progression.currentSector.id)")
+                miniStat("SECTOR",   "\(profile.progression.currentSector.id)")
                 statDivider()
-                miniStat("SK",      skLabel)
+                miniStat("SK",       skLabel)
                 statDivider()
                 miniStat("LAST CTX", lastCtx.map { $0.analyticsName.uppercased() } ?? "—")
             }
@@ -924,12 +957,12 @@ struct DevMenuView: View {
     private var moneyControlsSection: some View {
         let store     = EntitlementStore.shared
         let isPremium = store.isPremium
-        let limit     = EntitlementStore.shared.dailyLimit
 
         return VStack(spacing: 0) {
             sectionHeader("CONTROLS")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
+                    // Toggle plan
                     scenarioBtn(
                         isPremium ? "SET FREE" : "SET PREMIUM",
                         icon: isPremium ? "lock.open" : "star.fill",
@@ -939,25 +972,36 @@ struct DevMenuView: View {
                         refreshID = UUID()
                         showToast(isPremium ? "Plan → FREE" : "Plan → PREMIUM", style: .info)
                     }
+                    // Reset counters
+                    scenarioBtn("RESET INTRO", icon: "arrow.counterclockwise", color: AppTheme.sage) {
+                        store.resetIntroCount()
+                        refreshID = UUID()
+                        showToast("Intro count → 0")
+                    }
                     scenarioBtn("RESET DAILY", icon: "arrow.counterclockwise", color: AppTheme.sage) {
                         store.resetDailyCount()
                         refreshID = UUID()
-                        showToast("Daily count reset")
+                        showToast("Daily count → 0")
                     }
-                    ForEach(0...limit, id: \.self) { n in
-                        scenarioBtn("SET \(n)/\(limit)", icon: "number",
-                                    color: n == limit ? AppTheme.danger : AppTheme.textSecondary) {
+                    // Set intro counter explicitly
+                    ForEach(0...EntitlementStore.freeIntroLimit, id: \.self) { n in
+                        scenarioBtn("INTRO \(n)/\(EntitlementStore.freeIntroLimit)", icon: "number",
+                                    color: n == EntitlementStore.freeIntroLimit ? AppTheme.danger : AppTheme.textSecondary) {
+                            store.setFreeIntroCompleted(n)
                             store.resetDailyCount()
-                            let lunar = LevelGenerator.levels.first { $0.id > 30 } ?? LevelGenerator.levels[0]
-                            for _ in 0..<n { store.recordMissionCompleted(lunar) }
                             refreshID = UUID()
+                            showToast("Intro → \(n)/\(EntitlementStore.freeIntroLimit)")
                         }
                     }
-                    scenarioBtn("FORCE LIMIT", icon: "hand.raised.fill", color: AppTheme.danger) {
-                        store.resetDailyCount()
-                        let lunar = LevelGenerator.levels.first { $0.id > 30 } ?? LevelGenerator.levels[0]
-                        for _ in 0..<limit { store.recordMissionCompleted(lunar) }
-                        refreshID = UUID()
+                    // Set daily counter explicitly
+                    ForEach(0...EntitlementStore.dailyLimit, id: \.self) { n in
+                        scenarioBtn("DAILY \(n)/\(EntitlementStore.dailyLimit)", icon: "number",
+                                    color: n == EntitlementStore.dailyLimit ? AppTheme.danger : AppTheme.textSecondary) {
+                            store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit) // enter Phase 2
+                            store.setDailyCompleted(n)
+                            refreshID = UUID()
+                            showToast("Daily → \(n)/\(EntitlementStore.dailyLimit)")
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -969,7 +1013,6 @@ struct DevMenuView: View {
 
     private var paywallTestSection: some View {
         let store = EntitlementStore.shared
-        let limit = EntitlementStore.shared.dailyLimit
 
         return VStack(spacing: 0) {
             sectionHeader("PAYWALL TEST")
@@ -984,9 +1027,9 @@ struct DevMenuView: View {
                         withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) { showingDevPaywall = true }
                     }
                     scenarioBtn("NEXT BLOCKED", icon: "lock.fill", color: AppTheme.danger) {
-                        store.resetDailyCount()
-                        let lunar = LevelGenerator.levels.first { $0.id > 30 } ?? LevelGenerator.levels[0]
-                        for _ in 0..<limit { store.recordMissionCompleted(lunar) }
+                        // Force Phase 2 + daily limit hit
+                        store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
+                        store.setDailyCompleted(EntitlementStore.dailyLimit)
                         devPaywallContext = .nextMissionBlocked
                         withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) { showingDevPaywall = true }
                         refreshID = UUID()
@@ -1063,44 +1106,55 @@ struct DevMenuView: View {
 
     private var moneyScenarioSection: some View {
         let store = EntitlementStore.shared
-        let limit = EntitlementStore.shared.dailyLimit
 
         return VStack(spacing: 0) {
             sectionHeader("SCENARIO SIMULATION")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    scenarioBtn("FREE USER", icon: "person.fill", color: AppTheme.sage) {
+                    // 1. Brand-new player — Phase 1, 0 intro used
+                    scenarioBtn("FIRST-TIME USER", icon: "person.fill", color: AppTheme.sage) {
                         store.setPremium(false)
+                        store.resetIntroCount()
                         store.resetDailyCount()
                         refreshID = UUID()
+                        showToast("Intro 0/\(EntitlementStore.freeIntroLimit) · Phase 1")
                     }
-                    scenarioBtn("PREMIUM USER", icon: "star.fill", color: AppTheme.accentPrimary) {
+                    // 2. Phase 1, 4 intro missions used (1 remaining)
+                    scenarioBtn("4 INTRO USED", icon: "4.circle.fill", color: AppTheme.sage) {
+                        store.setPremium(false)
+                        store.setFreeIntroCompleted(4)
+                        store.resetDailyCount()
+                        refreshID = UUID()
+                        showToast("Intro 4/\(EntitlementStore.freeIntroLimit) · 1 slot left")
+                    }
+                    // 3. Phase 1 exhausted → just entered Phase 2, daily = 0
+                    scenarioBtn("5 INTRO USED", icon: "5.circle.fill", color: .orange) {
+                        store.setPremium(false)
+                        store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
+                        store.resetDailyCount()
+                        refreshID = UUID()
+                        showToast("Intro DONE · Phase 2 · \(EntitlementStore.dailyLimit) daily slots")
+                    }
+                    // 4. Phase 2 — daily limit hit
+                    scenarioBtn("DAILY COUNT = \(EntitlementStore.dailyLimit)", icon: "hand.raised.fill", color: AppTheme.danger) {
+                        store.setPremium(false)
+                        store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
+                        store.setDailyCompleted(EntitlementStore.dailyLimit)
+                        refreshID = UUID()
+                        showToast("Daily \(EntitlementStore.dailyLimit)/\(EntitlementStore.dailyLimit) · BLOCKED", style: .warning)
+                    }
+                    // 5. Premium
+                    scenarioBtn("PREMIUM", icon: "star.fill", color: AppTheme.accentPrimary) {
                         store.setPremium(true)
                         refreshID = UUID()
-                    }
-                    scenarioBtn("LIMIT REACHED", icon: "hand.raised.fill", color: AppTheme.danger) {
-                        store.setPremium(false)
-                        store.resetDailyCount()
-                        let lunar = LevelGenerator.levels.first { $0.id > 30 } ?? LevelGenerator.levels[0]
-                        for _ in 0..<limit { store.recordMissionCompleted(lunar) }
-                        refreshID = UUID()
-                    }
-                    scenarioBtn("FIRST PAYWALL", icon: "eye.fill", color: .orange) {
-                        store.setPremium(false)
-                        store.resetDailyCount()
-                        let lunar = LevelGenerator.levels.first { $0.id > 30 } ?? LevelGenerator.levels[0]
-                        for _ in 0..<limit { store.recordMissionCompleted(lunar) }
-                        devPaywallContext = .nextMissionBlocked
-                        withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) { showingDevPaywall = true }
-                        refreshID = UUID()
+                        showToast("Plan → PREMIUM", style: .info)
                     }
                     #if DEBUG
                     scenarioBtn("STRUGGLING FREE", icon: "exclamationmark.triangle.fill", color: AppTheme.danger) {
                         // Simulate a frustrated free player at the daily limit
                         store.setPremium(false)
-                        store.resetDailyCount()
-                        let lunar = LevelGenerator.levels.first { $0.id > 30 } ?? LevelGenerator.levels[0]
-                        for _ in 0..<limit { store.recordMissionCompleted(lunar) }
+                        store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
+                        store.setDailyCompleted(EntitlementStore.dailyLimit)
                         PlayerSkillTracker.shared.overrideSkillScore(0.12)
                         SessionTracker.shared.overrideFailuresInSession(4)
                         SessionTracker.shared.overrideStreakCount(0)
@@ -1112,6 +1166,7 @@ struct DevMenuView: View {
                     scenarioBtn("HIGH-SKILL FREE", icon: "bolt.fill", color: AppTheme.success) {
                         // Simulate a skilled free player mid-session
                         store.setPremium(false)
+                        store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
                         store.resetDailyCount()
                         PlayerSkillTracker.shared.overrideSkillScore(0.88)
                         SessionTracker.shared.overrideFailuresInSession(0)
@@ -3729,6 +3784,7 @@ struct DevMenuView: View {
             StoryStore.reset()
             OnboardingStore.resetAll()
             EntitlementStore.shared.setPremium(false)
+            EntitlementStore.shared.resetIntroCount()
             EntitlementStore.shared.resetDailyCount()
             TicketCache.shared.invalidateAll()
             showToast("All progress cleared", style: .warning)

@@ -461,3 +461,313 @@ struct StartsSolvedRegressionTests {
                 "Levels with minimumRequiredMoves=0: \(zero)")
     }
 }
+
+// MARK: - EntitlementStore Access Tests
+// Validates the monetisation gate logic: free intro quota, daily cap, and premium bypass.
+// Runs serially to prevent state pollution across the shared singleton.
+#if DEBUG
+@Suite("EntitlementStore — Access Rules", .serialized)
+@MainActor
+struct EntitlementAccessTests {
+
+    init() {
+        EntitlementStore.shared.setPremium(false)
+        EntitlementStore.shared.resetIntroCount()
+        EntitlementStore.shared.resetDailyCount()
+    }
+
+    private var anyLevel: Level { LevelGenerator.levels[0] }
+
+    // ── Business-logic constants ───────────────────────────────────────────
+
+    @Test("freeIntroLimit == 5 and dailyLimit == 3")
+    func entitlementLimitsAreCorrect() {
+        #expect(EntitlementStore.freeIntroLimit == 5)
+        #expect(EntitlementStore.dailyLimit      == 3)
+    }
+
+    // ── Free-user intro phase ──────────────────────────────────────────────
+
+    @Test("Free user — 0 intro missions used — can play")
+    func freeUserIntro0CanPlay() {
+        EntitlementStore.shared.setFreeIntroCompleted(0)
+        #expect(EntitlementStore.shared.canPlay(anyLevel))
+    }
+
+    @Test("Free user — 4 of 5 intro missions used — can play")
+    func freeUserIntro4CanPlay() {
+        EntitlementStore.shared.setFreeIntroCompleted(4)
+        #expect(EntitlementStore.shared.canPlay(anyLevel))
+    }
+
+    // ── Free-user daily phase ──────────────────────────────────────────────
+
+    @Test("Free user — intro exhausted + 0 daily — can play")
+    func freeUserIntroExhaustedDaily0CanPlay() {
+        EntitlementStore.shared.setFreeIntroCompleted(5)
+        EntitlementStore.shared.setDailyCompleted(0)
+        #expect(EntitlementStore.shared.canPlay(anyLevel))
+    }
+
+    @Test("Free user — intro exhausted + 2 of 3 daily — can play")
+    func freeUserIntroExhaustedDaily2CanPlay() {
+        EntitlementStore.shared.setFreeIntroCompleted(5)
+        EntitlementStore.shared.setDailyCompleted(2)
+        #expect(EntitlementStore.shared.canPlay(anyLevel))
+    }
+
+    @Test("Free user — intro exhausted + daily limit reached — blocked and paywall eligible")
+    func freeUserDailyLimitReachedIsBlocked() {
+        EntitlementStore.shared.setFreeIntroCompleted(5)
+        EntitlementStore.shared.setDailyCompleted(3)
+        #expect(!EntitlementStore.shared.canPlay(anyLevel),
+                "canPlay must return false when daily limit is reached")
+        #expect(EntitlementStore.shared.dailyLimitReached,
+                "dailyLimitReached must be true")
+        #expect(EntitlementStore.shared.reasonBlocked != nil,
+                "reasonBlocked must describe the block reason")
+    }
+
+    // ── Premium bypass ─────────────────────────────────────────────────────
+
+    @Test("Premium user — always allowed regardless of counters")
+    func premiumUserAlwaysAllowed() {
+        EntitlementStore.shared.setPremium(true)
+        EntitlementStore.shared.setFreeIntroCompleted(5)
+        EntitlementStore.shared.setDailyCompleted(3)
+        defer { EntitlementStore.shared.setPremium(false) }
+        #expect(EntitlementStore.shared.canPlay(anyLevel),
+                "Premium user must always be allowed to play")
+        #expect(!EntitlementStore.shared.dailyLimitReached,
+                "dailyLimitReached must be false for premium")
+        #expect(EntitlementStore.shared.reasonBlocked == nil,
+                "reasonBlocked must be nil for premium")
+    }
+
+    // ── Phase boundary ─────────────────────────────────────────────────────
+
+    @Test("isInIntroPhase transitions to false exactly at freeIntroLimit")
+    func isInIntroPhaseTransitionsAtLimit() {
+        EntitlementStore.shared.setFreeIntroCompleted(EntitlementStore.freeIntroLimit - 1)
+        #expect(EntitlementStore.shared.isInIntroPhase,
+                "One below limit must still be in intro phase")
+
+        EntitlementStore.shared.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
+        #expect(!EntitlementStore.shared.isInIntroPhase,
+                "At freeIntroLimit must no longer be in intro phase")
+    }
+}
+
+// MARK: - EntitlementStore Consumption Tests
+// Validates when each counter is incremented and when it must stay unchanged.
+@Suite("EntitlementStore — Counter Consumption", .serialized)
+@MainActor
+struct EntitlementConsumptionTests {
+
+    init() {
+        EntitlementStore.shared.setPremium(false)
+        EntitlementStore.shared.resetIntroCount()
+        EntitlementStore.shared.resetDailyCount()
+    }
+
+    private var anyLevel: Level { LevelGenerator.levels[0] }
+
+    // ── Retry / fail paths do not consume ─────────────────────────────────
+
+    @Test("canPlay does not increment any counter — simulates a retry or failed attempt")
+    func canPlayDoesNotConsumeCounter() {
+        EntitlementStore.shared.setFreeIntroCompleted(2)
+        let introBefore = EntitlementStore.shared.freeIntroCompleted
+        let dailyBefore = EntitlementStore.shared.dailyCompleted
+        _ = EntitlementStore.shared.canPlay(anyLevel)
+        #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
+                "Intro counter must not change on canPlay (retry/fail path)")
+        #expect(EntitlementStore.shared.dailyCompleted == dailyBefore,
+                "Daily counter must not change on canPlay (retry/fail path)")
+    }
+
+    // ── Intro phase consumption ────────────────────────────────────────────
+
+    @Test("recordMissionCompleted during intro phase increments only freeIntroCompleted")
+    func completingDuringIntroPhaseIncrementsIntroCounter() {
+        EntitlementStore.shared.setFreeIntroCompleted(2)
+        let dailyBefore = EntitlementStore.shared.dailyCompleted
+        EntitlementStore.shared.recordMissionCompleted(anyLevel)
+        #expect(EntitlementStore.shared.freeIntroCompleted == 3,
+                "Intro counter must increment from 2 to 3")
+        #expect(EntitlementStore.shared.dailyCompleted == dailyBefore,
+                "Daily counter must not change during intro phase")
+    }
+
+    // ── Daily phase consumption ────────────────────────────────────────────
+
+    @Test("recordMissionCompleted after intro exhausted increments only dailyCompleted")
+    func completingAfterIntroPhaseIncrementsOnlyDailyCounter() {
+        EntitlementStore.shared.setFreeIntroCompleted(5)
+        let introBefore = EntitlementStore.shared.freeIntroCompleted
+        EntitlementStore.shared.setDailyCompleted(0)
+        EntitlementStore.shared.recordMissionCompleted(anyLevel)
+        #expect(EntitlementStore.shared.dailyCompleted == 1,
+                "Daily counter must increment from 0 to 1 when intro is exhausted")
+        #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
+                "Intro counter must not change after intro phase is exhausted")
+    }
+
+    // ── Premium no-op ──────────────────────────────────────────────────────
+
+    @Test("recordMissionCompleted for a premium user is a complete no-op on all counters")
+    func premiumCompletionDoesNotConsumeAnyCounter() {
+        EntitlementStore.shared.setPremium(true)
+        EntitlementStore.shared.setFreeIntroCompleted(2)
+        let introBefore = EntitlementStore.shared.freeIntroCompleted
+        let dailyBefore = EntitlementStore.shared.dailyCompleted
+        defer { EntitlementStore.shared.setPremium(false) }
+        EntitlementStore.shared.recordMissionCompleted(anyLevel)
+        #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
+                "Intro counter must not change for premium user")
+        #expect(EntitlementStore.shared.dailyCompleted == dailyBefore,
+                "Daily counter must not change for premium user")
+    }
+}
+#endif
+
+// MARK: - Story Beat Localization Tests
+// Validates that all story-beat UI strings honour the active language setting.
+// Protects against the "Spanish body / English CTA or footer" regression class.
+@Suite("Story Beat Localization")
+struct StoryBeatLocalizationTests {
+
+    private let en = AppStrings(lang: .en)
+    private let es = AppStrings(lang: .es)
+    private let fr = AppStrings(lang: .fr)
+
+    // ── CTA strings ────────────────────────────────────────────────────────
+
+    @Test("'Acknowledge' CTA is localized for ES and FR")
+    func acknowledgeIsLocalized() {
+        #expect(es.acknowledge != en.acknowledge,
+                "ES 'acknowledge' must not equal EN 'ACKNOWLEDGE'")
+        #expect(fr.acknowledge != en.acknowledge,
+                "FR 'acknowledge' must not equal EN 'ACKNOWLEDGE'")
+        #expect(!es.acknowledge.isEmpty)
+        #expect(!fr.acknowledge.isEmpty)
+    }
+
+    @Test("'Incoming transmission' header is localized for ES and FR")
+    func incomingTransmissionIsLocalized() {
+        #expect(es.incomingTransmission != en.incomingTransmission)
+        #expect(fr.incomingTransmission != en.incomingTransmission)
+    }
+
+    // ── Trigger labels ─────────────────────────────────────────────────────
+
+    @Test("All StoryTrigger badge labels are localized for ES and FR")
+    func storyTriggerLabelsAreLocalized() {
+        for trigger in StoryTrigger.allCases {
+            let enLabel = en.storyTriggerLabel(trigger)
+            #expect(es.storyTriggerLabel(trigger) != enLabel,
+                    "ES trigger label for .\(trigger) matches EN — translation missing")
+            #expect(fr.storyTriggerLabel(trigger) != enLabel,
+                    "FR trigger label for .\(trigger) matches EN — translation missing")
+        }
+    }
+
+    // ── Footer hints ───────────────────────────────────────────────────────
+
+    private static let representativeHints = [
+        "ROTATION LIMIT ACTIVE",
+        "TWO-TAP PROTOCOL ACTIVE",
+        "AUTO-DRIFT ACTIVE",
+        "TIME LIMIT ACTIVE",
+        "MISSION 1 LOADED",
+        "LUNAR APPROACH UNLOCKED",
+        "MARS SECTOR UNLOCKED",
+        "FULL NETWORK OPERATIONAL",
+        "RANK: PILOT",
+        "RANK: NAVIGATOR",
+        "RANK: COMMANDER",
+        "SECTOR 2 — LUNAR APPROACH",
+        "SECTOR 8 — NEPTUNE DEEP",
+    ]
+
+    @Test("Known footer hints are translated for ES — not left in English")
+    func footerHintsLocalizedES() {
+        for hint in Self.representativeHints {
+            #expect(es.storyFooterHint(hint) != hint,
+                    "ES footer hint '\(hint)' is still English — add translation to storyFooterHint(_:)")
+        }
+    }
+
+    @Test("Known footer hints are translated for FR — not left in English")
+    func footerHintsLocalizedFR() {
+        for hint in Self.representativeHints {
+            #expect(fr.storyFooterHint(hint) != hint,
+                    "FR footer hint '\(hint)' is still English — add translation to storyFooterHint(_:)")
+        }
+    }
+
+    @Test("Unknown footer hint falls back to the original string without crashing")
+    func unknownFooterHintFallsBack() {
+        let unknown = "SOME_UNKNOWN_STATUS_XYZ"
+        #expect(es.storyFooterHint(unknown) == unknown)
+        #expect(fr.storyFooterHint(unknown) == unknown)
+    }
+
+    // ── Beat catalog ───────────────────────────────────────────────────────
+
+    @Test("All beats with localizedTitle display a distinct ES title")
+    func beatsWithLocalizedTitleShowESTitle() {
+        for beat in StoryBeatCatalog.beats where beat.localizedTitle != nil {
+            #expect(beat.displayTitle(for: .es) != beat.displayTitle(for: .en),
+                    "Beat '\(beat.id)': ES title matches EN — localizedTitle.es may be missing")
+        }
+    }
+
+    @Test("All beats with localizedBody display a distinct ES body")
+    func beatsWithLocalizedBodyShowESBody() {
+        for beat in StoryBeatCatalog.beats where beat.localizedBody != nil {
+            #expect(beat.displayBody(for: .es) != beat.displayBody(for: .en),
+                    "Beat '\(beat.id)': ES body matches EN — localizedBody.es may be missing")
+        }
+    }
+
+    @Test("All beats with localizedBody display a distinct FR body")
+    func beatsWithLocalizedBodyShowFRBody() {
+        for beat in StoryBeatCatalog.beats where beat.localizedBody != nil {
+            #expect(beat.displayBody(for: .fr) != beat.displayBody(for: .en),
+                    "Beat '\(beat.id)': FR body matches EN — localizedBody.fr may be missing")
+        }
+    }
+
+    // ── Mechanic strings ───────────────────────────────────────────────────
+
+    @Test("Mechanic titles are localized for ES and FR")
+    func mechanicTitlesAreLocalized() {
+        let mechanics: [MechanicType] = [
+            .rotationCap, .overloaded, .timeLimit, .autoDrift,
+            .oneWayRelay, .fragileTile, .chargeGate, .interferenceZone,
+        ]
+        for mechanic in mechanics {
+            let enTitle = en.mechanicTitle(mechanic)
+            #expect(es.mechanicTitle(mechanic) != enTitle,
+                    "ES mechanic title for .\(mechanic) matches EN — not localized")
+            #expect(fr.mechanicTitle(mechanic) != enTitle,
+                    "FR mechanic title for .\(mechanic) matches EN — not localized")
+        }
+    }
+
+    @Test("Mechanic body messages are localized for ES and FR")
+    func mechanicMessagesAreLocalized() {
+        let mechanics: [MechanicType] = [
+            .rotationCap, .overloaded, .timeLimit, .autoDrift,
+            .oneWayRelay, .fragileTile, .chargeGate, .interferenceZone,
+        ]
+        for mechanic in mechanics {
+            let enMsg = en.mechanicMessage(mechanic)
+            #expect(es.mechanicMessage(mechanic) != enMsg,
+                    "ES mechanic message for .\(mechanic) matches EN — not localized")
+            #expect(fr.mechanicMessage(mechanic) != enMsg,
+                    "FR mechanic message for .\(mechanic) matches EN — not localized")
+        }
+    }
+}
