@@ -393,8 +393,8 @@ final class SelfQARunner: ObservableObject {
         let store = EntitlementStore.shared
 
         r += pass("dailyLimit > 0", .monetization,
-                  condition: EntitlementStore.dailyLimit > 0,
-                  detail:    "limit=\(EntitlementStore.dailyLimit)",
+                  condition: EntitlementStore.shared.dailyLimit > 0,
+                  detail:    "limit=\(EntitlementStore.shared.dailyLimit)",
                   fix:       "dailyLimit must be a positive integer.")
 
         r += pass("remainingToday ≥ 0", .monetization,

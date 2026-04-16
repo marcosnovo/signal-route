@@ -133,7 +133,8 @@ struct GameView: View {
         .onDisappear {
             // If the player exits mid-game (not via win or loss), record as abandon
             if vm.status == .playing {
-                PlayerSkillStore.shared.recordAbandon()
+                PlayerSkillTracker.shared.recordAbandon()
+                SessionTracker.shared.recordAbandon()
             }
         }
         .onChange(of: vm.status) { _, newStatus in

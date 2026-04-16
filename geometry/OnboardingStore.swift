@@ -26,7 +26,7 @@ enum OnboardingStore {
 
     // ── Narrative intro panels ────────────────────────────────────────────
 
-    /// True once the player has seen the 4-panel story intro.
+    /// True once the player has seen the 2-panel story intro.
     static var hasSeenNarrativeIntro: Bool {
         UserDefaults.standard.bool(forKey: narrativeKey)
     }

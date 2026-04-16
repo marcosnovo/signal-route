@@ -87,7 +87,7 @@ class GameViewModel: ObservableObject {
     // MARK: Soft hint system
     /// True when hint conditions are met (low skill or 3+ attempts).
     var hintEnabled: Bool {
-        HintEngine.isActive(skillScore: PlayerSkillStore.shared.skillScore,
+        HintEngine.isActive(skillScore: PlayerSkillTracker.shared.skillScore,
                             attemptCount: attemptCount)
     }
     /// Position of the tile currently being softly highlighted. Nil when hints are off or not needed.
@@ -112,8 +112,8 @@ class GameViewModel: ObservableObject {
     func setupLevel() {
         // Lock in difficulty adjustments once per session — stable across retries
         if attemptCount == 0 {
-            activeAdjustments = AdaptiveDifficultyEngine.adjustments(
-                for: PlayerSkillStore.shared.skillScore
+            activeAdjustments = AdaptiveDifficultyManager.adjustments(
+                for: PlayerSkillTracker.shared.skillScore
             )
         }
         attemptCount += 1
@@ -231,12 +231,13 @@ class GameViewModel: ObservableObject {
                 if let newPass = event?.newPass {
                     pendingPassGrant = newPass
                 }
-                PlayerSkillStore.shared.recordWin(
+                PlayerSkillTracker.shared.recordWin(
                     efficiency:   result.efficiency,
                     movesUsed:    movesUsed,
                     minimumMoves: currentLevel.minimumRequiredMoves,
                     attempts:     attemptCount
                 )
+                SessionTracker.shared.recordWin()
             }
         } else if movesLeft == 0 {
             triggerLoss()
@@ -398,6 +399,7 @@ class GameViewModel: ObservableObject {
         saveResultIfDaily(success: false)
         consecutiveFailures += 1
         if consecutiveFailures >= 3 { pendingFrustrationBoost = true }
+        SessionTracker.shared.recordFailure()
     }
 
     // MARK: - Private: Countdown timer

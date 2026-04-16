@@ -16,6 +16,8 @@ struct HomeView: View {
     @State private var showingPlanetTicket = false
     @State private var showingSettings     = false
     @State private var showingDevMenu      = false
+    @AppStorage("lastPlayedMissionID") private var lastPlayedMissionID: String = ""
+    @State private var contentOpacity: Double = 0
 
     var body: some View {
         ZStack {
@@ -32,16 +34,18 @@ struct HomeView: View {
 
             VStack(spacing: 0) {
                 systemBar
-                Spacer()
-                titleSection.padding(.bottom, 32)
-                missionSection.padding(.horizontal, 24)
-                if introCompleted {
-                    AstronautProgressCard(profile: profile)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 16)
-                        .onTapGesture { showingPlanetTicket = true }
-                }
-                Spacer()
+                Spacer(minLength: 24)
+                contentArea
+                    .opacity(contentOpacity)
+                    .onAppear {
+                        // Reset and fade in — fires on every home screen visit,
+                        // giving a smooth "quick resume" feel when returning from a game.
+                        contentOpacity = 0
+                        withAnimation(.easeOut(duration: 0.45).delay(0.10)) {
+                            contentOpacity = 1.0
+                        }
+                    }
+                Spacer(minLength: 16)
                 statusStrip.padding(.bottom, 32)
             }
         }
@@ -69,6 +73,194 @@ struct HomeView: View {
     }
 
     // MARK: Subviews
+
+    // ── Content area — single vertical narrative flow ─────────────────────────
+    private var contentArea: some View {
+        VStack(spacing: 0) {
+            if introCompleted {
+                if let next = profile.nextMission {
+                    // 1. Hero — mission identity
+                    heroSection(for: next)
+                        .padding(.horizontal, 24)
+
+                    // 2. Primary CTA — PLAY
+                    playButton(for: next)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 16)
+
+                    // 3. Progress — integrated, not a card
+                    progressRow
+                        .padding(.horizontal, 24)
+                        .padding(.top, 14)
+
+                    Spacer(minLength: 18)
+
+                    // 4. Pass — protagonist secondary element
+                    AstronautProgressCard(profile: profile)
+                        .padding(.horizontal, 24)
+                        .onTapGesture { showingPlanetTicket = true }
+
+                    // 5. Map — live node-network preview block
+                    MapPreviewBlock(
+                        completed: profile.uniqueCompletions,
+                        total: LevelGenerator.levels.count,
+                        onTap: onMissions
+                    )
+                    .padding(.horizontal, 24)
+                    .padding(.top, 12)
+
+                    // 6. Monetisation — subtle, below the map
+                    if !entitlement.isPremium, let onUpgrade {
+                        upgradeRow(action: onUpgrade)
+                            .padding(.horizontal, 24)
+                            .padding(.top, 8)
+                    }
+
+                } else {
+                    // All missions cleared
+                    AllClearCard()
+                        .padding(.horizontal, 24)
+
+                    MapPreviewBlock(
+                        completed: profile.uniqueCompletions,
+                        total: LevelGenerator.levels.count,
+                        onTap: onMissions
+                    )
+                    .padding(.horizontal, 24)
+                    .padding(.top, 14)
+                }
+            } else {
+                // Pre-intro training flow
+                TrainingCard()
+                    .padding(.horizontal, 24)
+
+                Button(action: { onPlay(LevelGenerator.introLevel) }) {
+                    HStack(spacing: 10) {
+                        Text(S.initializeTraining)
+                            .font(AppTheme.mono(12, weight: .bold))
+                            .kerning(2)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(AppTheme.accentPrimary)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                }
+                .breathingCTA()
+                .padding(.horizontal, 24)
+                .padding(.top, 14)
+            }
+        }
+    }
+
+    // ── Hero section — mission identity, adapts to resume state ──────────────
+    private func heroSection(for level: Level) -> some View {
+        let isResume = lastPlayedMissionID == level.displayID
+        return VStack(alignment: .leading, spacing: 10) {
+            // "IN PROGRESS" badge when returning to a started mission
+            if isResume {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(AppTheme.accentPrimary)
+                        .frame(width: 5, height: 5)
+                        .pulsingGlow(color: AppTheme.accentPrimary, duration: 1.4)
+                    TechLabel(text: S.inProgress, color: AppTheme.accentPrimary.opacity(0.88))
+                }
+            }
+
+            // Mission ID — dominant, tappable (secret trigger)
+            // Slightly smaller font on resume so longer "CONTINUE MISSION XX" fits
+            Text(isResume
+                 ? S.resumeMissionLabel(level.displayID)
+                 : S.nextMissionLabel(level.displayID))
+                .font(AppTheme.mono(isResume ? 28 : 38, weight: .black))
+                .foregroundStyle(.white)
+                .tracking(-0.5)
+                .minimumScaleFactor(0.72)
+                .lineLimit(1)
+                .onTapGesture { handleSecretTap() }
+
+            // Objective — single clear line
+            Text(S.objectiveText(type: level.objectiveType, targets: level.numTargets))
+                .font(AppTheme.mono(10, weight: .regular))
+                .foregroundStyle(AppTheme.sage.opacity(0.72))
+                .kerning(2)
+
+            // Difficulty — small pill, not protagonist
+            Text(level.difficulty.fullLabel)
+                .font(AppTheme.mono(8, weight: .bold))
+                .foregroundStyle(level.difficulty.color)
+                .kerning(1.5)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 3)
+                        .strokeBorder(level.difficulty.color.opacity(0.45), lineWidth: 0.5)
+                )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // ── Primary CTA — full-width PLAY / CONTINUE button ─────────────────────
+    // Delegates to PlayCTAButton for press physics, haptic, and sound.
+    // Saves lastPlayedMissionID BEFORE calling onPlay so the hero updates
+    // instantly when the player returns to the home screen.
+    private func playButton(for level: Level) -> some View {
+        let isResume = lastPlayedMissionID == level.displayID
+        return PlayCTAButton(label: isResume ? S.continueAction : S.play) {
+            lastPlayedMissionID = level.displayID
+            onPlay(level)
+        }
+    }
+
+    // ── Progress — integrated bar + text, no card ─────────────────────────────
+    private var progressRow: some View {
+        let total    = LevelGenerator.levels.count
+        let done     = profile.uniqueCompletions
+        let fraction = total > 0 ? CGFloat(done) / CGFloat(total) : 0
+        return VStack(alignment: .leading, spacing: 6) {
+            ProgressAnimatedBar(fraction: fraction)
+
+            Text(S.missionsCompleted(done: done, total: total))
+                .font(AppTheme.mono(9))
+                .foregroundStyle(AppTheme.sage.opacity(0.65))
+                .kerning(1)
+        }
+    }
+
+    // ── Upgrade — subtle secondary row, no dominant box ──────────────────────
+    private func upgradeRow(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: "infinity")
+                    .font(.system(size: 9, weight: .semibold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(S.unlockUnlimitedAccess)
+                        .font(AppTheme.mono(9, weight: .bold))
+                        .kerning(1)
+                    Text(S.playWithoutDailyLimit)
+                        .font(AppTheme.mono(7))
+                        .foregroundStyle(AppTheme.accentPrimary.opacity(0.60))
+                        .kerning(0.5)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .foregroundStyle(AppTheme.accentPrimary.opacity(0.72))
+            .background(AppTheme.accentPrimary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .strokeBorder(AppTheme.accentPrimary.opacity(0.15), lineWidth: 0.5)
+            )
+        }
+    }
 
     private var systemBar: some View {
         HStack {
@@ -103,138 +295,8 @@ struct HomeView: View {
         .overlay(alignment: .bottom) { TechDivider() }
     }
 
-    private var titleSection: some View {
-        VStack(spacing: 10) {
-            GeoTitle()
-                .onTapGesture { handleSecretTap() }
-            Text(S.restoreTheNetwork)
-                .font(AppTheme.mono(9))
-                .foregroundStyle(AppTheme.sage.opacity(0.82))
-                .kerning(3)
-        }
-    }
-
     private var introCompleted: Bool { OnboardingStore.hasCompletedIntro }
     private var profile: AstronautProfile { ProgressionStore.profile }
-
-    // MARK: Mission section — adapts to player state
-    private var missionSection: some View {
-        VStack(spacing: 14) {
-            if introCompleted {
-                if let next = profile.nextMission {
-                    // Next sequential mission
-                    NextMissionCard(level: next)
-
-                    Button(action: { onPlay(next) }) {
-                        HStack(spacing: 0) {
-                            // Left: mission context + action verb
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(S.nextMissionLabel(next.displayID))
-                                    .font(AppTheme.mono(9, weight: .regular))
-                                    .foregroundStyle(.white.opacity(0.55))
-                                    .kerning(2)
-                                Text(S.launch)
-                                    .font(AppTheme.mono(17, weight: .black))
-                                    .foregroundStyle(.white)
-                                    .kerning(1)
-                            }
-                            .padding(.leading, 20)
-
-                            Spacer()
-
-                            // Right: arrow panel with dark overlay
-                            ZStack {
-                                Color.black.opacity(0.16)
-                                    .frame(width: 58)
-                                Image(systemName: "arrow.right")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 60)
-                        .background(AppTheme.accentPrimary)
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                    }
-                    .breathingCTA()
-                } else {
-                    // Player has cleared all 180 missions
-                    AllClearCard()
-                }
-
-                // Upgrade pill — free users only
-                if !entitlement.isPremium, let onUpgrade {
-                    Button(action: onUpgrade) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "infinity")
-                                .font(.system(size: 10, weight: .bold))
-                            Text(S.unlimitedAccess)
-                                .font(AppTheme.mono(9, weight: .bold))
-                                .kerning(1.5)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 8, weight: .bold))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 34)
-                        .padding(.horizontal, 14)
-                        .background(AppTheme.accentPrimary.opacity(0.07))
-                        .foregroundStyle(AppTheme.accentPrimary.opacity(0.80))
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                                .strokeBorder(AppTheme.accentPrimary.opacity(0.20), lineWidth: 0.5)
-                        )
-                    }
-                }
-
-                // Mission Map shortcut — always visible for returning players
-                Button(action: onMissions) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "map")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text(S.missionMap)
-                            .font(AppTheme.mono(11, weight: .bold))
-                            .kerning(2)
-                        Spacer()
-                        Text("\(profile.uniqueCompletions)/\(LevelGenerator.levels.count)")
-                            .font(AppTheme.mono(10))
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .bold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .padding(.horizontal, 16)
-                    .background(AppTheme.backgroundSecondary)
-                    .foregroundStyle(AppTheme.sage.opacity(0.88))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                            .strokeBorder(AppTheme.sage.opacity(0.18), lineWidth: 0.5)
-                    )
-                }
-            } else {
-                // New / returning pre-training player — prompt the intro
-                TrainingCard()
-
-                Button(action: { onPlay(LevelGenerator.introLevel) }) {
-                    HStack(spacing: 10) {
-                        Text(S.initializeTraining)
-                            .font(AppTheme.mono(12, weight: .bold))
-                            .kerning(2)
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 11, weight: .bold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(AppTheme.accentPrimary)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                }
-                .breathingCTA()
-            }
-        }
-    }
 
     // MARK: Status strip — live system readout replacing dead nav tabs
     private var statusStrip: some View {
@@ -316,66 +378,6 @@ struct HomeView: View {
             secretTaps = 0
             showingDevMenu = true
         }
-    }
-}
-
-// MARK: - NextMissionCard
-/// Home screen card showing the next sequential mission the player should tackle.
-struct NextMissionCard: View {
-    let level: Level
-
-    @EnvironmentObject private var settings: SettingsStore
-    private var S: AppStrings { AppStrings(lang: settings.language) }
-
-    private let bg    = Color(hex: "C7D7C6")
-    private let dark  = Color(hex: "141414")
-    private let muted = Color.black.opacity(0.52)
-    private let sep   = Color.black.opacity(0.10)
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 5) {
-                    TechLabel(text: S.nextMission, color: AppTheme.accentPrimary)
-                    Text(level.displayName)
-                        .font(AppTheme.mono(18, weight: .bold))
-                        .foregroundStyle(dark)
-                }
-                Spacer()
-                Text(level.difficulty.fullLabel)
-                    .font(AppTheme.mono(8, weight: .bold))
-                    .foregroundStyle(level.difficulty.color)
-                    .kerning(1)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 2)
-                            .strokeBorder(level.difficulty.color.opacity(0.55), lineWidth: 0.5)
-                    )
-                    .pulsingGlow(color: level.difficulty.color, duration: 1.5)
-            }
-            .padding(16)
-
-            Rectangle().fill(sep).frame(height: 0.5)
-
-            HStack(spacing: 0) {
-                MiniStatCell(label: S.gridLabel, value: "\(level.gridSize) × \(level.gridSize)",
-                             labelColor: muted, valueColor: dark)
-                Rectangle().fill(sep).frame(width: 0.5, height: 24)
-                MiniStatCell(label: S.objectiveLabel, value: S.hudLabel(level.objectiveType),
-                             labelColor: muted, valueColor: dark)
-                Rectangle().fill(sep).frame(width: 0.5, height: 24)
-                MiniStatCell(label: S.targetsLabel, value: "\(level.numTargets)",
-                             labelColor: muted, valueColor: dark)
-            }
-            .padding(.vertical, 12)
-        }
-        .background(bg)
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.cardRadius)
-                .strokeBorder(AppTheme.accentPrimary.opacity(0.22), lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
     }
 }
 
@@ -1081,6 +1083,242 @@ struct PlanetTicketView: View {
             try? await Task.sleep(nanoseconds: 600_000_000)
             isExporting = false
         }
+    }
+}
+
+// MARK: - ProgressAnimatedBar
+/// 3 pt capsule progress bar that animates from 0 to `fraction` on first appear.
+/// Extracted to its own view so `@State` survives re-renders of its parent.
+private struct ProgressAnimatedBar: View {
+    let fraction: CGFloat
+    @State private var displayFraction: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.07))
+                Capsule()
+                    .fill(AppTheme.accentPrimary.opacity(0.50))
+                    .frame(width: max(4, geo.size.width * displayFraction))
+            }
+        }
+        .frame(height: 3)
+        .onAppear {
+            // Reset on every appear so returning from a game re-plays the animation.
+            displayFraction = 0
+            withAnimation(.easeOut(duration: 0.85).delay(0.30)) {
+                displayFraction = fraction
+            }
+        }
+    }
+}
+
+// MARK: - PlayPressStyle
+/// ButtonStyle that adds a spring press-in (0.97 scale) and fires a callback on finger-down.
+/// The callback is used to trigger haptics + SFX at the moment of touch, not at action fire.
+private struct PlayPressStyle: ButtonStyle {
+    let onPress: () -> Void
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(
+                .spring(response: 0.20, dampingFraction: 0.60),
+                value: configuration.isPressed
+            )
+            .onChange(of: configuration.isPressed) { _, isPressed in
+                if isPressed { onPress() }
+            }
+    }
+}
+
+// MARK: - PlayCTAButton
+/// Full-width primary action button with:
+///   • Spring press-in to 0.97 scale (physical tactile feel)
+///   • Spring release back to 1.0
+///   • Breathing glow shadow (idle ambient pulse)
+///   • Medium haptic on finger-down
+///   • Subtle sci-fi click SFX on finger-down (gated by SoundManager.sfxEnabled)
+private struct PlayCTAButton: View {
+    let label: String
+    let action: () -> Void
+
+    @State private var pulsing = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                Text(label)
+                    .font(AppTheme.mono(18, weight: .black))
+                    .kerning(4)
+                Spacer()
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 16, weight: .bold))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 64)
+            .padding(.horizontal, 22)
+            .background(AppTheme.accentPrimary)
+            .foregroundStyle(.white)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+        }
+        .buttonStyle(PlayPressStyle(onPress: {
+            HapticsManager.medium()
+            SoundManager.play(.timerTick)   // 18 ms clean digital tick — subtle, sci-fi
+        }))
+        .shadow(color: AppTheme.accentPrimary.opacity(pulsing ? 0.42 : 0.06), radius: 14)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                pulsing = true
+            }
+        }
+    }
+}
+
+// MARK: - MapPreviewBlock
+/// Live mission-map preview replacing the old text-link mapRow.
+///
+/// Renders a compact node-network visualization using Canvas + TimelineView:
+///   • 32 nodes in a scattered 8×4 grid
+///   • Active (completed) nodes glow orange; inactive nodes are dim white
+///   • Active edges brighter; one edge at a time cycles as a "signal flow" sweep
+///   • All animation is driven by the system clock — no @State timers, no per-node views
+///   • TimelineView period: 1/15 s → 15 fps, imperceptible for slow effects, very cheap
+struct MapPreviewBlock: View {
+    let completed: Int
+    let total: Int
+    let onTap: () -> Void
+
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
+    // ── Deterministic node positions — 8 cols × 4 rows with small jitter ─────
+    private static let positions: [(CGFloat, CGFloat)] = {
+        (0..<32).map { i in
+            let col = i % 8, row = i / 8
+            let x = (CGFloat(col) + 0.5) / 8.0
+            let y = (CGFloat(row) + 0.5) / 4.0
+            let jx = CGFloat((row * 3 + col * 7) % 5 - 2) * 0.012
+            let jy = CGFloat((col * 5 + row * 11) % 5 - 2) * 0.018
+            return (x + jx, y + jy)
+        }
+    }()
+
+    // ── Neighbour edges: right + sparse vertical ──────────────────────────────
+    private static let edges: [(Int, Int)] = {
+        var e = [(Int, Int)]()
+        for row in 0..<4 {
+            for col in 0..<8 {
+                let i = row * 8 + col
+                if col < 7 { e.append((i, i + 1)) }
+                if row < 3 && col % 3 == 0 { e.append((i, i + 8)) }
+            }
+        }
+        return e
+    }()
+
+    private var activeNodeCount: Int {
+        let frac = total > 0 ? Double(completed) / Double(total) : 0
+        return max(1, Int(frac * Double(Self.positions.count)))
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 10) {
+                // Header
+                HStack(spacing: 6) {
+                    TechLabel(text: S.missionMapTitle, color: AppTheme.sage.opacity(0.72))
+                    Spacer()
+                    TechLabel(text: S.viewFullMap, color: AppTheme.sage.opacity(0.42))
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 7, weight: .regular))
+                        .foregroundStyle(AppTheme.sage.opacity(0.32))
+                }
+
+                // Node network — rendered in Canvas, animated by TimelineView at 15 fps
+                TimelineView(.periodic(from: .now, by: 1.0 / 15.0)) { timeline in
+                    Canvas { ctx, size in
+                        let t   = timeline.date.timeIntervalSinceReferenceDate
+                        let act = activeNodeCount
+                        let pos = Self.positions
+                        let edges = Self.edges
+
+                        // ── 1. Edges ──────────────────────────────────────
+                        for (a, b) in edges {
+                            let pa = CGPoint(x: pos[a].0 * size.width, y: pos[a].1 * size.height)
+                            let pb = CGPoint(x: pos[b].0 * size.width, y: pos[b].1 * size.height)
+                            let both = a < act && b < act
+                            var path = Path(); path.move(to: pa); path.addLine(to: pb)
+                            ctx.stroke(path, with: .color(.white.opacity(both ? 0.22 : 0.06)),
+                                       lineWidth: 0.5)
+                        }
+
+                        // ── 2. Signal flow sweep — one active edge cycles ─
+                        let activeEdges = edges.filter { $0.0 < act && $0.1 < act }
+                        if !activeEdges.isEmpty {
+                            let cycle = t.truncatingRemainder(dividingBy: 4.0)
+                            let idx   = Int(cycle / 4.0 * Double(activeEdges.count)) % activeEdges.count
+                            let (a, b) = activeEdges[idx]
+                            let pa = CGPoint(x: pos[a].0 * size.width, y: pos[a].1 * size.height)
+                            let pb = CGPoint(x: pos[b].0 * size.width, y: pos[b].1 * size.height)
+                            var flow = Path(); flow.move(to: pa); flow.addLine(to: pb)
+                            ctx.stroke(flow, with: .color(AppTheme.accentPrimary.opacity(0.70)),
+                                       lineWidth: 1.2)
+                        }
+
+                        // ── 3. Nodes ──────────────────────────────────────
+                        for (i, (nx, ny)) in pos.enumerated() {
+                            let cx   = nx * size.width
+                            let cy   = ny * size.height
+                            let isActive = i < act
+                            let pulse = isActive ? 0.5 + 0.5 * sin(t * 1.8 + Double(i) * 0.9) : 0.0
+                            let r: CGFloat = isActive ? 2.2 : 1.2
+
+                            if isActive {
+                                // Soft outer glow
+                                let gr = r + 2.5 + CGFloat(pulse) * 1.5
+                                ctx.fill(
+                                    Path(ellipseIn: CGRect(x: cx - gr, y: cy - gr,
+                                                           width: gr * 2, height: gr * 2)),
+                                    with: .color(AppTheme.accentPrimary.opacity(0.05 + 0.06 * pulse))
+                                )
+                            }
+                            // Node dot
+                            ctx.fill(
+                                Path(ellipseIn: CGRect(x: cx - r, y: cy - r,
+                                                       width: r * 2, height: r * 2)),
+                                with: .color(isActive
+                                    ? AppTheme.accentPrimary.opacity(0.55 + 0.22 * pulse)
+                                    : .white.opacity(0.12))
+                            )
+                        }
+                    }
+                }
+                .frame(height: 48)
+
+                // Footer: progress text + percentage
+                HStack {
+                    Text(S.missionsCompleted(done: completed, total: total))
+                        .font(AppTheme.mono(8))
+                        .foregroundStyle(AppTheme.sage.opacity(0.55))
+                        .kerning(0.8)
+                    Spacer()
+                    TechLabel(
+                        text: total > 0 ? "\(Int(Double(completed) / Double(total) * 100))%" : "0%",
+                        color: AppTheme.accentPrimary.opacity(0.60)
+                    )
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(AppTheme.backgroundSecondary)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                    .strokeBorder(AppTheme.sage.opacity(0.14), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

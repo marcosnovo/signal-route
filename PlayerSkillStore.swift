@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - PlayerSkillStore
+// MARK: - PlayerSkillTracker
 /// Tracks player skill across missions and exposes a smoothed skill score (0.0–1.0).
 ///
 /// Score meaning:
@@ -11,8 +11,13 @@ import Foundation
 /// Updated after every win (recordWin) or mid-game abandon (recordAbandon).
 /// Smoothed with an exponential moving average (α = 0.25) to prevent jarring swings.
 /// Persisted to UserDefaults.
-final class PlayerSkillStore {
-    static let shared = PlayerSkillStore()
+///
+/// Isolation contract:
+///   - Reads ONLY: efficiency, movesUsed, minimumMoves, attemptCount, abandons.
+///   - Does NOT read isPremium, dailyCompleted, or any monetization state.
+///   - Output (skillScore) flows ONLY to AdaptiveDifficultyManager.
+final class PlayerSkillTracker {
+    static let shared = PlayerSkillTracker()
     private init() {}
 
     private let udKey = "playerSkillScore"
@@ -76,6 +81,15 @@ final class PlayerSkillStore {
     private func update(toward target: Double) {
         skillScore = (skillScore * (1 - α) + target * α).clamped(to: 0...1)
     }
+
+    // ── Debug overrides ──────────────────────────────────────────────────────
+
+    #if DEBUG
+    /// Force-set the skill score directly (dev/QA only — bypasses EMA).
+    func overrideSkillScore(_ value: Double) {
+        skillScore = value.clamped(to: 0...1)
+    }
+    #endif
 }
 
 // MARK: - Helpers

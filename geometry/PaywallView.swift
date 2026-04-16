@@ -4,9 +4,13 @@ import StoreKit
 // MARK: - PaywallContext
 
 /// The trigger context that caused the paywall to appear.
+///
+/// Contexts are selected by PaywallMomentSelector, never by failure or frustration paths.
 enum PaywallContext {
-    case standard       // tapped from Home or Mission Map with no prior win
-    case postVictory    // tried "Next Mission" immediately after winning
+    case postVictory        // won and daily limit just reached — celebratory momentum
+    case sectorExcitement   // new sector/pass unlocked but blocked by limit — expansion
+    case nextMissionBlocked // tried "Next Mission" or map level, hit daily limit — continuity
+    case homeSoftCTA        // passive upgrade row on Home — low pressure, no urgency
 }
 
 // MARK: - PaywallView
@@ -21,7 +25,8 @@ struct PaywallView: View {
     @EnvironmentObject private var settings:    SettingsStore
     @EnvironmentObject private var storeKit:    StoreKitManager
 
-    @State private var appeared = false
+    @State private var appeared    = false
+    @State private var ctaAppeared = false
 
     private let accent = AppTheme.accentPrimary
 
@@ -65,6 +70,13 @@ struct PaywallView: View {
             withAnimation(.spring(response: 0.50, dampingFraction: 0.82)) {
                 appeared = true
             }
+            // CTA slides in slightly after the rest of the content — benefits lead, then CTA follows.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                withAnimation(.spring(response: 0.46, dampingFraction: 0.84)) {
+                    ctaAppeared = true
+                }
+            }
+            MonetizationAnalytics.shared.trackPaywallShown(context: context)
         }
         // Auto-dismiss once premium is activated (purchase or restore)
         .onChange(of: entitlement.isPremium) { _, isPremium in
@@ -80,23 +92,35 @@ struct PaywallView: View {
 
     private var ambientGlow: some View {
         RadialGradient(
-            colors: [accent.opacity(0.10), .clear],
+            colors: [accent.opacity(0.06), .clear],
             center: .center, startRadius: 80, endRadius: 380
         )
         .ignoresSafeArea()
         .allowsHitTesting(false)
     }
 
+    /// Tracks paywall_dismiss before calling the provided onDismiss callback.
+    /// Do NOT use this on the purchase-success path — that's handled by StoreKitManager.
+    private func handleDismiss() {
+        MonetizationAnalytics.shared.trackPaywallDismiss()
+        onDismiss()
+    }
+
     private var closeButton: some View {
         HStack {
             Spacer()
-            Button(action: onDismiss) {
+            Button {
+                HapticsManager.light()
+                handleDismiss()
+            } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
-                    .frame(width: 36, height: 36)
-                    .background(AppTheme.surface.opacity(0.60))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.75))
+                    // 44×44 minimum tap target with clear circular glass background
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial)
                     .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(.white.opacity(0.10), lineWidth: 0.5))
             }
             .buttonStyle(.plain)
             .padding(.trailing, 20)
@@ -107,11 +131,16 @@ struct PaywallView: View {
         VStack(spacing: 10) {
             // Context badge
             HStack(spacing: 6) {
-                if context == .postVictory {
+                switch context {
+                case .postVictory:
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 7, weight: .bold))
                         .foregroundStyle(accent)
-                } else {
+                case .sectorExcitement:
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(accent)
+                case .nextMissionBlocked, .homeSoftCTA:
                     BlinkingDot(color: accent)
                 }
                 Text(badgeLabel)
@@ -119,8 +148,8 @@ struct PaywallView: View {
                     .foregroundStyle(accent)
             }
             .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(accent.opacity(0.12))
-            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(accent.opacity(0.35), lineWidth: 0.8))
+            .background(accent.opacity(0.08))
+            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(accent.opacity(0.20), lineWidth: 0.5))
             .clipShape(RoundedRectangle(cornerRadius: 3))
 
             // Title
@@ -136,6 +165,36 @@ struct PaywallView: View {
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(4)
+
+            // Progress stat + momentum nudge — positive reinforcement for non-frustrated players.
+            // Hidden for homeSoftCTA (no limit hit) and when isFrustrated (empathetic path instead).
+            if context != .homeSoftCTA, !isFrustrated {
+                // Progress stat chip
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AppTheme.success.opacity(0.80))
+                    Text(progressStatText)
+                        .font(AppTheme.mono(8, weight: .semibold)).kerning(0.5)
+                        .foregroundStyle(AppTheme.success.opacity(0.80))
+                }
+                .padding(.top, 4)
+
+                // Momentum nudge
+                Text(momentumText)
+                    .font(AppTheme.mono(9)).kerning(0.3)
+                    .foregroundStyle(accent.opacity(0.65))
+                    .multilineTextAlignment(.center)
+            }
+
+            // Bridge phrase — connects problem to solution, not shown for homeSoftCTA
+            if context != .homeSoftCTA {
+                Text(bridgeText)
+                    .font(AppTheme.mono(9, weight: .semibold)).kerning(0.5)
+                    .foregroundStyle(accent.opacity(0.75))
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 4)
+            }
         }
     }
 
@@ -179,6 +238,8 @@ struct PaywallView: View {
             let isBusy = storeKit.purchaseState == .purchasing
                       || storeKit.purchaseState == .loading
             Button {
+                HapticsManager.medium()
+                MonetizationAnalytics.shared.trackPaywallCTATap()
                 Task { await storeKit.purchase() }
             } label: {
                 ZStack {
@@ -206,6 +267,17 @@ struct PaywallView: View {
             .buttonStyle(.plain)
             .disabled(isBusy)
             .breathingCTA(color: accent)
+            // Entrance: CTA scales up slightly after the benefits card appears
+            .scaleEffect(ctaAppeared ? 1.0 : 0.96)
+            .opacity(ctaAppeared ? 1.0 : 0)
+
+            // ── CTA subtext ────────────────────────────────────────────────
+            Text(ctaSubtext)
+                .font(AppTheme.mono(8)).kerning(0.4)
+                .foregroundStyle(AppTheme.textSecondary.opacity(0.38))
+                .multilineTextAlignment(.center)
+                .padding(.top, 6)
+                .opacity(ctaAppeared ? 1.0 : 0)
 
             // ── Error message ──────────────────────────────────────────────
             if case .failed(let msg) = storeKit.purchaseState {
@@ -218,19 +290,28 @@ struct PaywallView: View {
             }
 
             // ── Secondary: dismiss ─────────────────────────────────────────
-            Button(action: onDismiss) {
+            // Visible real button — lower contrast than primary but not hidden.
+            Button(action: handleDismiss) {
                 Text(dismissLabel)
-                    .font(AppTheme.mono(9, weight: .semibold)).kerning(0.8)
-                    .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
-                    .frame(maxWidth: .infinity).frame(height: 44)
+                    .font(AppTheme.mono(10, weight: .semibold)).kerning(0.8)
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.65))
+                    .frame(maxWidth: .infinity).frame(height: 46)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                            .strokeBorder(AppTheme.textSecondary.opacity(0.18), lineWidth: 0.8)
+                    )
             }
             .buttonStyle(.plain)
+            .padding(.top, 10)
 
-            // ── Reset hint + restore ───────────────────────────────────────
-            VStack(spacing: 6) {
-                Text(resetLabel)
-                    .font(AppTheme.mono(7)).kerning(0.4)
-                    .foregroundStyle(AppTheme.textSecondary.opacity(0.28))
+            // ── Temporal context + restore ─────────────────────────────────
+            VStack(spacing: 8) {
+                // Reset hint — slightly more visible; gives the player certainty about the limit.
+                if showsResetHint {
+                    Text(resetLabel)
+                        .font(AppTheme.mono(7)).kerning(0.4)
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.40))
+                }
 
                 Button {
                     Task { await storeKit.restorePurchases() }
@@ -251,78 +332,183 @@ struct PaywallView: View {
         }
     }
 
+    // MARK: - Frustration state
+
+    /// True when the player is showing signs of struggle this session.
+    /// Used to shift copy tone: empathetic and patient instead of promotional and urgent.
+    private var isFrustrated: Bool { FrustrationGuard.isFrustrated() }
+
     // MARK: - Localized strings
 
     private var badgeLabel: String {
         switch (context, settings.language) {
-        case (.postVictory, .en): return "MISSION COMPLETE"
-        case (.postVictory, .es): return "MISIÓN COMPLETADA"
-        case (.postVictory, .fr): return "MISSION ACCOMPLIE"
-        case (_, .en):            return "SIGNAL LIMIT"
-        case (_, .es):            return "LÍMITE DE SEÑAL"
-        case (_, .fr):            return "LIMITE DE SIGNAL"
+        case (.postVictory,        .en): return "MISSION COMPLETE"
+        case (.postVictory,        .es): return "MISIÓN COMPLETADA"
+        case (.postVictory,        .fr): return "MISSION ACCOMPLIE"
+        case (.sectorExcitement,   .en): return "SECTOR UNLOCKED"
+        case (.sectorExcitement,   .es): return "SECTOR DESBLOQUEADO"
+        case (.sectorExcitement,   .fr): return "SECTEUR DÉBLOQUÉ"
+        case (.nextMissionBlocked, .en): return "SIGNAL LIMIT"
+        case (.nextMissionBlocked, .es): return "LÍMITE DE SEÑAL"
+        case (.nextMissionBlocked, .fr): return "LIMITE DE SIGNAL"
+        case (.homeSoftCTA,        .en): return "EXPLORE MORE"
+        case (.homeSoftCTA,        .es): return "EXPLORA MÁS"
+        case (.homeSoftCTA,        .fr): return "EXPLOREZ PLUS"
         }
     }
 
     private var titleText: String {
         switch (context, settings.language) {
-        case (.postVictory, .en): return "GREAT\nRUN!"
-        case (.postVictory, .es): return "¡BIEN\nJUGADO!"
-        case (.postVictory, .fr): return "BELLE\nSESSION!"
-        case (_, .en):            return "ACCESS\nLIMITED"
-        case (_, .es):            return "ACCESO\nLIMITADO"
-        case (_, .fr):            return "ACCÈS\nLIMITÉ"
+        case (.postVictory,        .en): return "GREAT\nRUN"
+        case (.postVictory,        .es): return "GRAN\nMISIÓN"
+        case (.postVictory,        .fr): return "BELLE\nMISSION"
+        case (.sectorExcitement,   .en): return "NEW\nDESTINATION"
+        case (.sectorExcitement,   .es): return "NUEVO\nDESTINO"
+        case (.sectorExcitement,   .fr): return "NOUVELLE\nDESTINATION"
+        case (.nextMissionBlocked, .en): return "ACCESS\nLIMITED"
+        case (.nextMissionBlocked, .es): return "ACCESO\nLIMITADO"
+        case (.nextMissionBlocked, .fr): return "ACCÈS\nLIMITÉ"
+        case (.homeSoftCTA,        .en): return "THE FULL\nNETWORK"
+        case (.homeSoftCTA,        .es): return "LA RED\nCOMPLETA"
+        case (.homeSoftCTA,        .fr): return "LE RÉSEAU\nCOMPLET"
         }
     }
 
     private var subtitleText: String {
         let n     = entitlement.dailyCompleted
-        let limit = EntitlementStore.dailyLimit
+        let limit = EntitlementStore.shared.dailyLimit
+
+        // Empathetic variants — used when FrustrationGuard detects a struggling player.
+        // Tone: patient, acknowledging effort. No urgency, no pressure.
+        if isFrustrated {
+            switch (context, settings.language) {
+            case (.postVictory, .en):
+                return "You pushed through some tough ones.\nTake a break — the route stays open."
+            case (.postVictory, .es):
+                return "Lo has logrado con esfuerzo.\nDescansa — las rutas siguen abiertas."
+            case (.postVictory, .fr):
+                return "Vous avez persévéré malgré tout.\nFaites une pause — le réseau reste actif."
+            case (.sectorExcitement, .en):
+                return "A new sector is waiting whenever you're ready.\nUpgrade to explore at your own pace."
+            case (.sectorExcitement, .es):
+                return "Un nuevo sector te espera cuando estés listo.\nMejora para explorar a tu ritmo."
+            case (.sectorExcitement, .fr):
+                return "Un nouveau secteur vous attend quand vous êtes prêt.\nAméliorez pour explorer à votre rythme."
+            case (.nextMissionBlocked, .en):
+                return "You're putting in the work.\nCome back tomorrow — the signal stays alive."
+            case (.nextMissionBlocked, .es):
+                return "Estás dando todo de ti.\nVuelve mañana — la señal sigue activa."
+            case (.nextMissionBlocked, .fr):
+                return "Vous donnez le meilleur de vous-même.\nRevenez demain — le signal reste actif."
+            case (.homeSoftCTA, .en):
+                return "Unlock all sectors, no daily limits.\nThe full network is yours."
+            case (.homeSoftCTA, .es):
+                return "Desbloquea todos los sectores, sin límites diarios.\nToda la red es tuya."
+            case (.homeSoftCTA, .fr):
+                return "Débloquez tous les secteurs, sans limite journalière.\nTout le réseau vous appartient."
+            }
+        }
+
+        // Standard variants — used when the player is in a positive state.
+        switch (context, settings.language) {
+        case (.postVictory, .en):
+            return "You've reached your daily mission limit."
+        case (.postVictory, .es):
+            return "Has alcanzado tu límite diario de misiones."
+        case (.postVictory, .fr):
+            return "Vous avez atteint votre limite de missions journalière."
+        case (.sectorExcitement, .en):
+            return "A new sector is unlocked — you've reached your daily limit."
+        case (.sectorExcitement, .es):
+            return "Un nuevo sector te espera — has alcanzado tu límite diario."
+        case (.sectorExcitement, .fr):
+            return "Un nouveau secteur est prêt — vous avez atteint votre limite."
+        case (.nextMissionBlocked, .en):
+            return "You've reached your daily mission limit."
+        case (.nextMissionBlocked, .es):
+            return "Has alcanzado tu límite diario de misiones."
+        case (.nextMissionBlocked, .fr):
+            return "Vous avez atteint votre limite de missions journalière."
+        case (.homeSoftCTA, .en):
+            return "Explore without daily limits."
+        case (.homeSoftCTA, .es):
+            return "Explora sin límites diarios."
+        case (.homeSoftCTA, .fr):
+            return "Explorez sans limite journalière."
+        }
+    }
+
+    private var bridgeText: String {
         switch settings.language {
-        case .en:
-            return context == .postVictory
-                ? "You've completed \(n) of \(limit) free missions today.\nThe network remains active."
-                : "The network remains active.\nNew routes are waiting to be restored."
-        case .es:
-            return context == .postVictory
-                ? "Has completado \(n) de \(limit) misiones gratuitas hoy.\nLas rutas siguen abiertas."
-                : "Has alcanzado tu límite diario de misiones.\nLas rutas siguen abiertas."
-        case .fr:
-            return context == .postVictory
-                ? "Vous avez complété \(n) sur \(limit) missions aujourd'hui.\nLe réseau reste actif."
-                : "Le réseau reste actif.\nDe nouvelles routes attendent d'être restaurées."
+        case .en: return "Continue without interruptions:"
+        case .es: return "Continúa ahora sin interrupciones:"
+        case .fr: return "Continuez sans interruptions :"
+        }
+    }
+
+    /// Dynamic progress stat: how many missions completed today.
+    private var progressStatText: String {
+        let n = entitlement.dailyCompleted
+        switch settings.language {
+        case .en: return "\(n) mission\(n == 1 ? "" : "s") completed today"
+        case .es: return "\(n) misión\(n == 1 ? "" : "es") completada\(n == 1 ? "" : "s") hoy"
+        case .fr: return "\(n) mission\(n == 1 ? "" : "s") complétée\(n == 1 ? "" : "s") aujourd'hui"
+        }
+    }
+
+    /// Context-specific momentum nudge — keeps tone on progress, never on restriction.
+    private var momentumText: String {
+        switch (context, settings.language) {
+        case (.postVictory,        .en): return "You're about to unlock new routes."
+        case (.postVictory,        .es): return "Estás a punto de desbloquear nuevas rutas."
+        case (.postVictory,        .fr): return "Vous êtes sur le point de débloquer de nouvelles routes."
+        case (.sectorExcitement,   .en): return "New routes are ready — keep your momentum."
+        case (.sectorExcitement,   .es): return "Nuevas rutas te esperan — mantén el impulso."
+        case (.sectorExcitement,   .fr): return "De nouvelles routes vous attendent — gardez l'élan."
+        case (.nextMissionBlocked, .en): return "Keep going — more routes are waiting."
+        case (.nextMissionBlocked, .es): return "Sigue — más rutas te están esperando."
+        case (.nextMissionBlocked, .fr): return "Continuez — d'autres routes vous attendent."
+        default:                         return ""
         }
     }
 
     private var benefitUnlimited: String {
         switch settings.language {
-        case .en: return "Unlimited missions"
-        case .es: return "Misiones ilimitadas"
-        case .fr: return "Missions illimitées"
+        case .en: return "Play without daily limits"
+        case .es: return "Juega sin límites diarios"
+        case .fr: return "Jouez sans limites journalières"
         }
     }
 
     private var benefitAccess: String {
         switch settings.language {
-        case .en: return "Access to all sectors"
-        case .es: return "Acceso a todos los sectores"
-        case .fr: return "Accès à tous les secteurs"
+        case .en: return "Access all sectors"
+        case .es: return "Accede a todos los sectores"
+        case .fr: return "Accédez à tous les secteurs"
         }
     }
 
     private var benefitProgress: String {
         switch settings.language {
-        case .en: return "Continuous progression, no waiting"
-        case .es: return "Progresión continua sin esperas"
-        case .fr: return "Progression continue sans attente"
+        case .en: return "Progress without interruptions"
+        case .es: return "Avanza sin interrupciones"
+        case .fr: return "Avancez sans interruptions"
         }
     }
 
     private var upgradeLabel: String {
         switch settings.language {
-        case .en: return "UNLOCK FULL ACCESS"
-        case .es: return "DESBLOQUEAR ACCESO"
-        case .fr: return "DÉBLOQUER L'ACCÈS"
+        case .en: return "CONTINUE NOW"
+        case .es: return "CONTINUAR AHORA"
+        case .fr: return "CONTINUER MAINTENANT"
+        }
+    }
+
+    private var ctaSubtext: String {
+        switch settings.language {
+        case .en: return "Immediate access · No daily limits"
+        case .es: return "Acceso inmediato · Sin límites diarios"
+        case .fr: return "Accès immédiat · Sans limite journalière"
         }
     }
 
@@ -335,12 +521,23 @@ struct PaywallView: View {
     }
 
     private var dismissLabel: String {
+        if context == .homeSoftCTA {
+            switch settings.language {
+            case .en: return "NOT NOW"
+            case .es: return "AHORA NO"
+            case .fr: return "PAS MAINTENANT"
+            }
+        }
         switch settings.language {
         case .en: return "CONTINUE TOMORROW"
         case .es: return "CONTINUAR MAÑANA"
         case .fr: return "CONTINUER DEMAIN"
         }
     }
+
+    /// Whether to show the midnight-reset hint. Hidden for homeSoftCTA since
+    /// the player hasn't hit a daily limit — there's nothing to reset.
+    private var showsResetHint: Bool { context != .homeSoftCTA }
 
     private var resetLabel: String {
         switch settings.language {
@@ -377,16 +574,16 @@ private struct PaywallHeroView: View {
 
     var body: some View {
         ZStack {
-            // Pulsing ambient halo
+            // Pulsing ambient halo — kept subtle; focal glow lives on central node only
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [accent.opacity(0.18 + 0.10 * glowPhase), .clear],
+                        colors: [accent.opacity(0.08 + 0.04 * glowPhase), .clear],
                         center: .center, startRadius: 0, endRadius: 130
                     )
                 )
                 .frame(width: 260, height: 260)
-                .scaleEffect(1.0 + 0.06 * glowPhase)
+                .scaleEffect(1.0 + 0.03 * glowPhase)
 
             // Static concentric rings
             Circle()
@@ -422,12 +619,12 @@ private struct PaywallHeroView: View {
                     .rotationEffect(.degrees(Double(i) * 360.0 / Double(outerCount) + outerDeg))
             }
 
-            // Inner nodes (counter-rotating, orange-lit)
+            // Inner nodes (counter-rotating, dimmed — glow reserved for central node)
             ForEach(0..<innerCount, id: \.self) { i in
                 Circle()
-                    .fill(accent.opacity(0.65 + 0.25 * glowPhase))
+                    .fill(accent.opacity(0.40 + 0.12 * glowPhase))
                     .frame(width: 9, height: 9)
-                    .shadow(color: accent.opacity(0.65), radius: 5)
+                    .shadow(color: accent.opacity(0.22), radius: 4)
                     .offset(y: -innerR)
                     .rotationEffect(.degrees(Double(i) * 360.0 / Double(innerCount) - innerDeg))
             }
@@ -457,16 +654,17 @@ private struct PaywallHeroView: View {
         }
         .frame(width: 260, height: 260)
         .onAppear {
-            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+            withAnimation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true)) {
                 glowPhase = 1
             }
-            withAnimation(.linear(duration: 32).repeatForever(autoreverses: false)) {
+            // Very slow orbital drift — barely perceptible, gives life without distraction
+            withAnimation(.linear(duration: 72).repeatForever(autoreverses: false)) {
                 outerDeg = 360
             }
-            withAnimation(.linear(duration: 22).repeatForever(autoreverses: false)) {
+            withAnimation(.linear(duration: 52).repeatForever(autoreverses: false)) {
                 innerDeg = 360
             }
-            withAnimation(.linear(duration: 4.5).repeatForever(autoreverses: false)) {
+            withAnimation(.linear(duration: 5.5).repeatForever(autoreverses: false)) {
                 particleDeg = 360
             }
         }

@@ -140,6 +140,7 @@ final class StoreKitManager: ObservableObject {
                transaction.revocationDate == nil {
                 EntitlementStore.shared.setPremium(true)
                 purchaseState = .success
+                MonetizationAnalytics.shared.trackPurchaseSuccess()
             }
         case .unverified:
             // Tampered or invalid — ignore silently.

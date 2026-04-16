@@ -184,13 +184,13 @@ enum StoryBeatCatalog {
     static let beats: [StoryBeat] = [
 
         // ══════════════════════════════════════════════════════════════
-        // FIRST LAUNCH — 4-beat cinematic sequence
+        // FIRST LAUNCH — 2-beat cinematic intro (shortened from 4)
         // ══════════════════════════════════════════════════════════════
 
         StoryBeat(
             id:             "story_intro_01",
             title:          "SIGNAL LOST",
-            body:           "Orbital routes depend on unstable energy systems. A small error can stop an entire mission.",
+            body:           "Orbital routes are failing. Stations can no longer maintain stability on their own. They need you.",
             source:         "MISSION CONTROL",
             trigger:        .firstLaunch,
             accentHex:      "FF6A3D",
@@ -204,118 +204,44 @@ enum StoryBeatCatalog {
                 fr: "SIGNAL PERDU"
             ),
             localizedBody: LocalizedText(
-                en: "Orbital routes depend on unstable energy systems. A small error can stop an entire mission.",
-                es: "Las rutas orbitales dependen de sistemas energéticos inestables. Un pequeño error puede detener una misión completa.",
-                fr: "Les routes orbitales dépendent de systèmes énergétiques instables. Une simple erreur peut interrompre une mission entière."
-            )
-        ),
-
-        StoryBeat(
-            id:             "story_intro_02",
-            title:          "ALERTS ACTIVE",
-            body:           "Stations can no longer maintain stability on their own. They need human intervention.",
-            source:         "MISSION CONTROL",
-            trigger:        .firstLaunch,
-            accentHex:      "FF6A3D",
-            imageName:      "intro_alert",
-            priority:       2,
-            sequenceGroup:  "intro_first_launch",
-            orderInSequence: 2,
-            localizedTitle: LocalizedText(
-                en: "ALERTS ACTIVE",
-                es: "ALERTAS ACTIVAS",
-                fr: "ALERTES ACTIVES"
-            ),
-            localizedBody: LocalizedText(
-                en: "Stations can no longer maintain stability on their own. They need human intervention.",
-                es: "Las estaciones no pueden mantener la estabilidad por sí solas. Necesitan intervención humana.",
-                fr: "Les stations ne peuvent plus maintenir leur stabilité seules. Elles ont besoin d'une intervention humaine."
+                en: "Orbital routes are failing. Stations can no longer maintain stability on their own. They need you.",
+                es: "Las rutas orbitales están fallando. Las estaciones no pueden mantener la estabilidad por sí solas. Te necesitan.",
+                fr: "Les routes orbitales sont en panne. Les stations ne peuvent plus maintenir leur stabilité seules. Elles ont besoin de toi."
             )
         ),
 
         StoryBeat(
             id:             "story_intro_03",
             title:          "YOUR MISSION",
-            body:           "You are here to restore the network. Your precision will decide how far we can go.",
+            body:           "Restore the network. Prove your precision and earn access to increasingly distant destinations.",
             source:         "CAPT. REYES",
             trigger:        .firstLaunch,
-            accentHex:      "FF6A3D",
-            imageName:      "intro_repair",
-            priority:       3,
+            accentHex:      "4DB87A",
+            footerHint:     "EARTH ORBIT SECTOR ACTIVE",
+            imageName:      "intro_airlock",
+            priority:       2,
             sequenceGroup:  "intro_first_launch",
-            orderInSequence: 3,
+            orderInSequence: 2,
             localizedTitle: LocalizedText(
                 en: "YOUR MISSION",
                 es: "TU MISIÓN",
                 fr: "TA MISSION"
             ),
             localizedBody: LocalizedText(
-                en: "You are here to restore the network. Your precision will decide how far we can go.",
-                es: "Estás aquí para restaurar la red. Tu precisión decidirá hasta dónde podremos llegar.",
-                fr: "Tu es ici pour restaurer le réseau. C'est ta précision qui déterminera jusqu'où nous pourrons aller."
-            )
-        ),
-
-        StoryBeat(
-            id:             "story_intro_04",
-            title:          "EARTH ORBIT",
-            body:           "If you prove your judgment, discipline and control, you will earn access to increasingly distant destinations.",
-            source:         "PROGRAM DIRECTOR",
-            trigger:        .firstLaunch,
-            accentHex:      "4DB87A",
-            footerHint:     "EARTH ORBIT SECTOR ACTIVE",
-            imageName:      "intro_airlock",
-            priority:       4,
-            sequenceGroup:  "intro_first_launch",
-            orderInSequence: 4,
-            localizedTitle: LocalizedText(
-                en: "EARTH ORBIT",
-                es: "ÓRBITA TERRESTRE",
-                fr: "ORBITE TERRESTRE"
-            ),
-            localizedBody: LocalizedText(
-                en: "If you prove your judgment, discipline and control, you will earn access to increasingly distant destinations.",
-                es: "Si demuestras criterio, disciplina y control, obtendrás acceso a destinos cada vez más lejanos.",
-                fr: "Si tu fais preuve de jugement, de discipline et de contrôle, tu obtiendras l'accès à des destinations toujours plus lointaines."
+                en: "Restore the network. Prove your precision and earn access to increasingly distant destinations.",
+                es: "Restaura la red. Demuestra tu precisión y obtén acceso a destinos cada vez más lejanos.",
+                fr: "Restaure le réseau. Prouve ta précision et obtiens l'accès à des destinations toujours plus lointaines."
             )
         ),
 
         // ══════════════════════════════════════════════════════════════
-        // POST ONBOARDING
-        // ══════════════════════════════════════════════════════════════
-
-        StoryBeat(
-            id:             "story_post_onboarding_01",
-            title:          "CLEARANCE GRANTED",
-            body:           "The network responded to your decisions. Now the real work begins.",
-            source:         "CAPT. REYES",
-            trigger:        .postOnboarding,
-            accentHex:      "4DB87A",
-            footerHint:     "MISSION CATALOG UNLOCKED",
-            imageName:      "intro_window",
-            priority:       10,
-            sequenceGroup:  "post_onboarding",
-            orderInSequence: 1,
-            localizedTitle: LocalizedText(
-                en: "CLEARANCE GRANTED",
-                es: "ACCESO CONCEDIDO",
-                fr: "ACCÈS ACCORDÉ"
-            ),
-            localizedBody: LocalizedText(
-                en: "The network responded to your decisions. Now the real work begins.",
-                es: "La red ha respondido a tus decisiones. Ahora empieza el trabajo real.",
-                fr: "Le réseau a réagi à tes décisions. Le vrai travail commence maintenant."
-            )
-        ),
-
-        // ══════════════════════════════════════════════════════════════
-        // FIRST MISSION READY
+        // FIRST MISSION READY (postOnboarding merged here)
         // ══════════════════════════════════════════════════════════════
 
         StoryBeat(
             id:             "story_first_mission_ready",
             title:          "DEPLOYMENT READY",
-            body:           "You are now cleared for your first mission.",
+            body:           "The network responded. You are now cleared for your first mission.",
             source:         "MISSION CONTROL",
             trigger:        .firstMissionReady,
             accentHex:      "4DB87A",
@@ -330,9 +256,9 @@ enum StoryBeatCatalog {
                 fr: "PRÊT À DÉPLOYER"
             ),
             localizedBody: LocalizedText(
-                en: "You are now cleared for your first mission.",
-                es: "Ya estás listo para tu primera misión.",
-                fr: "Tu es désormais autorisé à commencer ta première mission."
+                en: "The network responded. You are now cleared for your first mission.",
+                es: "La red ha respondido. Ya estás listo para tu primera misión.",
+                fr: "Le réseau a répondu. Tu es désormais autorisé à commencer ta première mission."
             )
         ),
 

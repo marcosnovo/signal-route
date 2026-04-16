@@ -1,6 +1,21 @@
 import Foundation
 
+// MARK: - AdaptiveDifficultyManager
+//
+// Single file for all adaptive difficulty logic.
+// Contains three cooperating types:
+//
+//   DifficultyAdjustments   — value type describing one level's tuned parameters
+//   AdaptiveDifficultyManager — maps skillScore → DifficultyAdjustments (pure, no state)
+//   HintEngine              — decides whether hints are active and which tile to highlight
+//
+// Isolation contract:
+//   - Reads ONLY: PlayerSkillTracker.skillScore, attemptCount, tile grid state.
+//   - Does NOT read isPremium, dailyCompleted, or any monetization state.
+//   - Difficulty is driven purely by player performance. Premium status has zero influence.
+
 // MARK: - DifficultyAdjustments
+
 /// Set of adjustments applied to a level based on the player's skill score.
 /// Computed once per level session (first attempt) and stable across retries.
 ///
@@ -25,7 +40,8 @@ struct DifficultyAdjustments {
     static let none = DifficultyAdjustments(extraMoves: 0, timeFactor: 1.0, interferenceScale: 1.0)
 }
 
-// MARK: - AdaptiveDifficultyEngine
+// MARK: - AdaptiveDifficultyManager
+
 /// Translates a player skill score (0.0–1.0) into concrete level adjustments.
 ///
 /// Skill bands:
@@ -34,7 +50,7 @@ struct DifficultyAdjustments {
 ///   0.50–0.65    average     → light touch          (1 extra move,  10% more time, 80% interference)
 ///   0.65–0.75    proficient  → full base difficulty (0 extra moves, base time,    100% interference)
 ///   > 0.75       expert      → hard mode invisible  (−2 moves,     90% time,      100% interference)
-enum AdaptiveDifficultyEngine {
+enum AdaptiveDifficultyManager {
 
     static func adjustments(for skillScore: Double) -> DifficultyAdjustments {
         switch skillScore {
@@ -49,5 +65,65 @@ enum AdaptiveDifficultyEngine {
         default: // > 0.75 — expert, invisible hard mode
             return DifficultyAdjustments(extraMoves: -2, timeFactor: 0.90, interferenceScale: 1.0)
         }
+    }
+}
+
+// MARK: - HintEngine
+
+/// Pure logic for the soft hint system.
+///
+/// Hints are intentionally subtle — they guide without revealing.
+/// The player should feel they discovered the answer themselves.
+///
+/// Activation criteria (either condition triggers hints):
+///   • playerSkillScore < 0.40  (struggling player)
+///   • attemptCount ≥ 3         (3+ attempts on the same level)
+enum HintEngine {
+
+    // MARK: - Activation
+
+    /// Whether the hint system should be active for this player/attempt combination.
+    static func isActive(skillScore: Double, attemptCount: Int) -> Bool {
+        skillScore < 0.40 || attemptCount >= 3
+    }
+
+    // MARK: - Frontier tile
+
+    /// Returns the position of the best tile to softly hint.
+    ///
+    /// Strategy: find the first unenergized relay tile that is adjacent to
+    /// the current signal frontier (an energized tile). This tile is the
+    /// most natural "next place to look" without revealing the full solution.
+    ///
+    /// Returns nil when every tile is energized (win imminent) or no relay
+    /// candidates exist adjacent to the current signal.
+    static func frontierTile(in tiles: [[Tile]]) -> (row: Int, col: Int)? {
+        let n = tiles.count
+        var seen = Set<Int>()   // packed key: row * 100 + col
+
+        for row in 0..<n {
+            for col in 0..<n {
+                guard tiles[row][col].isEnergized else { continue }
+
+                for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                    let nr = row + dr, nc = col + dc
+                    guard nr >= 0, nr < n, nc >= 0, nc < n else { continue }
+
+                    let key = nr * 100 + nc
+                    guard seen.insert(key).inserted else { continue }
+
+                    let neighbor = tiles[nr][nc]
+                    // Only hint relay tiles — source/target roles are already visually distinct
+                    guard !neighbor.isEnergized,
+                          neighbor.role == .relay,
+                          !neighbor.isBurned,
+                          !neighbor.isRotationLocked
+                    else { continue }
+
+                    return (nr, nc)
+                }
+            }
+        }
+        return nil
     }
 }

@@ -9,7 +9,11 @@ struct ContentView: View {
     @State private var activeLevel: Level?        = nil
     @State private var showingLevelSelect: Bool   = false
     @State private var showingPaywall: Bool         = false
-    @State private var paywallContext: PaywallContext = .standard
+    @State private var paywallContext: PaywallContext = .nextMissionBlocked
+    // Stored so onNextMission can pick the right post-win context (postVictory vs sectorExcitement)
+    @State private var lastWinEvent: LevelUpEvent?  = nil
+    // Armed by onWin when limit is reached; fires automatically when player returns to Home
+    @State private var pendingPaywallContext: PaywallContext? = nil
 
     // ── Multi-step intro flow ──────────────────────────────────────────────
     /// nil = intro complete (player goes to Home as normal).
@@ -126,22 +130,28 @@ struct ContentView: View {
                         let levels = LevelGenerator.levels
                         if let idx = levels.firstIndex(where: { $0.id == level.id }),
                            idx + 1 < levels.count {
-                            // Pass .postVictory so the paywall uses celebratory copy
-                            // and dismisses the game first for a clean transition.
-                            tryPlay(levels[idx + 1], context: .postVictory)
+                            // Clear pending auto-show — this tap handles the paywall directly.
+                            pendingPaywallContext = nil
+                            // Pick celebratory context based on last win event.
+                            let ctx = PaywallMomentSelector.contextAfterWin(
+                                event: lastWinEvent, entitlement: EntitlementStore.shared
+                            ) ?? .postVictory
+                            tryPlay(levels[idx + 1], context: ctx)
                         }
                     },
                     onMissions: { activeLevel = nil; showingLevelSelect = true },
                     onWin: { wonLevel, event in
+                        lastWinEvent = event
                         EntitlementStore.shared.recordMissionCompleted(wonLevel)
                         collectStoryBeats(for: wonLevel, event: event)
+                        // Arm post-win paywall — fires when player returns to Home
+                        // (either by dismissing the game or after story beats clear).
+                        pendingPaywallContext = PaywallMomentSelector.contextAfterWin(
+                            event: event, entitlement: EntitlementStore.shared)
                     },
                     onUpgrade: {
                         activeLevel    = nil
-                        paywallContext = .standard
-                        withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
-                            showingPaywall = true
-                        }
+                        showPaywall(.nextMissionBlocked)
                     }
                 )
                 // .id forces SwiftUI to destroy and recreate GameView (and its @StateObject
@@ -160,12 +170,7 @@ struct ContentView: View {
                         tryPlay(level)
                     },
                     onDismiss: { showingLevelSelect = false },
-                    onUpgrade: {
-                        paywallContext = .standard
-                        withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
-                            showingPaywall = true
-                        }
-                    }
+                    onUpgrade: { showPaywall(.nextMissionBlocked) }
                 )
                 .transition(.asymmetric(
                     insertion: .move(edge: .bottom),
@@ -175,12 +180,7 @@ struct ContentView: View {
                 HomeView(
                     onPlay:     { level in tryPlay(level) },
                     onMissions: { showingLevelSelect = true },
-                    onUpgrade:  {
-                        paywallContext = .standard
-                        withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
-                            showingPaywall = true
-                        }
-                    }
+                    onUpgrade:  { showPaywall(.homeSoftCTA) }
                 )
                 .transition(.asymmetric(
                     insertion: .move(edge: .leading),
@@ -224,6 +224,8 @@ struct ContentView: View {
         .onChange(of: activeLevel?.id) { oldID, newID in
             guard oldID != nil, newID == nil else { return }
             storyQueue.dispatchPendingBatches()
+            // Fire pending post-win paywall after story beats play (or immediately if none queued)
+            firePendingPaywallIfReady()
         }
         // Drive intro-step transitions when the story queue empties
         .onChange(of: storyQueue.current) { _, newBeat in
@@ -239,6 +241,8 @@ struct ContentView: View {
             default:
                 break
             }
+            // Fire pending paywall once the emotional beat sequence closes
+            firePendingPaywallIfReady()
         }
         .onReceive(NotificationCenter.default.publisher(for: .devReplayOnboarding)) { _ in
             activeLevel        = nil
@@ -258,21 +262,46 @@ struct ContentView: View {
 
     /// Attempts to start a level. Shows the daily-limit paywall if the free quota is exhausted.
     ///
-    /// - Parameter context: `.postVictory` dismisses the active game first so the paywall
-    ///   slides up over a clean home screen rather than the victory overlay.
-    private func tryPlay(_ level: Level, context: PaywallContext = .standard) {
+    /// When no context is supplied, PaywallMomentSelector determines the right framing
+    /// based on the level being accessed (sector entry vs mid-sector continuation).
+    private func tryPlay(_ level: Level, context: PaywallContext? = nil) {
         if EntitlementStore.shared.canPlay(level) {
-            activeLevel = level
+            activeLevel            = level
+            pendingPaywallContext  = nil    // successful navigation clears any pending paywall
         } else {
-            paywallContext = context
-            if context == .postVictory {
-                // Dismiss game simultaneously — paywall slides up over the home screen.
-                activeLevel = nil
-            }
-            withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
-                showingPaywall = true
-            }
+            let ctx = context ?? PaywallMomentSelector.contextWhenBlocked(level)
+            // Always dismiss the game before showing the paywall — cleaner transition.
+            activeLevel = nil
+            showPaywall(ctx)
         }
+    }
+
+    /// Shows the paywall with the given context and clears any pending auto-show.
+    private func showPaywall(_ context: PaywallContext) {
+        pendingPaywallContext = nil
+        paywallContext        = context
+        withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) {
+            showingPaywall = true
+        }
+    }
+
+    /// Fires the pending post-win paywall if conditions allow.
+    /// Called when returning to Home and when the story queue empties.
+    ///
+    /// If the player is frustrated (FrustrationGuard), the auto-show is deferred.
+    /// The pending context is preserved — it will fire the next time the player
+    /// makes an explicit navigation tap (Next Mission, map selection), which is
+    /// a clear intent signal that overrides the frustration gate.
+    private func firePendingPaywallIfReady() {
+        guard let ctx = pendingPaywallContext,
+              !showingPaywall,
+              activeLevel == nil,
+              introStep == nil,
+              storyQueue.current == nil else { return }
+        // Don't auto-interrupt with a paywall when the player is frustrated.
+        // Explicit taps (onNextMission, tryPlay) bypass this check intentionally.
+        guard !FrustrationGuard.shouldDeferAutoPaywall() else { return }
+        showPaywall(ctx)
     }
 
     // MARK: - Story beat collection

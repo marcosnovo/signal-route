@@ -358,7 +358,7 @@ final class PlayerSimulationRunner: ObservableObject {
         }
 
         check(.dailyLimit, "Daily limit reached after 3 Lunar missions",
-              "dailyCompleted=\(EntitlementStore.shared.dailyCompleted)/\(EntitlementStore.dailyLimit)",
+              "dailyCompleted=\(EntitlementStore.shared.dailyCompleted)/\(EntitlementStore.shared.dailyLimit)",
               EntitlementStore.shared.dailyLimitReached)
 
         // 4th mission must be blocked → paywall shown

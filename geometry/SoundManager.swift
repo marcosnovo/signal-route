@@ -29,7 +29,9 @@ enum SoundManager {
         set { UserDefaults.standard.set(newValue, forKey: "sfxEnabled") }
     }
     static var musicEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: "musicEnabled") as? Bool ?? true }
+        // Default OFF — ambient loop is available via Settings but should not play on first launch.
+        // Reactive SFX (button taps, tile rotates, win/lose) are unaffected by this flag.
+        get { UserDefaults.standard.object(forKey: "musicEnabled") as? Bool ?? false }
         set {
             UserDefaults.standard.set(newValue, forKey: "musicEnabled")
             if newValue { musicPlayer?.play() } else { musicPlayer?.pause() }

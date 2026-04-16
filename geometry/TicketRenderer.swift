@@ -68,19 +68,26 @@ enum TicketRenderer {
         let bg = UIColor(red: 0.040, green: 0.047, blue: 0.059, alpha: 1)
         let fullRect = CGRect(origin: .zero, size: size)
 
-        if let img = PlanetVisualResolver.image(for: planetIndex) {
-            // ── 1. Full-canvas planet image ───────────────────────────────────────
-            // Square source drawn into the square canvas — no distortion, no crop.
-            drawImageAspectFill(img, in: fullRect)
+        if let dir = PlanetVisualResolver.artDirection(for: planetIndex),
+           let img = UIImage(named: dir.imageName) {
+
+            // ── 1. Planet image — positioned by art direction ─────────────────────
+            // Scale relative to canvas, then apply per-planet offset for best framing.
+            let scaledW = size.width  * dir.scale
+            let scaledH = size.height * dir.scale
+            let baseX   = (size.width  - scaledW) / 2 + dir.offsetX
+            let baseY   = (size.height - scaledH) / 2 + dir.offsetY
+            drawImageAspectFill(img, in: CGRect(x: baseX, y: baseY,
+                                                width: scaledW, height: scaledH))
 
             // ── 2. Horizontal fade — text protection ──────────────────────────────
-            // x=0–35%: fully covered  →  x=35–62%: fade  →  x=62%+: transparent
+            // x=0–35%: fully covered  →  x=35%–hFadeClear: fade  →  clear beyond
             if let hGrad = CGGradient(
                 colorsSpace: colorSpace,
                 colors: [bg.withAlphaComponent(1.0).cgColor,
                          bg.withAlphaComponent(1.0).cgColor,
                          bg.withAlphaComponent(0.0).cgColor] as CFArray,
-                locations: [0.0, 0.35, 0.62]
+                locations: [0.0, 0.35, dir.horizontalFadeClear]
             ) {
                 ctx.drawLinearGradient(hGrad,
                     start: .zero, end: CGPoint(x: size.width, y: 0),
@@ -88,14 +95,15 @@ enum TicketRenderer {
             }
 
             // ── 3. Vertical fade — stats/footer protection ────────────────────────
-            // y=0–52%: transparent  →  y=52–72%: fade  →  y=72%+: fully covered
+            // transparent  →  vFadeStart: fade begins  →  vFadeStart+0.20: fully dark
+            let vFadeEnd = min(dir.verticalFadeStart + 0.20, 1.0)
             if let vGrad = CGGradient(
                 colorsSpace: colorSpace,
                 colors: [bg.withAlphaComponent(0.0).cgColor,
                          bg.withAlphaComponent(0.0).cgColor,
                          bg.withAlphaComponent(0.80).cgColor,
                          bg.withAlphaComponent(1.0).cgColor] as CFArray,
-                locations: [0.0, 0.52, 0.72, 1.0]
+                locations: [0.0, dir.verticalFadeStart, vFadeEnd, 1.0]
             ) {
                 ctx.drawLinearGradient(vGrad,
                     start: .zero, end: CGPoint(x: 0, y: size.height),
@@ -103,12 +111,10 @@ enum TicketRenderer {
             }
 
             // ── 4. Atmospheric tint ───────────────────────────────────────────────
-            // Thin planet-colour wash binds the image to the pass's accent palette.
-            accent.withAlphaComponent(0.13).setFill()
+            accent.withAlphaComponent(dir.atmosphereOpacity).setFill()
             UIRectFill(fullRect)
 
             // ── 5. Right-edge ambient glow ────────────────────────────────────────
-            // Replaces the visual presence the old circular atmosphere ring gave.
             if let glow = CGGradient(
                 colorsSpace: colorSpace,
                 colors: [accent.withAlphaComponent(0.0).cgColor,
