@@ -3,7 +3,8 @@ import SwiftUI
 // MARK: - GameView  (telemetry dashboard)
 struct GameView: View {
     @StateObject private var vm: GameViewModel
-    @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var settings:  SettingsStore
+    @EnvironmentObject private var gcManager: GameCenterManager
     private var S: AppStrings { AppStrings(lang: settings.language) }
     let isIntro: Bool
     let onDismiss: () -> Void
@@ -13,6 +14,9 @@ struct GameView: View {
     /// Called immediately when a non-intro mission is won, before the win animation completes.
     /// Receives the completed level and the LevelUpEvent (nil if no progression change).
     let onWin: ((Level, LevelUpEvent?) -> Void)?
+    /// Called when a mission ends in failure AND the player made ≥1 tap (hasInteracted).
+    /// Used by ContentView to record a daily attempt consumption.
+    let onFail: ((Level) -> Void)?
     let onUpgrade: (() -> Void)?
 
     /// Controls when the overlay actually appears — decoupled from vm.status
@@ -42,6 +46,7 @@ struct GameView: View {
          onNextMission: (() -> Void)? = nil,
          onMissions: (() -> Void)? = nil,
          onWin: ((Level, LevelUpEvent?) -> Void)? = nil,
+         onFail: ((Level) -> Void)? = nil,
          onUpgrade: (() -> Void)? = nil) {
         self.isIntro          = isIntro
         self.onDismiss        = onDismiss
@@ -49,6 +54,7 @@ struct GameView: View {
         self.onNextMission    = onNextMission
         self.onMissions       = onMissions
         self.onWin            = onWin
+        self.onFail           = onFail
         self.onUpgrade        = onUpgrade
         _vm = StateObject(wrappedValue: GameViewModel(level: level))
     }
@@ -163,6 +169,8 @@ struct GameView: View {
             case .won:
                 playWinSequence()
             case .lost:
+                // Record attempt if the player actually interacted (≥1 tap)
+                if !isIntro && vm.hasInteracted { onFail?(vm.currentLevel) }
                 // No path to celebrate — show overlay right away
                 withAnimation(.spring(response: 0.44, dampingFraction: 0.80)) {
                     overlayVisible = true
@@ -174,6 +182,7 @@ struct GameView: View {
                 boardSuccessOpacity = 0
                 signalFrontRow = -1
                 signalFrontCol = -1
+                gcManager.clearRankFeedback()
                 showSectorComplete = false
             }
         }
@@ -189,7 +198,13 @@ struct GameView: View {
         withAnimation(.easeOut(duration: 0.20)) { boardSuccessOpacity = 0.75 }
         withAnimation(.easeOut(duration: 0.55).delay(0.28)) { boardSuccessOpacity = 0 }
         // Notify ContentView immediately so it can collect story beats while context is accurate
-        if !isIntro { onWin?(vm.currentLevel, vm.lastLevelUpEvent) }
+        if !isIntro {
+            onWin?(vm.currentLevel, vm.lastLevelUpEvent)
+            // Submit to Game Center leaderboard (fire-and-forget)
+            if let efficiency = vm.gameResult?.efficiency {
+                Task { await gcManager.submitScore(efficiency: efficiency) }
+            }
+        }
 
         Task { @MainActor in
             // Brief pause — let the player see the completed board

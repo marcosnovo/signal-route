@@ -13,9 +13,10 @@ struct DevMenuView: View {
     let onSelect: (Level) -> Void
     let onDismiss: () -> Void
 
-    @EnvironmentObject private var settings:  SettingsStore
-    @EnvironmentObject private var storeKit:  StoreKitManager
-    @EnvironmentObject private var gcManager: GameCenterManager
+    @EnvironmentObject private var settings:   SettingsStore
+    @EnvironmentObject private var storeKit:   StoreKitManager
+    @EnvironmentObject private var gcManager:  GameCenterManager
+    @EnvironmentObject private var cloudSave:  CloudSaveManager
 
     // ── Tab ───────────────────────────────────────────────────────────────
     enum DevTab { case overview, missions, story, tools, money, reset, qa, sim }
@@ -359,7 +360,7 @@ struct DevMenuView: View {
                 statDivider()
                 miniStat("DAILY",   isPrem ? "∞" : store.isInIntroPhase
                           ? "INTRO \(store.freeIntroCompleted)/\(EntitlementStore.freeIntroLimit)"
-                          : "\(store.dailyCompleted)/\(EntitlementStore.dailyLimit)")
+                          : "\(store.dailyAttemptsUsed)/\(EntitlementStore.dailyLimit)")
                 statDivider()
                 miniStatC("STORY",  unseen > 0 ? "\(unseen) UNSEEN" : "ALL SEEN",
                           unseen > 0 ? Color.orange : AppTheme.success)
@@ -609,8 +610,10 @@ struct DevMenuView: View {
 
         // ── Game Center ────────────────────────────────────────────────────────
         let gcStat: QAStatus  = gcManager.isAuthenticated ? .pass : .warning
+        let avatarLoaded      = gcManager.playerAvatar != nil
+        let cloudSynced       = cloudSave.lastSyncedAt != nil
         let gcDetail: String  = gcManager.isAuthenticated
-                              ? gcManager.displayName.isEmpty ? "AUTHENTICATED" : gcManager.displayName
+                              ? "\(gcManager.displayName.isEmpty ? "AUTHENTICATED" : gcManager.displayName) · AVATAR \(avatarLoaded ? "✓" : "…") · CLOUD \(cloudSynced ? "✓" : "—")"
                               : "NOT AUTHENTICATED"
 
         // ── StoreKit ───────────────────────────────────────────────────────────
@@ -725,7 +728,11 @@ struct DevMenuView: View {
 
     private var moneyPanel: some View {
         ScrollView {
-            monetizationSection
+            VStack(spacing: 0) {
+                monetizationSection
+                TechDivider()
+                cloudSaveSection
+            }
         }
     }
 
@@ -844,7 +851,7 @@ struct DevMenuView: View {
         let store      = EntitlementStore.shared
         let isPremium  = store.isPremium
         let intro      = store.freeIntroCompleted
-        let daily      = store.dailyCompleted
+        let daily      = store.dailyAttemptsUsed
         let remaining  = store.remainingToday
         let canPlay    = store.canPlay(LevelGenerator.levels.first ?? LevelGenerator.levels[0])
         let blocked    = store.reasonBlocked
@@ -854,6 +861,13 @@ struct DevMenuView: View {
         let session    = SessionTracker.shared
         let frustrated = FrustrationGuard.isFrustrated()
         let lastCtx    = MonetizationAnalytics.shared.lastShownContext
+        let lastShownAt = MonetizationAnalytics.shared.lastShownAt
+        let lastShownLabel: String = {
+            guard let t = lastShownAt else { return "—" }
+            let fmt = DateFormatter()
+            fmt.dateFormat = "HH:mm:ss"
+            return fmt.string(from: t)
+        }()
         let skLabel: String = {
             switch skState {
             case .idle:       return skProduct != nil ? "LOADED" : "—"
@@ -928,13 +942,13 @@ struct DevMenuView: View {
 
             TechDivider()
 
-            // Row 4 — StoreKit & last paywall context
+            // Row 4 — StoreKit, last paywall context + timestamp
             HStack(spacing: 0) {
-                miniStat("SECTOR",   "\(profile.progression.currentSector.id)")
+                miniStat("SK",        skLabel)
                 statDivider()
-                miniStat("SK",       skLabel)
+                miniStat("LAST CTX",  lastCtx.map { $0.analyticsName.uppercased() } ?? "—")
                 statDivider()
-                miniStat("LAST CTX", lastCtx.map { $0.analyticsName.uppercased() } ?? "—")
+                miniStat("SHOWN AT",  lastShownLabel)
             }
             .padding(.vertical, 10)
 
@@ -998,7 +1012,7 @@ struct DevMenuView: View {
                         scenarioBtn("DAILY \(n)/\(EntitlementStore.dailyLimit)", icon: "number",
                                     color: n == EntitlementStore.dailyLimit ? AppTheme.danger : AppTheme.textSecondary) {
                             store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit) // enter Phase 2
-                            store.setDailyCompleted(n)
+                            store.setDailyAttemptsUsed(n)
                             refreshID = UUID()
                             showToast("Daily → \(n)/\(EntitlementStore.dailyLimit)")
                         }
@@ -1029,7 +1043,7 @@ struct DevMenuView: View {
                     scenarioBtn("NEXT BLOCKED", icon: "lock.fill", color: AppTheme.danger) {
                         // Force Phase 2 + daily limit hit
                         store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
-                        store.setDailyCompleted(EntitlementStore.dailyLimit)
+                        store.setDailyAttemptsUsed(EntitlementStore.dailyLimit)
                         devPaywallContext = .nextMissionBlocked
                         withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) { showingDevPaywall = true }
                         refreshID = UUID()
@@ -1139,7 +1153,7 @@ struct DevMenuView: View {
                     scenarioBtn("DAILY COUNT = \(EntitlementStore.dailyLimit)", icon: "hand.raised.fill", color: AppTheme.danger) {
                         store.setPremium(false)
                         store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
-                        store.setDailyCompleted(EntitlementStore.dailyLimit)
+                        store.setDailyAttemptsUsed(EntitlementStore.dailyLimit)
                         refreshID = UUID()
                         showToast("Daily \(EntitlementStore.dailyLimit)/\(EntitlementStore.dailyLimit) · BLOCKED", style: .warning)
                     }
@@ -1154,7 +1168,7 @@ struct DevMenuView: View {
                         // Simulate a frustrated free player at the daily limit
                         store.setPremium(false)
                         store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
-                        store.setDailyCompleted(EntitlementStore.dailyLimit)
+                        store.setDailyAttemptsUsed(EntitlementStore.dailyLimit)
                         PlayerSkillTracker.shared.overrideSkillScore(0.12)
                         SessionTracker.shared.overrideFailuresInSession(4)
                         SessionTracker.shared.overrideStreakCount(0)
@@ -1206,6 +1220,55 @@ struct DevMenuView: View {
                     scenarioBtn("CLEAR STATE", icon: "xmark", color: AppTheme.textSecondary) {
                         storeKit.clearState()
                     }
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.vertical, 10)
+        }
+        .background(AppTheme.surface)
+    }
+
+    // ── Cloud save ─────────────────────────────────────────────────────────
+
+    private var cloudSaveSection: some View {
+        let syncing  = cloudSave.isSyncing
+        let syncDate = cloudSave.lastSyncedAt
+        let gcAuth   = gcManager.isAuthenticated
+        let syncLabel: String = {
+            guard let d = syncDate else { return "NEVER" }
+            let fmt = DateFormatter()
+            fmt.dateFormat = "HH:mm:ss"
+            return fmt.string(from: d)
+        }()
+
+        return VStack(spacing: 0) {
+            sectionHeader("CLOUD SAVE  ·  GKSavedGame")
+
+            // Status row
+            HStack(spacing: 0) {
+                miniStatC("GC AUTH",   gcAuth ? "YES" : "NO",
+                          gcAuth ? AppTheme.success : AppTheme.danger)
+                statDivider()
+                miniStatC("STATUS",    syncing ? "SYNCING…" : "IDLE",
+                          syncing ? Color.orange : AppTheme.textSecondary)
+                statDivider()
+                miniStat("LAST SYNC",  syncLabel)
+            }
+            .padding(.vertical, 10)
+
+            TechDivider()
+
+            // Action buttons
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    #if DEBUG
+                    scenarioBtn("FORCE SAVE", icon: "icloud.and.arrow.up", color: AppTheme.accentPrimary) {
+                        cloudSave.devForceSave()
+                    }
+                    scenarioBtn("LOAD CLOUD", icon: "icloud.and.arrow.down", color: AppTheme.sage) {
+                        cloudSave.devForceLoad()
+                    }
+                    #endif
                 }
                 .padding(.horizontal, 16)
             }

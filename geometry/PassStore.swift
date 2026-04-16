@@ -69,4 +69,10 @@ enum PassStore {
     static func reset() {
         UserDefaults.standard.removeObject(forKey: key)
     }
+
+    /// Replace the stored passes with the given array.
+    /// Called by CloudSaveManager when applying a cloud save.
+    static func restore(_ passes: [PlanetPass]) {
+        save(passes)
+    }
 }

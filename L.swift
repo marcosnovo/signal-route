@@ -23,8 +23,9 @@ struct AppStrings {
     var begin:          String { t("BEGIN",    "COMENZAR",  "COMMENCER") }
 
     // MARK: - Home — system bar
-    var nodeActive: String { t("NODE ACTIVE",  "NODO ACTIVO",  "NŒUD ACTIF") }
-    var config:     String { t("CONFIG",       "CONFIG",       "CONFIG") }
+    var nodeActive: String { t("NODE ACTIVE",   "NODO ACTIVO",   "NŒUD ACTIF") }
+    var config:     String { t("CONFIG",        "CONFIG",        "CONFIG") }
+    var rankings:   String { t("RANKINGS",      "CLASIFICACIÓN", "CLASSEMENT") }
 
     // MARK: - Home — title
     var restoreTheNetwork: String { t("RESTORE THE NETWORK", "RESTAURA LA RED", "RESTAURER LE RÉSEAU") }

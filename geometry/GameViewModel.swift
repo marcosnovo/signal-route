@@ -72,6 +72,9 @@ class GameViewModel: ObservableObject {
     // MARK: Attempt tracking
     /// How many times the player has attempted the current level (1 = first try).
     private var attemptCount: Int = 0
+    /// True after the player makes their first tap in a session. Used by ContentView to
+    /// determine whether a FAILED session should consume a daily attempt.
+    @Published var hasInteracted: Bool = false
 
     // MARK: Adaptive difficulty
     /// Adjustments computed once per level session (first attempt) from the player's skill score.
@@ -142,6 +145,7 @@ class GameViewModel: ObservableObject {
         movesLeft = max(currentLevel.minimumRequiredMoves, rawMoves)
         movesUsed = 0
         status = .playing
+        hasInteracted = false
         signalPath = []
         targetsOnline = 0
         activeNodes = 0
@@ -186,6 +190,9 @@ class GameViewModel: ObservableObject {
 
     func tap(row: Int, col: Int) {
         guard status == .playing else { return }
+
+        // Mark first interaction — used by ContentView to decide whether failure consumes an attempt
+        if !hasInteracted { hasInteracted = true }
 
         // Locked tile — rotation cap exhausted; reject with error haptic
         guard !tiles[row][col].isRotationLocked else {

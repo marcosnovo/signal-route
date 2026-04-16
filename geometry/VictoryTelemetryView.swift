@@ -15,8 +15,9 @@ struct VictoryTelemetryView: View {
     var onMissions: (() -> Void)?    = nil
     var onUpgrade: (() -> Void)?     = nil
 
-    @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var settings:   SettingsStore
     @EnvironmentObject private var entitlement: EntitlementStore
+    @EnvironmentObject private var gcManager:  GameCenterManager
     private var S: AppStrings { AppStrings(lang: settings.language) }
 
     // ── Animation state ────────────────────────────────────────────────────
@@ -274,7 +275,30 @@ struct VictoryTelemetryView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.horizontal, 14)
-                .padding(.bottom, 12)
+                .padding(.bottom, 8)
+            }
+
+            // ── Rank feedback badge ───────────────────────────────────────
+            if let feedback = gcManager.rankFeedback {
+                HStack(spacing: 5) {
+                    Image(systemName: feedback == .newRecord ? "trophy.fill" : "globe")
+                        .font(.system(size: 8, weight: .bold))
+                    Text(rankFeedbackLabel(feedback))
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .tracking(1.2)
+                }
+                .foregroundStyle(feedback == .newRecord ? AppTheme.accentPrimary : sageInk)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(feedback == .newRecord
+                              ? AppTheme.accentPrimary.opacity(0.12)
+                              : sageInk.opacity(0.08))
+                )
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
+                .transition(.opacity.combined(with: .scale(scale: 0.90, anchor: .leading)))
             }
 
             Spacer(minLength: 0)
@@ -361,35 +385,45 @@ struct VictoryTelemetryView: View {
         return levels[idx + 1]
     }
 
+    /// True when the player may immediately start the next mission.
+    /// False when the daily limit has been reached — tapping the primary CTA opens the paywall.
+    /// Reads published EntitlementStore properties directly to avoid side-effectful canPlay(_:).
+    private var canContinue: Bool {
+        guard nextMission != nil else { return false }
+        return !entitlement.dailyLimitReached
+    }
+
     private var ctaStrip: some View {
         VStack(spacing: 0) {
 
-            // ── Primary: NEXT MISSION ──────────────────────────────────
+            // ── Primary: NEXT MISSION — locked upgrade gate when daily limit reached ─
             if let next = nextMission {
                 Button(action: { onNextMission?() }) {
                     HStack(spacing: 0) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(S.nextMissionLabel(next.displayID))
-                                .font(AppTheme.mono(9, weight: .regular))
-                                .foregroundStyle(.white.opacity(0.55))
+                            // Sub-label: mission ID when free, "UPGRADE" when locked
+                            Text(canContinue ? S.nextMissionLabel(next.displayID) : S.upgradeLabel)
+                                .font(AppTheme.mono(9, weight: canContinue ? .regular : .bold))
+                                .foregroundStyle(canContinue ? .white.opacity(0.55) : .black.opacity(0.55))
                                 .kerning(2)
                             Text(S.nextMission)
                                 .font(AppTheme.mono(16, weight: .black))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(canContinue ? .white : .black.opacity(0.80))
                                 .kerning(1)
                         }
                         .padding(.leading, 20)
                         Spacer()
                         ZStack {
-                            Color.black.opacity(0.16).frame(width: 56)
-                            Image(systemName: "arrow.right")
+                            Color.black.opacity(canContinue ? 0.16 : 0.10).frame(width: 56)
+                            // Arrow when free, lock when gated
+                            Image(systemName: canContinue ? "arrow.right" : "lock.fill")
                                 .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(canContinue ? .white : .black.opacity(0.65))
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 60)
-                    .background(AppTheme.accentPrimary)
+                    .background(canContinue ? AppTheme.accentPrimary : AppTheme.accentPrimary.opacity(0.45))
                 }
                 .breathingCTA()
 
@@ -428,8 +462,9 @@ struct VictoryTelemetryView: View {
             }
             .background(AppTheme.surface)
 
-            // ── Upgrade banner — free users on Lunar+ only ──────────────
-            if !entitlement.isPremium && isLunarOrBeyond, let onUpgrade {
+            // ── Upgrade banner — free users on Lunar+, only when not already blocked ──
+            // When canContinue is false the locked primary CTA already serves as the paywall gate.
+            if !entitlement.isPremium && isLunarOrBeyond, let onUpgrade, canContinue {
                 Button(action: onUpgrade) {
                     HStack(spacing: 8) {
                         Image(systemName: "infinity")
@@ -501,9 +536,24 @@ struct VictoryTelemetryView: View {
         // ── 5. CTA ───────────────────────────────────────────────────────
         ctaVisible = true
         HapticsManager.success()
+
+        // ── 6. Auto-paywall at peak emotional moment ─────────────────────
+        // Player just won but can't continue — surface the upgrade immediately
+        // without requiring them to tap anything.
+        guard !canContinue, let onUpgrade else { return }
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        onUpgrade()
     }
 
     /// Eased count-up: fast at the start, decelerates near the target.
+    private func rankFeedbackLabel(_ feedback: GameCenterManager.RankFeedback) -> String {
+        switch feedback {
+        case .newRecord:          return "NEW RECORD  #1 GLOBAL"
+        case .topPercent(let n):  return "TOP \(n)%  GLOBAL"
+        case .ranked(let r):      return "RANK  #\(r)  GLOBAL"
+        }
+    }
+
     private func countUp(to target: Int) async {
         guard target > 0 else { return }
         let steps   = min(target, 80)

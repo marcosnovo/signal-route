@@ -260,8 +260,8 @@ final class PlayerSimulationRunner: ObservableObject {
 
         // Intro missions drain intro quota, not daily quota
         check(.firstMissions, "First 6 missions consumed from intro quota (not daily)",
-              "freeIntroCompleted=\(EntitlementStore.shared.freeIntroCompleted) dailyCompleted=\(EntitlementStore.shared.dailyCompleted)",
-              EntitlementStore.shared.dailyCompleted == 0)
+              "freeIntroCompleted=\(EntitlementStore.shared.freeIntroCompleted) dailyAttemptsUsed=\(EntitlementStore.shared.dailyAttemptsUsed)",
+              EntitlementStore.shared.dailyAttemptsUsed == 0)
 
         // Verify no stuck overlays (no pending beats that would block navigation)
         let stuckBeats = StoryStore.pendingAll(for: .firstMissionComplete)
@@ -348,13 +348,13 @@ final class PlayerSimulationRunner: ObservableObject {
               "freeIntroCompleted=\(store.freeIntroCompleted)",
               store.freeIntroCompleted == 0)
 
-        // All 5 intro missions must be playable
+        // All 5 intro missions must be playable (only WON sessions increment intro counter)
         for i in 0..<EntitlementStore.freeIntroLimit {
             let allowed = store.canPlay(anyLevel)
             check(.dailyLimit, "Intro mission \(i+1)/\(EntitlementStore.freeIntroLimit): canPlay = true",
                   "freeIntroCompleted=\(store.freeIntroCompleted)",
                   allowed)
-            store.recordMissionCompleted(anyLevel)
+            store.recordAttempt(anyLevel, didWin: true)
         }
 
         check(.dailyLimit, "Intro quota exhausted after \(EntitlementStore.freeIntroLimit) missions",
@@ -364,23 +364,23 @@ final class PlayerSimulationRunner: ObservableObject {
         // ── Phase 2: daily gate ─────────────────────────────────────────
         store.resetDailyCount()
 
-        // 3 daily missions allowed
+        // 3 daily attempts allowed (both WON and FAILED count)
         for i in 0..<EntitlementStore.dailyLimit {
             let allowed = store.canPlay(anyLevel)
-            check(.dailyLimit, "Daily mission \(i+1)/\(EntitlementStore.dailyLimit): canPlay = true",
-                  "dailyCompleted=\(store.dailyCompleted)",
+            check(.dailyLimit, "Daily attempt \(i+1)/\(EntitlementStore.dailyLimit): canPlay = true",
+                  "dailyAttemptsUsed=\(store.dailyAttemptsUsed)",
                   allowed)
-            store.recordMissionCompleted(anyLevel)
+            store.recordAttempt(anyLevel, didWin: i % 2 == 0) // alternate WON/FAILED
         }
 
-        check(.dailyLimit, "Daily limit reached after \(EntitlementStore.dailyLimit) missions",
-              "dailyCompleted=\(store.dailyCompleted)/\(EntitlementStore.dailyLimit)",
+        check(.dailyLimit, "Daily limit reached after \(EntitlementStore.dailyLimit) attempts",
+              "dailyAttemptsUsed=\(store.dailyAttemptsUsed)/\(EntitlementStore.dailyLimit)",
               store.dailyLimitReached)
 
         // Next attempt must be blocked
         let blockedVal = store.canPlay(anyLevel)
-        check(.dailyLimit, "Mission \(EntitlementStore.dailyLimit + 1) blocked — paywall fires",
-              "canPlay=\(blockedVal) dailyCompleted=\(store.dailyCompleted)",
+        check(.dailyLimit, "Attempt \(EntitlementStore.dailyLimit + 1) blocked — paywall fires",
+              "canPlay=\(blockedVal) dailyAttemptsUsed=\(store.dailyAttemptsUsed)",
               !blockedVal)
 
         check(.dailyLimit, "remainingToday = 0 at limit",
@@ -417,12 +417,12 @@ final class PlayerSimulationRunner: ObservableObject {
               "remaining=\(EntitlementStore.shared.remainingToday)",
               EntitlementStore.shared.remainingToday == Int.max)
 
-        // Record that mission — daily counter must NOT increment for premium users
-        let beforeCount = EntitlementStore.shared.dailyCompleted
-        EntitlementStore.shared.recordMissionCompleted(previously)
+        // Record that attempt — daily counter must NOT increment for premium users
+        let beforeCount = EntitlementStore.shared.dailyAttemptsUsed
+        EntitlementStore.shared.recordAttempt(previously, didWin: true)
         check(.premiumFlow, "Daily counter not incremented for premium user",
-              "before=\(beforeCount) after=\(EntitlementStore.shared.dailyCompleted)",
-              EntitlementStore.shared.dailyCompleted == beforeCount)
+              "before=\(beforeCount) after=\(EntitlementStore.shared.dailyAttemptsUsed)",
+              EntitlementStore.shared.dailyAttemptsUsed == beforeCount)
 
         // Continue playing several more missions without restriction
         let extraRange = min(4, lunarLevels.count - 4)

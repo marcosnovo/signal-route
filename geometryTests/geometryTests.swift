@@ -505,21 +505,21 @@ struct EntitlementAccessTests {
     @Test("Free user — intro exhausted + 0 daily — can play")
     func freeUserIntroExhaustedDaily0CanPlay() {
         EntitlementStore.shared.setFreeIntroCompleted(5)
-        EntitlementStore.shared.setDailyCompleted(0)
+        EntitlementStore.shared.setDailyAttemptsUsed(0)
         #expect(EntitlementStore.shared.canPlay(anyLevel))
     }
 
     @Test("Free user — intro exhausted + 2 of 3 daily — can play")
     func freeUserIntroExhaustedDaily2CanPlay() {
         EntitlementStore.shared.setFreeIntroCompleted(5)
-        EntitlementStore.shared.setDailyCompleted(2)
+        EntitlementStore.shared.setDailyAttemptsUsed(2)
         #expect(EntitlementStore.shared.canPlay(anyLevel))
     }
 
     @Test("Free user — intro exhausted + daily limit reached — blocked and paywall eligible")
     func freeUserDailyLimitReachedIsBlocked() {
         EntitlementStore.shared.setFreeIntroCompleted(5)
-        EntitlementStore.shared.setDailyCompleted(3)
+        EntitlementStore.shared.setDailyAttemptsUsed(3)
         #expect(!EntitlementStore.shared.canPlay(anyLevel),
                 "canPlay must return false when daily limit is reached")
         #expect(EntitlementStore.shared.dailyLimitReached,
@@ -534,7 +534,7 @@ struct EntitlementAccessTests {
     func premiumUserAlwaysAllowed() {
         EntitlementStore.shared.setPremium(true)
         EntitlementStore.shared.setFreeIntroCompleted(5)
-        EntitlementStore.shared.setDailyCompleted(3)
+        EntitlementStore.shared.setDailyAttemptsUsed(3)
         defer { EntitlementStore.shared.setPremium(false) }
         #expect(EntitlementStore.shared.canPlay(anyLevel),
                 "Premium user must always be allowed to play")
@@ -572,60 +572,84 @@ struct EntitlementConsumptionTests {
 
     private var anyLevel: Level { LevelGenerator.levels[0] }
 
-    // ── Retry / fail paths do not consume ─────────────────────────────────
+    // ── canPlay does not consume ───────────────────────────────────────────
 
-    @Test("canPlay does not increment any counter — simulates a retry or failed attempt")
+    @Test("canPlay does not increment any counter")
     func canPlayDoesNotConsumeCounter() {
         EntitlementStore.shared.setFreeIntroCompleted(2)
         let introBefore = EntitlementStore.shared.freeIntroCompleted
-        let dailyBefore = EntitlementStore.shared.dailyCompleted
+        let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed
         _ = EntitlementStore.shared.canPlay(anyLevel)
         #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
-                "Intro counter must not change on canPlay (retry/fail path)")
-        #expect(EntitlementStore.shared.dailyCompleted == dailyBefore,
-                "Daily counter must not change on canPlay (retry/fail path)")
+                "Intro counter must not change on canPlay")
+        #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
+                "Daily counter must not change on canPlay")
     }
 
-    // ── Intro phase consumption ────────────────────────────────────────────
+    // ── Intro phase — WON increments, FAILED is free ──────────────────────
 
-    @Test("recordMissionCompleted during intro phase increments only freeIntroCompleted")
-    func completingDuringIntroPhaseIncrementsIntroCounter() {
+    @Test("recordAttempt(didWin: true) during intro increments only freeIntroCompleted")
+    func winDuringIntroIncrementsIntroCounter() {
         EntitlementStore.shared.setFreeIntroCompleted(2)
-        let dailyBefore = EntitlementStore.shared.dailyCompleted
-        EntitlementStore.shared.recordMissionCompleted(anyLevel)
+        let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed
+        EntitlementStore.shared.recordAttempt(anyLevel, didWin: true)
         #expect(EntitlementStore.shared.freeIntroCompleted == 3,
-                "Intro counter must increment from 2 to 3")
-        #expect(EntitlementStore.shared.dailyCompleted == dailyBefore,
+                "Intro counter must increment from 2 to 3 on win")
+        #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
                 "Daily counter must not change during intro phase")
     }
 
-    // ── Daily phase consumption ────────────────────────────────────────────
+    @Test("recordAttempt(didWin: false) during intro does NOT increment any counter")
+    func failDuringIntroIsFreePasses() {
+        EntitlementStore.shared.setFreeIntroCompleted(2)
+        let introBefore = EntitlementStore.shared.freeIntroCompleted
+        let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed
+        EntitlementStore.shared.recordAttempt(anyLevel, didWin: false)
+        #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
+                "Intro counter must NOT increment on failure during intro phase")
+        #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
+                "Daily counter must NOT increment on failure during intro phase")
+    }
 
-    @Test("recordMissionCompleted after intro exhausted increments only dailyCompleted")
-    func completingAfterIntroPhaseIncrementsOnlyDailyCounter() {
+    // ── Daily phase — both WON and FAILED consume ─────────────────────────
+
+    @Test("recordAttempt(didWin: true) after intro exhausted increments only dailyAttemptsUsed")
+    func winAfterIntroIncrementsOnlyDailyCounter() {
         EntitlementStore.shared.setFreeIntroCompleted(5)
         let introBefore = EntitlementStore.shared.freeIntroCompleted
-        EntitlementStore.shared.setDailyCompleted(0)
-        EntitlementStore.shared.recordMissionCompleted(anyLevel)
-        #expect(EntitlementStore.shared.dailyCompleted == 1,
-                "Daily counter must increment from 0 to 1 when intro is exhausted")
+        EntitlementStore.shared.setDailyAttemptsUsed(0)
+        EntitlementStore.shared.recordAttempt(anyLevel, didWin: true)
+        #expect(EntitlementStore.shared.dailyAttemptsUsed == 1,
+                "Daily counter must increment from 0 to 1 on win after intro")
         #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
                 "Intro counter must not change after intro phase is exhausted")
     }
 
+    @Test("recordAttempt(didWin: false) after intro exhausted also increments dailyAttemptsUsed")
+    func failAfterIntroConsumesAttempt() {
+        EntitlementStore.shared.setFreeIntroCompleted(5)
+        let introBefore = EntitlementStore.shared.freeIntroCompleted
+        EntitlementStore.shared.setDailyAttemptsUsed(0)
+        EntitlementStore.shared.recordAttempt(anyLevel, didWin: false)
+        #expect(EntitlementStore.shared.dailyAttemptsUsed == 1,
+                "Daily counter must increment from 0 to 1 on failure after intro")
+        #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
+                "Intro counter must not change on daily failure")
+    }
+
     // ── Premium no-op ──────────────────────────────────────────────────────
 
-    @Test("recordMissionCompleted for a premium user is a complete no-op on all counters")
-    func premiumCompletionDoesNotConsumeAnyCounter() {
+    @Test("recordAttempt for a premium user is a complete no-op on all counters")
+    func premiumAttemptDoesNotConsumeAnyCounter() {
         EntitlementStore.shared.setPremium(true)
         EntitlementStore.shared.setFreeIntroCompleted(2)
         let introBefore = EntitlementStore.shared.freeIntroCompleted
-        let dailyBefore = EntitlementStore.shared.dailyCompleted
+        let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed
         defer { EntitlementStore.shared.setPremium(false) }
-        EntitlementStore.shared.recordMissionCompleted(anyLevel)
+        EntitlementStore.shared.recordAttempt(anyLevel, didWin: true)
         #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
                 "Intro counter must not change for premium user")
-        #expect(EntitlementStore.shared.dailyCompleted == dailyBefore,
+        #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
                 "Daily counter must not change for premium user")
     }
 }

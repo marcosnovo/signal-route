@@ -17,9 +17,10 @@
 		6A89C9132F8E433500CF3706 /* StoryAssetValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C9122F8E433500CF3706 /* StoryAssetValidator.swift */; };
 		6A89C9172F8EA10000CF3706 /* PlayerSkillStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C9162F8EA10000CF3706 /* PlayerSkillStore.swift */; };
 		6A89C9192F8EA21A00CF3706 /* AdaptiveDifficultyEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C9182F8EA21A00CF3706 /* AdaptiveDifficultyEngine.swift */; };
-		6A89C91E2F8EA40000CF3706 /* SessionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C91D2F8EA40000CF3706 /* SessionTracker.swift */; };
 		6A89C91C2F8EA30000CF3706 /* PaywallMomentSelector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C91B2F8EA30000CF3706 /* PaywallMomentSelector.swift */; };
+		6A89C91E2F8EA40000CF3706 /* SessionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C91D2F8EA40000CF3706 /* SessionTracker.swift */; };
 		6A89C9222F8EA60000CF3706 /* FrustrationGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C9212F8EA60000CF3706 /* FrustrationGuard.swift */; };
+		6AE576F42F911614004E5007 /* SignalRoute.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 6AE576F32F911614004E5007 /* SignalRoute.storekit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -53,9 +54,10 @@
 		6A89C9122F8E433500CF3706 /* StoryAssetValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryAssetValidator.swift; sourceTree = "<group>"; };
 		6A89C9162F8EA10000CF3706 /* PlayerSkillStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSkillStore.swift; sourceTree = "<group>"; };
 		6A89C9182F8EA21A00CF3706 /* AdaptiveDifficultyEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveDifficultyEngine.swift; sourceTree = "<group>"; };
-		6A89C91D2F8EA40000CF3706 /* SessionTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTracker.swift; sourceTree = "<group>"; };
 		6A89C91B2F8EA30000CF3706 /* PaywallMomentSelector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaywallMomentSelector.swift; sourceTree = "<group>"; };
+		6A89C91D2F8EA40000CF3706 /* SessionTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionTracker.swift; sourceTree = "<group>"; };
 		6A89C9212F8EA60000CF3706 /* FrustrationGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrustrationGuard.swift; sourceTree = "<group>"; };
+		6AE576F32F911614004E5007 /* SignalRoute.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = SignalRoute.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -121,6 +123,7 @@
 				6A89C91D2F8EA40000CF3706 /* SessionTracker.swift */,
 				6A89C91B2F8EA30000CF3706 /* PaywallMomentSelector.swift */,
 				6A89C9212F8EA60000CF3706 /* FrustrationGuard.swift */,
+				6AE576F32F911614004E5007 /* SignalRoute.storekit */,
 			);
 			sourceTree = "<group>";
 		};
@@ -228,7 +231,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 6A68C0E72F890D860077D0E0 /* Build configuration list for PBXProject "geometry" */;
+			buildConfigurationList = 6A68C0E72F890D860077D0E0 /* Build configuration list for PBXProject "Signal Void" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -254,6 +257,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6AE576F42F911614004E5007 /* SignalRoute.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -450,22 +454,25 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = geometry/geometry.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = P9FLLA9Z8Q;
+				DEVELOPMENT_TEAM = R2NTD25VWF;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Signal route\n## OBJETIVO\nAñadir ranking global usando Game Center.\n\n---\n\n## TIPOS DE LEADERBOARD\n\n1. Global Efficiency Score\n→ acumulado de eficiencia de todas las misiones\n\n2. Daily Run (opcional)\n→ score del día → loop diario\n\n---\n\n## GAME CENTER SETUP\n\nCrear leaderboard en App Store Connect:\n\nID:\n\"signal_route_efficiency\"\n\n---\n\n## ENVIAR SCORE\n\nAl completar misión:\n\nscore = calcular eficiencia (ej: 0–1000)\n\nGKLeaderboard.submitScore(\n    score,\n    context: 0,\n    player: GKLocalPlayer.local,\n    leaderboardIDs: [\"signal_route_efficiency\"]\n)\n\n---\n\n## CÁLCULO DE SCORE\n\nEjemplo:\n\nscore = base\n        - (movimientos usados * penalty)\n        - (retries * penalty)\n\nNormalizar a rango 0–1000\n\n---\n\n## UI — ENTRY POINT\n\nHome:\n\n- botón pequeño: \"CLASIFICACIÓN\"\n\n---\n\n## UI — MODAL\n\nUsar:\n\nGKGameCenterViewController(\n    state: .leaderboards\n)\n\n---\n\n## UX IMPORTANTE\n\nAl completar misión:\n\n→ mostrar mini feedback:\n\n\"TOP 25% GLOBAL\"\no\n\"NUEVO RÉCORD\"\n\n---\n\n## FALLBACK\n\nSi no autenticado:\n\n→ mostrar CTA:\n\"Conéctate para competir\"\n\n---\n\n## RESULTADO\n\n- añade replayability\n- añade motivación\n- prepara terreno para eventos";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.arcade-games";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = MarcosNovo.geometry;
+				PRODUCT_BUNDLE_IDENTIFIER = MarcosNovo.signalvoid;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -482,22 +489,25 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = geometry/geometry.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = P9FLLA9Z8Q;
+				DEVELOPMENT_TEAM = R2NTD25VWF;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Signal route\n## OBJETIVO\nAñadir ranking global usando Game Center.\n\n---\n\n## TIPOS DE LEADERBOARD\n\n1. Global Efficiency Score\n→ acumulado de eficiencia de todas las misiones\n\n2. Daily Run (opcional)\n→ score del día → loop diario\n\n---\n\n## GAME CENTER SETUP\n\nCrear leaderboard en App Store Connect:\n\nID:\n\"signal_route_efficiency\"\n\n---\n\n## ENVIAR SCORE\n\nAl completar misión:\n\nscore = calcular eficiencia (ej: 0–1000)\n\nGKLeaderboard.submitScore(\n    score,\n    context: 0,\n    player: GKLocalPlayer.local,\n    leaderboardIDs: [\"signal_route_efficiency\"]\n)\n\n---\n\n## CÁLCULO DE SCORE\n\nEjemplo:\n\nscore = base\n        - (movimientos usados * penalty)\n        - (retries * penalty)\n\nNormalizar a rango 0–1000\n\n---\n\n## UI — ENTRY POINT\n\nHome:\n\n- botón pequeño: \"CLASIFICACIÓN\"\n\n---\n\n## UI — MODAL\n\nUsar:\n\nGKGameCenterViewController(\n    state: .leaderboards\n)\n\n---\n\n## UX IMPORTANTE\n\nAl completar misión:\n\n→ mostrar mini feedback:\n\n\"TOP 25% GLOBAL\"\no\n\"NUEVO RÉCORD\"\n\n---\n\n## FALLBACK\n\nSi no autenticado:\n\n→ mostrar CTA:\n\"Conéctate para competir\"\n\n---\n\n## RESULTADO\n\n- añade replayability\n- añade motivación\n- prepara terreno para eventos";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.arcade-games";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = MarcosNovo.geometry;
+				PRODUCT_BUNDLE_IDENTIFIER = MarcosNovo.signalvoid;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -596,7 +606,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		6A68C0E72F890D860077D0E0 /* Build configuration list for PBXProject "geometry" */ = {
+		6A68C0E72F890D860077D0E0 /* Build configuration list for PBXProject "Signal Void" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				6A68C10B2F890D870077D0E0 /* Debug */,

@@ -1,0 +1,39 @@
+{
+  "identifier" : "SignalRoute",
+  "nonConsumableProducts" : [
+    {
+      "displayPrice" : "4.99",
+      "familySharable" : false,
+      "internalID" : "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
+      "localizations" : [
+        {
+          "description" : "Unlock unlimited missions. No daily limits, ever.",
+          "displayName" : "Unlimited Access",
+          "locale" : "en_US"
+        },
+        {
+          "description" : "Desbloquea misiones ilimitadas. Sin límites diarios.",
+          "displayName" : "Acceso ilimitado",
+          "locale" : "es_ES"
+        },
+        {
+          "description" : "Accès illimité à toutes les missions. Sans limite quotidienne.",
+          "displayName" : "Accès illimité",
+          "locale" : "fr_FR"
+        }
+      ],
+      "productID" : "com.signalroute.fullaccess",
+      "referenceName" : "Unlimited Access",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_storeKitVersion" : "2"
+  },
+  "subscriptionGroups" : [],
+  "version" : {
+    "major" : 3,
+    "minor" : 0,
+    "patch" : 0
+  }
+}

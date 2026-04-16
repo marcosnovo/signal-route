@@ -275,6 +275,26 @@ struct HomeView: View {
                 TechLabel(text: S.nodeActive)
             }
             Spacer()
+            // Rankings button — only visible when authenticated
+            if gcManager.isAuthenticated {
+                Button(action: { gcManager.openLeaderboards() }) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chart.bar.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                        TechLabel(text: S.rankings, color: AppTheme.sage)
+                    }
+                    .foregroundStyle(AppTheme.sage)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AppTheme.backgroundSecondary)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                            .strokeBorder(AppTheme.sage.opacity(0.40), lineWidth: 0.5)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                }
+                .padding(.trailing, 6)
+            }
             Button(action: { showingSettings = true }) {
                 HStack(spacing: 5) {
                     Image(systemName: "slider.horizontal.3")
@@ -493,8 +513,8 @@ struct MiniStatCell: View {
 
 // MARK: - PlayerBlock
 /// Top-left identity module.
-/// Authenticated  → square avatar tile + name + live GC status dot.
-/// Not authenticated → silent fallback to system label (no visual noise).
+/// Authenticated  → avatar photo (or initials fallback) + name + live GC status dot.
+/// Not authenticated → person icon + "CONNECT" tap that triggers authentication.
 private struct PlayerBlock: View {
     @ObservedObject var gcManager: GameCenterManager
 
@@ -506,7 +526,10 @@ private struct PlayerBlock: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                TechLabel(text: "ORBITAL SYS  v1.0")
+                Button(action: { gcManager.authenticate() }) {
+                    connectRow
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -514,7 +537,7 @@ private struct PlayerBlock: View {
     // MARK: Authenticated layout
     private var identityRow: some View {
         HStack(spacing: 8) {
-            // Square avatar tile — mission-control aesthetic
+            // Avatar tile — photo when loaded, initials when not yet available
             ZStack {
                 RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                     .fill(AppTheme.surface)
@@ -523,9 +546,17 @@ private struct PlayerBlock: View {
                         RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                             .strokeBorder(AppTheme.accentPrimary.opacity(0.28), lineWidth: 0.5)
                     )
-                Text(initials)
-                    .font(AppTheme.mono(8, weight: .bold))
-                    .foregroundStyle(AppTheme.accentPrimary)
+                if let avatar = gcManager.playerAvatar {
+                    Image(uiImage: avatar)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 28, height: 28)
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                } else {
+                    Text(initials)
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .foregroundStyle(AppTheme.accentPrimary)
+                }
             }
 
             // Name + live status
@@ -545,6 +576,19 @@ private struct PlayerBlock: View {
                         .kerning(0.5)
                 }
             }
+        }
+    }
+
+    // MARK: Unauthenticated layout
+    private var connectRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "person.crop.circle")
+                .font(.system(size: 14, weight: .light))
+                .foregroundStyle(AppTheme.textSecondary)
+            Text("CONNECT GAME CENTER")
+                .font(AppTheme.mono(7))
+                .foregroundStyle(AppTheme.textSecondary)
+                .kerning(0.5)
         }
     }
 

@@ -17,7 +17,7 @@ final class StoreKitManager: ObservableObject {
     static let shared = StoreKitManager()
 
     // ── Product identifier ─────────────────────────────────────────────────
-    static let productID = "com.geometry.fullaccess"
+    static let productID = "com.signalroute.fullaccess"
 
     // ── Published state ────────────────────────────────────────────────────
     @Published private(set) var product:       Product?
@@ -131,16 +131,22 @@ final class StoreKitManager: ObservableObject {
 
     // MARK: - Private
 
-    /// Verify a transaction, finish it, and activate premium on success.
+    /// Verify a transaction, finish it, and sync premium state.
+    /// Handles activation (new purchase / restore) and revocation (refund / family removal).
     private func handle(_ result: VerificationResult<Transaction>) async {
         switch result {
         case .verified(let transaction):
             await transaction.finish()
-            if transaction.productID == Self.productID &&
-               transaction.revocationDate == nil {
+            guard transaction.productID == Self.productID else { return }
+            if transaction.revocationDate == nil {
+                // Valid entitlement — activate premium
                 EntitlementStore.shared.setPremium(true)
                 purchaseState = .success
                 MonetizationAnalytics.shared.trackPurchaseSuccess()
+            } else {
+                // Revoked (refund, family sharing removed) — remove premium
+                EntitlementStore.shared.setPremium(false)
+                purchaseState = .idle
             }
         case .unverified:
             // Tampered or invalid — ignore silently.

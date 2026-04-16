@@ -124,12 +124,16 @@ struct ContentView: View {
                     onMissions: { activeLevel = nil; showingLevelSelect = true },
                     onWin: { wonLevel, event in
                         lastWinEvent = event
-                        EntitlementStore.shared.recordMissionCompleted(wonLevel)
+                        EntitlementStore.shared.recordAttempt(wonLevel, didWin: true)
+                        Task { await CloudSaveManager.shared.save() }
                         collectStoryBeats(for: wonLevel, event: event)
                         // Arm post-win paywall — fires when player returns to Home
                         // (either by dismissing the game or after story beats clear).
                         pendingPaywallContext = PaywallMomentSelector.contextAfterWin(
                             event: event, entitlement: EntitlementStore.shared)
+                    },
+                    onFail: { failedLevel in
+                        EntitlementStore.shared.recordAttempt(failedLevel, didWin: false)
                     },
                     onUpgrade: {
                         activeLevel    = nil

@@ -6,19 +6,21 @@ import Combine
 // This is the ONLY place in the codebase that makes free/premium decisions.
 //
 // Isolation contract:
-//   - Reads ONLY: isPremium, freeIntroCompleted, dailyCompleted, lastPlayDate.
+//   - Reads ONLY: isPremium, freeIntroCompleted, dailyAttemptsUsed, lastPlayDate.
 //   - Does NOT read skillScore, extraMoves, hints, sector ID, or any adaptive-difficulty state.
 //   - Difficulty is NEVER made harder for free users or easier for premium users.
 //   - All adaptive difficulty flows through AdaptiveDifficultyManager, which is blind to monetization.
 //
 // ## Free-user access model
 //   Phase 1 — Intro (lifetime):
-//     The first 5 missions ever completed are always free, regardless of time.
+//     The first 5 missions won are always free, regardless of time.
 //     `freeIntroCompleted` tracks this (0–5); once it reaches 5, Phase 2 begins.
+//     During this phase only WON sessions increment the counter; FAILs are free.
 //
-//   Phase 2 — Daily gate:
-//     After the intro quota is exhausted, free users can complete up to 3 missions per day.
-//     `dailyCompleted` tracks this and resets at midnight.
+//   Phase 2 — Daily gate (attempt-based):
+//     After the intro quota is exhausted, free users get 3 attempts per day.
+//     Both WON and FAILED sessions count as attempts (if the player made ≥1 tap).
+//     `dailyAttemptsUsed` tracks this and resets at midnight.
 //
 //   Premium:
 //     No limits — `canPlay` always returns true.
@@ -39,7 +41,7 @@ final class EntitlementStore: ObservableObject {
     private enum Key {
         static let isPremium          = "entitlement.isPremium"
         static let freeIntroCompleted = "entitlement.freeIntroCompleted"
-        static let dailyCompleted     = "entitlement.dailyCompleted"
+        static let dailyAttemptsUsed  = "entitlement.dailyAttemptsUsed"
         static let lastPlayDate       = "entitlement.lastPlayDate"
     }
 
@@ -47,8 +49,8 @@ final class EntitlementStore: ObservableObject {
     @Published private(set) var isPremium:          Bool
     /// Lifetime missions completed during the intro grace period (caps at freeIntroLimit).
     @Published private(set) var freeIntroCompleted: Int
-    /// Missions completed today, counted after the intro quota is exhausted.
-    @Published private(set) var dailyCompleted:     Int
+    /// Attempts used today (WON + FAILED), counted after the intro quota is exhausted.
+    @Published private(set) var dailyAttemptsUsed:  Int
 
     private var lastPlayDate: Date
 
@@ -58,7 +60,7 @@ final class EntitlementStore: ObservableObject {
         let d               = UserDefaults.standard
         isPremium           = d.bool(forKey: Key.isPremium)
         freeIntroCompleted  = d.integer(forKey: Key.freeIntroCompleted)
-        dailyCompleted      = d.integer(forKey: Key.dailyCompleted)
+        dailyAttemptsUsed   = d.integer(forKey: Key.dailyAttemptsUsed)
         lastPlayDate        = (d.object(forKey: Key.lastPlayDate) as? Date) ?? Date()
     }
 
@@ -73,14 +75,14 @@ final class EntitlementStore: ObservableObject {
     var remainingToday: Int {
         if isPremium { return Int.max }
         if isInIntroPhase { return Self.freeIntroLimit - freeIntroCompleted }
-        return max(0, Self.dailyLimit - dailyCompleted)
+        return max(0, Self.dailyLimit - dailyAttemptsUsed)
     }
 
     /// True when the free player cannot play another mission right now.
     var dailyLimitReached: Bool {
         guard !isPremium else { return false }
         if isInIntroPhase { return false }   // intro never blocks
-        return dailyCompleted >= Self.dailyLimit
+        return dailyAttemptsUsed >= Self.dailyLimit
     }
 
     /// Human-readable reason why the player is blocked (nil if they can play).
@@ -109,7 +111,7 @@ final class EntitlementStore: ObservableObject {
         }
         let blocked = dailyLimitReached
         #if DEBUG
-        print("[ENTITLEMENT] canPlay(id=\(level.id)) → \(blocked ? "BLOCKED" : "ALLOWED") (daily: \(dailyCompleted)/\(Self.dailyLimit))")
+        print("[ENTITLEMENT] canPlay(id=\(level.id)) → \(blocked ? "BLOCKED" : "ALLOWED") (daily: \(dailyAttemptsUsed)/\(Self.dailyLimit))")
         #endif
         return !blocked
     }
@@ -123,25 +125,33 @@ final class EntitlementStore: ObservableObject {
         return canPlay(next)
     }
 
-    /// Call when a non-intro mission is successfully completed.
-    /// Increments the correct counter: intro quota first, then daily.
-    func recordMissionCompleted(_ level: Level) {
+    /// Call when a game session ends (WON or FAILED) and the player made ≥1 tap.
+    ///
+    /// - During intro phase: only `didWin == true` increments `freeIntroCompleted`; failures are free.
+    /// - After intro phase: both WON and FAILED increment `dailyAttemptsUsed`.
+    func recordAttempt(_ level: Level, didWin: Bool) {
         guard !isPremium else {
             #if DEBUG
-            print("[ENTITLEMENT] recordCompleted(id=\(level.id)) → skipped (premium)")
+            print("[ENTITLEMENT] recordAttempt(id=\(level.id), win=\(didWin)) → skipped (premium)")
             #endif
             return
         }
         if isInIntroPhase {
+            guard didWin else {
+                #if DEBUG
+                print("[ENTITLEMENT] recordAttempt(id=\(level.id), win=false) → intro phase, failure is free")
+                #endif
+                return
+            }
             freeIntroCompleted = min(freeIntroCompleted + 1, Self.freeIntroLimit)
             #if DEBUG
-            print("[ENTITLEMENT] recordCompleted(id=\(level.id)) → intro consumed: \(freeIntroCompleted)/\(Self.freeIntroLimit)")
+            print("[ENTITLEMENT] recordAttempt(id=\(level.id), win=true) → intro consumed: \(freeIntroCompleted)/\(Self.freeIntroLimit)")
             #endif
         } else {
             resetIfNewDay()
-            dailyCompleted += 1
+            dailyAttemptsUsed += 1
             #if DEBUG
-            print("[ENTITLEMENT] recordCompleted(id=\(level.id)) → daily consumed: \(dailyCompleted)/\(Self.dailyLimit) | limitReached=\(dailyLimitReached)")
+            print("[ENTITLEMENT] recordAttempt(id=\(level.id), win=\(didWin)) → daily consumed: \(dailyAttemptsUsed)/\(Self.dailyLimit) | limitReached=\(dailyLimitReached)")
             #endif
         }
         save()
@@ -155,10 +165,10 @@ final class EntitlementStore: ObservableObject {
         save()
     }
 
-    /// Reset the daily counter to 0.
+    /// Reset the daily attempts counter to 0.
     func resetDailyCount() {
-        dailyCompleted = 0
-        lastPlayDate   = Date()
+        dailyAttemptsUsed = 0
+        lastPlayDate      = Date()
         save()
     }
 
@@ -174,10 +184,10 @@ final class EntitlementStore: ObservableObject {
         save()
     }
 
-    /// Set the daily counter to an explicit value (clamped 0…dailyLimit).
-    func setDailyCompleted(_ value: Int) {
+    /// Set the daily attempts counter to an explicit value (clamped 0…dailyLimit).
+    func setDailyAttemptsUsed(_ value: Int) {
         resetIfNewDay()
-        dailyCompleted = max(0, min(value, Self.dailyLimit))
+        dailyAttemptsUsed = max(0, min(value, Self.dailyLimit))
         save()
     }
 
@@ -186,8 +196,8 @@ final class EntitlementStore: ObservableObject {
     @discardableResult
     private func resetIfNewDay() -> Bool {
         guard !Calendar.current.isDate(lastPlayDate, inSameDayAs: Date()) else { return false }
-        dailyCompleted = 0
-        lastPlayDate   = Date()
+        dailyAttemptsUsed = 0
+        lastPlayDate      = Date()
         save()
         return true
     }
@@ -196,7 +206,7 @@ final class EntitlementStore: ObservableObject {
         let d = UserDefaults.standard
         d.set(isPremium,          forKey: Key.isPremium)
         d.set(freeIntroCompleted, forKey: Key.freeIntroCompleted)
-        d.set(dailyCompleted,     forKey: Key.dailyCompleted)
+        d.set(dailyAttemptsUsed,  forKey: Key.dailyAttemptsUsed)
         d.set(lastPlayDate,       forKey: Key.lastPlayDate)
     }
 }

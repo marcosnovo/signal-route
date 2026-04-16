@@ -445,7 +445,7 @@ struct PaywallView: View {
 
     /// Dynamic progress stat: how many missions completed today.
     private var progressStatText: String {
-        let n = entitlement.dailyCompleted
+        let n = entitlement.dailyAttemptsUsed
         switch settings.language {
         case .en: return "\(n) mission\(n == 1 ? "" : "s") completed today"
         case .es: return "\(n) misión\(n == 1 ? "" : "es") completada\(n == 1 ? "" : "s") hoy"

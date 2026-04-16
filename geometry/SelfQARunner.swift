@@ -407,10 +407,10 @@ final class SelfQARunner: ObservableObject {
                   detail:    "remaining=\(store.remainingToday)",
                   fix:       "remainingToday must not be negative.")
 
-        r += pass("dailyCompleted ≥ 0", .monetization,
-                  condition: store.dailyCompleted >= 0,
-                  detail:    "dailyCompleted=\(store.dailyCompleted)",
-                  fix:       "dailyCompleted must not be negative.")
+        r += pass("dailyAttemptsUsed ≥ 0", .monetization,
+                  condition: store.dailyAttemptsUsed >= 0,
+                  detail:    "dailyAttemptsUsed=\(store.dailyAttemptsUsed)",
+                  fix:       "dailyAttemptsUsed must not be negative.")
 
         r += pass("freeIntroCompleted ≥ 0", .monetization,
                   condition: store.freeIntroCompleted >= 0,

@@ -17,7 +17,7 @@ enum PaywallMomentSelector {
     /// Context to use when the player just won and the daily limit is now reached.
     /// Returns nil if no paywall should fire (premium user or limit not yet reached).
     ///
-    /// Call AFTER `EntitlementStore.recordMissionCompleted` so `dailyLimitReached` is current.
+    /// Call AFTER `EntitlementStore.recordAttempt` so `dailyLimitReached` is current.
     static func contextAfterWin(
         event:       LevelUpEvent?,
         entitlement: EntitlementStore

@@ -5,6 +5,7 @@ struct geometryApp: App {
     @StateObject private var gcManager   = GameCenterManager.shared
     @StateObject private var entitlement = EntitlementStore.shared
     @StateObject private var storeKit    = StoreKitManager.shared
+    @StateObject private var cloudSave   = CloudSaveManager.shared
 
     var body: some Scene {
         WindowGroup {
@@ -13,6 +14,7 @@ struct geometryApp: App {
                 .environmentObject(SettingsStore.shared)
                 .environmentObject(entitlement)
                 .environmentObject(storeKit)
+                .environmentObject(cloudSave)
                 .task {
                     gcManager.authenticate()
                     await SoundManager.prepare()

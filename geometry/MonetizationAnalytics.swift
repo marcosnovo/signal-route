@@ -122,12 +122,15 @@ final class MonetizationAnalytics {
     /// Stored so `paywall_cta_tap`, `paywall_dismiss`, and `purchase_success` can
     /// include the context that opened this paywall session without re-passing it.
     private(set) var lastShownContext: PaywallContext?
+    /// Timestamp of the most recent paywall_shown event. Nil if no paywall shown this session.
+    private(set) var lastShownAt: Date?
 
     // MARK: - Events
 
     /// Fire when the paywall becomes visible.
     func trackPaywallShown(context: PaywallContext) {
         lastShownContext = context
+        lastShownAt      = Date()
         let snap = snapshot(context: context)
         backend.track(event: "paywall_shown", properties: snap.asDictionary)
     }
@@ -167,7 +170,7 @@ final class MonetizationAnalytics {
         return PaywallAnalyticsSnapshot(
             context:                context.analyticsName,
             playerSkillScore:       PlayerSkillTracker.shared.skillScore,
-            dailyMissionsPlayed:    EntitlementStore.shared.dailyCompleted,
+            dailyMissionsPlayed:    EntitlementStore.shared.dailyAttemptsUsed,
             missionsCompletedTotal: profile.uniqueCompletions,
             currentSector:          profile.progression.currentSector.id,
             currentPass:            PassStore.all.count,
