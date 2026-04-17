@@ -13,10 +13,13 @@ struct StoryBeatView: View {
     @EnvironmentObject private var settings: SettingsStore
     private var S: AppStrings { AppStrings(lang: settings.language) }
 
-    @State private var appeared  = false
-    @State private var dismissed = false
+    @State private var appeared      = false
+    @State private var dismissed     = false
+    @State private var displayedBody = ""
+    @State private var isTyping      = true
+    @State private var typeTask:      Task<Void, Never>? = nil
+    @State private var imgScale:      CGFloat = 1.0
 
-    // Resolved accent colour (beat-specific or fallback to accentPrimary)
     private var accentColor: Color {
         beat.accentHex.flatMap { Color(hex: $0) } ?? AppTheme.accentPrimary
     }
@@ -26,16 +29,14 @@ struct StoryBeatView: View {
             // ── Backdrop ──────────────────────────────────────────────
             Color.black.opacity(0.92)
                 .ignoresSafeArea()
-                .onTapGesture {
-                    if beat.isSkippable { dismiss() }
-                }
+                .onTapGesture { handleTap() }
 
-            // ── Subtle ambient glow ───────────────────────────────────
+            // ── Ambient glow ──────────────────────────────────────────
             RadialGradient(
-                gradient: Gradient(colors: [accentColor.opacity(0.08), .clear]),
+                gradient: Gradient(colors: [accentColor.opacity(0.10), .clear]),
                 center: .center,
                 startRadius: 40,
-                endRadius: 260
+                endRadius: 280
             )
             .ignoresSafeArea()
             .allowsHitTesting(false)
@@ -45,11 +46,12 @@ struct StoryBeatView: View {
                 Spacer()
 
                 VStack(spacing: 0) {
-                    // Optional image banner
-                    if let name = beat.imageName, let uiImage = UIImage(named: name)?.normalizedForDisplay {
+                    if let name = beat.imageName,
+                       let uiImage = UIImage(named: name)?.normalizedForDisplay {
                         imageBanner(uiImage, accent: accentColor)
+                    } else {
+                        compactHeader
                     }
-                    transmissionHeader
                     beatContent
                     acknowledgeButton
                 }
@@ -70,65 +72,84 @@ struct StoryBeatView: View {
                 Spacer()
             }
         }
-        // Opacity at ZStack level so backdrop + glow + card all fade together on dismiss.
-        // Prevents the backdrop staying visible after the card animates out.
         .opacity(appeared ? 1.0 : 0.0)
         .onAppear {
             withAnimation(.spring(response: 0.44, dampingFraction: 0.88)) {
                 appeared = true
             }
+            typeTask = Task {
+                try? await Task.sleep(for: .milliseconds(360))
+                await runTypewriter()
+            }
         }
+        .onDisappear { typeTask?.cancel() }
     }
 
     // MARK: - Sub-views
 
-    /// Full-width image banner with bottom gradient fade into the card background.
+    /// 16:9 image banner with slow zoom, bottom gradient fade, and source label.
     @ViewBuilder
     private func imageBanner(_ uiImage: UIImage, accent: Color) -> some View {
-        ZStack(alignment: .bottom) {
-            Image(uiImage: uiImage)
-                .resizable()
-                .scaledToFill()
-                .frame(maxWidth: .infinity)
-                .frame(height: 130)
-                .clipped()
-
-            LinearGradient(
-                gradient: Gradient(stops: [
-                    .init(color: .clear, location: 0.0),
-                    .init(color: AppTheme.backgroundSecondary.opacity(0.55), location: 0.78),
-                    .init(color: AppTheme.backgroundSecondary, location: 1.0)
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
+        // Color.clear establishes the 16:9 frame; Image fills it as an overlay.
+        Color.clear
+            .aspectRatio(CGFloat(16) / CGFloat(9), contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .overlay {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .scaleEffect(imgScale, anchor: .center)
+                    .clipped()
+            }
+            .overlay(alignment: .bottom) {
+                LinearGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: .clear,                                         location: 0.0),
+                        .init(color: AppTheme.backgroundSecondary.opacity(0.50),     location: 0.65),
+                        .init(color: AppTheme.backgroundSecondary,                   location: 1.0)
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 80)
+            }
+            .overlay(alignment: .bottomLeading) {
+                HStack(spacing: 5) {
+                    BlinkingDot(color: accent)
+                    Text(beat.source)
+                        .font(AppTheme.mono(7, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.68))
+                        .kerning(1.0)
+                }
+                .padding(.horizontal, 16).padding(.bottom, 10)
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 8).repeatForever(autoreverses: true)) {
+                    imgScale = 1.05
+                }
+            }
     }
 
-    /// Transmission origin header — styled like a comms channel indicator.
-    private var transmissionHeader: some View {
+    /// Compact header row — shown when no imageName is set.
+    private var compactHeader: some View {
         HStack(spacing: 8) {
             BlinkingDot(color: accentColor)
-
             Text(S.incomingTransmission)
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(accentColor.opacity(0.70))
                 .kerning(1.5)
-
             Spacer()
-
             Text(beat.source)
                 .font(AppTheme.mono(7, weight: .semibold))
                 .foregroundStyle(AppTheme.textSecondary)
                 .kerning(0.8)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 18).padding(.vertical, 10)
         .background(accentColor.opacity(0.06))
         .overlay(alignment: .bottom) { TechDivider() }
     }
 
-    /// Main narrative content — trigger badge, title, body, footer hint.
+    /// Trigger badge, title, typewriter body, footer hint.
     private var beatContent: some View {
         VStack(alignment: .leading, spacing: 14) {
 
@@ -152,14 +173,22 @@ struct StoryBeatView: View {
                 .kerning(3)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // Body
-            Text(beat.displayBody(for: settings.language))
-                .font(AppTheme.mono(11))
-                .foregroundStyle(AppTheme.textSecondary)
-                .lineSpacing(5)
-                .fixedSize(horizontal: false, vertical: true)
+            // Body — typewriter reveal.
+            // Invisible placeholder reserves layout height so the card never shifts.
+            ZStack(alignment: .topLeading) {
+                Text(beat.displayBody(for: settings.language))
+                    .opacity(0)
+                    .font(AppTheme.mono(11))
+                    .lineSpacing(5)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(displayedBody)
+                    .font(AppTheme.mono(11))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .lineSpacing(5)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
-            // Optional footer hint — localized via AppStrings
+            // Footer hint — fades in after typing completes; localized via AppStrings
             if let hint = beat.footerHint {
                 HStack(spacing: 5) {
                     Rectangle()
@@ -170,6 +199,8 @@ struct StoryBeatView: View {
                         .foregroundStyle(accentColor.opacity(0.70))
                         .kerning(1.0)
                 }
+                .opacity(isTyping ? 0 : 1)
+                .animation(.easeIn(duration: 0.28), value: isTyping)
             }
         }
         .padding(.horizontal, 18)
@@ -177,7 +208,7 @@ struct StoryBeatView: View {
         .padding(.bottom, 16)
     }
 
-    /// "ACKNOWLEDGE" CTA — the sole interactive element.
+    /// "ACKNOWLEDGE" CTA — disabled while typewriter is running.
     private var acknowledgeButton: some View {
         Button(action: dismiss) {
             HStack(spacing: 6) {
@@ -187,22 +218,57 @@ struct StoryBeatView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 8, weight: .bold))
             }
-            .foregroundStyle(Color.black)
+            .foregroundStyle(isTyping ? Color.black.opacity(0.45) : Color.black)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(accentColor)
+            .padding(.vertical, 17)   // 44pt minimum touch target (10pt font + 17 + 17)
+            .background(isTyping ? accentColor.opacity(0.45) : accentColor)
         }
         .buttonStyle(.plain)
+        .disabled(isTyping)
+        .animation(.easeOut(duration: 0.22), value: isTyping)
+    }
+
+    // MARK: - Typewriter
+
+    @MainActor
+    private func runTypewriter() async {
+        let localizedBody = beat.displayBody(for: settings.language)
+        displayedBody = ""
+        for char in localizedBody {
+            guard !Task.isCancelled else { return }
+            displayedBody.append(char)
+            try? await Task.sleep(for: .milliseconds(28))
+        }
+        guard !Task.isCancelled else { return }
+        displayedBody = localizedBody
+        withAnimation(.easeIn(duration: 0.18)) { isTyping = false }
     }
 
     // MARK: - Helpers
 
+    /// Tap while typing → skip to full text; tap after → dismiss (if skippable).
+    private func handleTap() {
+        if isTyping {
+            completeTyping()
+        } else if beat.isSkippable {
+            dismiss()
+        }
+    }
+
+    private func completeTyping() {
+        typeTask?.cancel()
+        typeTask = nil
+        displayedBody = beat.displayBody(for: settings.language)
+        withAnimation(.easeIn(duration: 0.18)) { isTyping = false }
+    }
+
     private func dismiss() {
         guard !dismissed else { return }
         dismissed = true
+        SoundManager.play(.storyAdvance)
+        HapticsManager.light()
+        typeTask?.cancel()
         withAnimation(.easeOut(duration: 0.22)) { appeared = false }
-        // Use Task + withAnimation so the structural removal of this view runs inside
-        // a valid animation context — mirrors StoryModal's dismiss pattern.
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(220))
             withAnimation(.easeOut(duration: 0.18)) { onDismiss() }
@@ -418,32 +484,14 @@ struct StoryModal: View {
 
     // MARK: - CTA button
 
-    /// Label adapts to language and beat context.
-    /// Middle beats: CONTINUE / CONTINUAR / CONTINUER
-    /// Last beat — firstMissionReady: PLAY / JUGAR / JOUER
-    /// Last beat — other: UNDERSTOOD / ENTENDIDO / COMPRIS
+    /// Label adapts to language and beat context via AppStrings.
+    /// Middle beats: S.continueAction  (CONTINUE / CONTINUAR / CONTINUER)
+    /// Last beat — firstMissionReady: S.play  (PLAY / JUGAR / JOUER)
+    /// Last beat — other: S.understood  (UNDERSTOOD / ENTENDIDO / COMPRIS)
     private var ctaLabel: String {
-        if hasNext {
-            switch settings.language {
-            case .en: return "CONTINUE"
-            case .es: return "CONTINUAR"
-            case .fr: return "CONTINUER"
-            }
-        }
-        switch beat.trigger {
-        case .firstMissionReady:
-            switch settings.language {
-            case .en: return "PLAY"
-            case .es: return "JUGAR"
-            case .fr: return "JOUER"
-            }
-        default:
-            switch settings.language {
-            case .en: return "UNDERSTOOD"
-            case .es: return "ENTENDIDO"
-            case .fr: return "COMPRIS"
-            }
-        }
+        if hasNext                          { return S.continueAction }
+        if beat.trigger == .firstMissionReady { return S.play         }
+        return S.understoodCTA
     }
 
     private var ctaIcon: String {
@@ -509,6 +557,8 @@ struct StoryModal: View {
     private func dismiss() {
         guard !dismissed else { return }
         dismissed = true
+        SoundManager.play(.storyAdvance)
+        HapticsManager.light()
         typeTask?.cancel()
         withAnimation(.easeOut(duration: 0.24)) { appeared = false }
         // Use Task + withAnimation instead of DispatchQueue so the structural removal
@@ -671,6 +721,11 @@ final class StoryBeatQueue {
     /// Deferred post-win batches (one per win event). Dispatched on Home return.
     private var pendingBatches: [[StoryBeat]] = []
 
+    /// UserDefaults key — persists pending beat IDs across app kills.
+    private static let pendingKey = "storyQueue.pendingBeatIDs"
+
+    init() { restoreIfNeeded() }
+
     /// True when at least one more beat is waiting after `current`.
     var hasNext: Bool { !queue.isEmpty }
 
@@ -687,21 +742,24 @@ final class StoryBeatQueue {
 
     /// Stage post-win beats for deferred display on Home return.
     /// Does nothing if `beats` is empty.
+    /// Persists beat IDs to UserDefaults so they survive app kills before the
+    /// player returns to Home.
     func enqueueBatch(_ beats: [StoryBeat]) {
         guard !beats.isEmpty else { return }
         pendingBatches.append(beats)
+        savePendingBatches()
     }
 
-    /// Call when the player returns to Home. Promotes the most-recent pending
-    /// batch to the live queue and silently marks all older batches seen,
-    /// preventing narrative flooding when multiple wins happened in sequence.
+    /// Call when the player returns to Home. Flattens ALL pending batches,
+    /// deduplicates by beat ID, and enqueues them all — no beat is silently
+    /// dropped when multiple wins happened in a single session.
     func dispatchPendingBatches() {
         guard !pendingBatches.isEmpty else { return }
-        // Mark all older batches seen (suppress duplicates / stale beats)
-        pendingBatches.dropLast().flatMap { $0 }.forEach { StoryStore.markSeen($0) }
-        // Show only the most recent batch
-        if let batch = pendingBatches.last { enqueue(batch) }
+        UserDefaults.standard.removeObject(forKey: Self.pendingKey)
+        var seenIDs = Set<String>()
+        let all = pendingBatches.flatMap { $0 }.filter { seenIDs.insert($0.id).inserted }
         pendingBatches.removeAll()
+        if !all.isEmpty { enqueue(all) }
     }
 
     /// Dismiss the current beat (marks it seen) and advance to the next, if any.
@@ -717,6 +775,30 @@ final class StoryBeatQueue {
             current = nil
         } else {
             current = queue.removeFirst()
+        }
+    }
+
+    // MARK: - Persistence
+
+    /// Restore any pending batches that were staged before an app kill.
+    private func restoreIfNeeded() {
+        let ids = UserDefaults.standard.stringArray(forKey: Self.pendingKey) ?? []
+        guard !ids.isEmpty else { return }
+        let beats = ids.compactMap { id in StoryBeatCatalog.beats.first(where: { $0.id == id }) }
+        guard !beats.isEmpty else {
+            UserDefaults.standard.removeObject(forKey: Self.pendingKey)
+            return
+        }
+        // Restore as a single batch; dispatchPendingBatches will dequeue it on Home return.
+        pendingBatches.append(beats)
+    }
+
+    private func savePendingBatches() {
+        let ids = pendingBatches.flatMap { $0 }.map(\.id)
+        if ids.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.pendingKey)
+        } else {
+            UserDefaults.standard.set(ids, forKey: Self.pendingKey)
         }
     }
 }

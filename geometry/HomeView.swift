@@ -145,7 +145,7 @@ struct HomeView: View {
                         TrainingCard()
                             .padding(.horizontal, 20)
                             .padding(.top, 28)
-                        Button(action: { onPlay(LevelGenerator.introLevel) }) {
+                        Button(action: { SoundManager.play(.tapPrimary); onPlay(LevelGenerator.introLevel) }) {
                             HStack(spacing: 10) {
                                 Text(S.initializeTraining)
                                     .font(AppTheme.mono(12, weight: .bold))
@@ -326,7 +326,7 @@ struct HomeView: View {
         }
         .buttonStyle(PlayPressStyle(onPress: {
             HapticsManager.medium()
-            SoundManager.play(.timerTick)
+            SoundManager.play(.tapPrimary)
         }))
         .shadow(color: AppTheme.accentPrimary.opacity(fabPulsing ? 0.28 : 0.10),
                 radius: 12, y: 3)
@@ -344,7 +344,7 @@ struct HomeView: View {
     /// Unauthenticated: trophy outline + "CONNECT" text (tapping triggers GK sign-in).
     private var leaderboardSecondaryButton: some View {
         let isAuth = gcManager.isAuthenticated
-        return Button(action: { gcManager.openLeaderboards() }) {
+        return Button(action: { SoundManager.play(.tapSecondary); gcManager.openLeaderboards() }) {
             HStack(spacing: 10) {
                 // Trophy icon — always present, color conveys auth state
                 Image(systemName: isAuth ? "trophy.fill" : "trophy")
@@ -537,7 +537,7 @@ struct HomeView: View {
         // Same dark base used by TicketRenderer and AstronautProgressCard
         let ticketDark  = Color(red: 0.040, green: 0.047, blue: 0.059)
 
-        return Button(action: { showingPlanetTicket = true }) {
+        return Button(action: { SoundManager.play(.tapSecondary); showingPlanetTicket = true }) {
             ZStack(alignment: .topLeading) {
 
                 // ── Background: ticket dark + right-edge planet orb glow ─
@@ -669,7 +669,7 @@ struct HomeView: View {
         let frac = total > 0 ? CGFloat(done) / CGFloat(total) : 0
         let pct  = Int((frac * 100).rounded())
 
-        return Button(action: onMissions) {
+        return Button(action: { SoundManager.play(.tapSecondary); onMissions() }) {
             ZStack(alignment: .topLeading) {
 
                 // ── Background ───────────────────────────────────────────
@@ -1831,7 +1831,7 @@ private struct PlayCTAButton: View {
         }
         .buttonStyle(PlayPressStyle(onPress: {
             HapticsManager.medium()
-            SoundManager.play(.timerTick)   // 18 ms clean digital tick — subtle, sci-fi
+            SoundManager.play(.tapPrimary)
         }))
         .shadow(color: AppTheme.accentPrimary.opacity(pulsing ? 0.42 : 0.06), radius: 14)
         .onAppear {

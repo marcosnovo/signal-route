@@ -122,6 +122,9 @@ struct NarrativeIntroView: View {
 
     // Prevent double-advance when tapping fast
     @State private var isTransitioning = false
+    // Set true when the user taps to skip mid-reveal, so revealPanel() exits
+    // its loop without overwriting the already-complete visibleSentences value.
+    @State private var revealSkipped   = false
 
     private var panel: (sentences: [String], accentHex: String) {
         panels[currentPanel]
@@ -161,7 +164,7 @@ struct NarrativeIntroView: View {
                             .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
                             .kerning(1.5)
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 18)   // 44pt minimum touch target
                     }
                     .buttonStyle(.plain)
                 }
@@ -238,7 +241,9 @@ struct NarrativeIntroView: View {
 
     private func handleTap() {
         if !allSentencesVisible {
-            // First tap: skip to all sentences visible immediately
+            // Flag first so revealPanel()'s guard fires before it can set
+            // visibleSentences back to an intermediate value after its next sleep.
+            revealSkipped = true
             withAnimation(.easeIn(duration: 0.25)) {
                 visibleSentences = panel.sentences.count
             }
@@ -263,11 +268,12 @@ struct NarrativeIntroView: View {
             withAnimation(.easeOut(duration: 0.3)) { contentOpacity = 0 }
             Task {
                 try? await Task.sleep(for: .milliseconds(320))
-                currentPanel += 1
-                visibleSentences = 0
-                showContinue     = false
+                currentPanel     += 1
+                visibleSentences  = 0
+                showContinue      = false
+                revealSkipped     = false   // reset so the next panel reveals normally
                 withAnimation(.easeIn(duration: 0.3)) { contentOpacity = 1 }
-                isTransitioning  = false
+                isTransitioning   = false
             }
         }
     }
@@ -284,21 +290,21 @@ struct NarrativeIntroView: View {
 
     @MainActor
     private func revealPanel() async {
-        let nonEmpty = panel.sentences.filter { !$0.isEmpty }.count
         var revealed = 0
         for i in panel.sentences.indices {
             guard !panel.sentences[i].isEmpty else { continue }
             let delay: Duration = revealed == 0 ? .milliseconds(300) : .milliseconds(480)
             try? await Task.sleep(for: delay)
-            // Abort if panel changed mid-reveal
-            guard !Task.isCancelled else { return }
+            // Abort if panel changed (task cancelled) or user already tapped to skip.
+            // revealSkipped must be checked AFTER the sleep so we don't overwrite the
+            // full-reveal that handleTap() set while we were sleeping.
+            guard !Task.isCancelled, !revealSkipped else { return }
             revealed += 1
             visibleSentences = i + 1
         }
-        // Show continue prompt after a brief pause
+        // Show continue prompt after a brief pause (only if user hasn't skipped).
         try? await Task.sleep(for: .milliseconds(500))
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, !revealSkipped else { return }
         withAnimation(.easeIn(duration: 0.3)) { showContinue = true }
-        _ = nonEmpty  // suppress unused warning
     }
 }

@@ -87,7 +87,7 @@ struct VictoryTelemetryView: View {
 
     private var navStrip: some View {
         HStack {
-            Button(action: onDismiss) {
+            Button(action: { SoundManager.play(.tapSecondary); onDismiss() }) {
                 HStack(spacing: 5) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 10, weight: .bold))
@@ -398,7 +398,7 @@ struct VictoryTelemetryView: View {
 
             // ── FASE 2: When blocked, premium CTA is the dominant element ─────
             if !canContinue, let onUpgrade, let next = nextMission {
-                Button(action: onUpgrade) {
+                Button(action: { SoundManager.play(.tapPrimary); onUpgrade() }) {
                     HStack(spacing: 0) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(S.unlockUnlimitedAccess)
@@ -454,7 +454,7 @@ struct VictoryTelemetryView: View {
 
             // ── Primary: NEXT MISSION — only when free to play ───────────────
             if canContinue, let next = nextMission {
-                Button(action: { onNextMission?() }) {
+                Button(action: { SoundManager.play(.tapPrimary); onNextMission?() }) {
                     HStack(spacing: 0) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(S.nextMissionLabel(next.displayID))
@@ -486,14 +486,14 @@ struct VictoryTelemetryView: View {
 
             // ── Secondary row: RETRY / SHARE / MAP / HOME ──────────────
             HStack(spacing: 0) {
-                Button(action: onRestart) {
+                Button(action: { SoundManager.play(.tapSecondary); onRestart() }) {
                     secondaryButton(icon: "arrow.counterclockwise", label: S.retryLabel,
                                     color: AppTheme.textPrimary)
                 }
 
                 Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
 
-                Button(action: shareTicket) {
+                Button(action: { SoundManager.play(.tapSecondary); shareTicket() }) {
                     secondaryButton(icon: "square.and.arrow.up", label: S.shareLabel,
                                     color: AppTheme.textSecondary)
                 }
@@ -501,7 +501,7 @@ struct VictoryTelemetryView: View {
                 if onMissions != nil {
                     Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
 
-                    Button(action: { onMissions?() }) {
+                    Button(action: { SoundManager.play(.tapSecondary); onMissions?() }) {
                         secondaryButton(icon: "map", label: S.mapLabel,
                                         color: AppTheme.sage.opacity(0.75))
                     }
@@ -509,7 +509,7 @@ struct VictoryTelemetryView: View {
 
                 Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
 
-                Button(action: onDismiss) {
+                Button(action: { SoundManager.play(.tapSecondary); onDismiss() }) {
                     secondaryButton(icon: "house", label: S.home,
                                     color: AppTheme.sage.opacity(0.55))
                 }
@@ -519,7 +519,7 @@ struct VictoryTelemetryView: View {
             // ── Upgrade banner — free users on Lunar+, only when not already blocked ──
             // When canContinue is false the locked primary CTA already serves as the paywall gate.
             if !entitlement.isPremium && isLunarOrBeyond, let onUpgrade, canContinue {
-                Button(action: onUpgrade) {
+                Button(action: { SoundManager.play(.tapSecondary); onUpgrade() }) {
                     HStack(spacing: 8) {
                         Image(systemName: "infinity")
                             .font(.system(size: 10, weight: .bold))

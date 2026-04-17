@@ -11,36 +11,52 @@ struct geometryApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
 
+    /// Coordinates the launch splash. Drives audio + StoreKit init concurrently
+    /// with a 3-second hard cap. Stored as @State so SwiftUI tracks isDone changes.
+    @State private var splash = SplashCoordinator()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(gcManager)
-                .environmentObject(SettingsStore.shared)
-                .environmentObject(entitlement)
-                .environmentObject(storeKit)
-                .environmentObject(cloudSave)
-                .onChange(of: scenePhase) { _, phase in
-                    switch phase {
-                    case .active:
-                        AudioManager.shared.handleForeground()
-                    case .background:
-                        AudioManager.shared.handleBackground()
-                    default:
-                        break
-                    }
+            ZStack {
+                // Game UI is rendered first so it is warm when the splash exits.
+                ContentView()
+                    .environmentObject(gcManager)
+                    .environmentObject(SettingsStore.shared)
+                    .environmentObject(entitlement)
+                    .environmentObject(storeKit)
+                    .environmentObject(cloudSave)
+
+                // Splash overlay — removed once coordinator signals done.
+                if !splash.isDone {
+                    SplashView(coordinator: splash)
+                        .transition(
+                            .opacity.combined(with: .scale(scale: 1.04))
+                        )
+                        .zIndex(999)
                 }
-                .task {
-                    gcManager.authenticate()
-                    await AudioManager.shared.prepare()
-                    // Subtle sonic logo plays on every cold launch — brand identity moment
-                    SoundManager.play(.sonicLogoSubtle)
-                    // Restore premium across reinstalls / new devices
-                    await storeKit.checkEntitlements()
-                    await storeKit.loadProduct()
-                    #if DEBUG
-                    StoryAssetValidator.validate()
-                    #endif
+            }
+            .animation(.easeOut(duration: 0.55), value: splash.isDone)
+            .onChange(of: scenePhase) { _, phase in
+                switch phase {
+                case .active:
+                    AudioManager.shared.handleForeground()
+                case .background:
+                    AudioManager.shared.handleBackground()
+                default:
+                    break
                 }
+            }
+            .task {
+                // Game Center auth is fire-and-forget — not a splash gate.
+                gcManager.authenticate()
+                // Sonic logo: plays during splash so it's audible on cold launch.
+                SoundManager.play(.sonicLogoSubtle)
+                // Coordinator runs audio + StoreKit concurrently (max 3 s).
+                await splash.run(storeKit: storeKit)
+                #if DEBUG
+                StoryAssetValidator.validate()
+                #endif
+            }
         }
     }
 }

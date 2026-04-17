@@ -304,6 +304,7 @@ struct AppStrings {
     // MARK: - Story beat UI labels
     var incomingTransmission: String { t("INCOMING TRANSMISSION", "TRANSMISIÓN ENTRANTE", "TRANSMISSION ENTRANTE") }
     var acknowledge:          String { t("ACKNOWLEDGE",           "RECONOCER",            "RECONNAÎTRE") }
+    var understoodCTA:        String { t("UNDERSTOOD",            "ENTENDIDO",            "COMPRIS") }
 
     /// Returns the localized version of a story beat footer hint.
     /// The English text is used as the key; falls back to the original string for unknown hints.
@@ -311,6 +312,7 @@ struct AppStrings {
         switch hint {
         case "EARTH ORBIT SECTOR ACTIVE":     return t(hint, "SECTOR ÓRBITA TERRESTRE ACTIVO",          "SECTEUR ORBITE TERRESTRE ACTIF")
         case "MISSION 1 LOADED":              return t(hint, "MISIÓN 1 CARGADA",                         "MISSION 1 CHARGÉE")
+        case "NEXT WINDOW: 24H":             return t(hint, "PRÓXIMA VENTANA: 24H",                     "PROCHAINE FENÊTRE: 24H")
         case "LUNAR APPROACH UNLOCKED":       return t(hint, "LLEGADA LUNAR DESBLOQUEADA",               "APPROCHE LUNAIRE DÉBLOQUÉE")
         case "MARS SECTOR UNLOCKED":          return t(hint, "SECTOR MARTE DESBLOQUEADO",                "SECTEUR MARS DÉBLOQUÉ")
         case "ASTEROID BELT ROUTE OPEN":      return t(hint, "RUTA DEL CINTURÓN ABIERTA",               "ROUTE DE LA CEINTURE OUVERTE")

@@ -45,11 +45,27 @@ struct DevMenuView: View {
     @State private var storyTriggerFilter: StoryTrigger?   = nil
     /// Set to show a StoryBeatView preview overlay inside DevMenuView.
     @State private var previewingBeat:     StoryBeat?      = nil
+    /// Queue of beats waiting to be shown after `previewingBeat` is dismissed.
+    @State private var previewBeatQueue:   [StoryBeat]     = []
     /// Bumped after any seen/unseen toggle to force list recomputation.
     @State private var storyRefreshID:     UUID            = UUID()
     /// Result of the last StoryAssetValidator run (nil = not yet run).
     @State private var assetValidation:    StoryAssetValidator.Result? = nil
     @State private var storySearch:        String = ""
+    /// Beat IDs marked as reviewed in the Story Assets Preview section (session-only).
+    @State private var reviewedBeatIDs:    Set<String> = []
+    /// Whether the Story Assets Preview section is expanded.
+    @State private var showAssetPreview:   Bool = false
+    /// Whether the Story Sequence Tester section is expanded.
+    @State private var showSequenceTester: Bool = false
+    /// Lines of the last consistency report run (nil = not yet run).
+    @State private var consistencyReport:  [String]? = nil
+    /// ID of the last beat fired via simulateBeat (session-only, for live feedback).
+    @State private var lastSimulatedID:    String?   = nil
+    /// Results from the last Narrative QA catalog check (nil = not yet run).
+    @State private var narrativeQAReport:  NarrativeQAReport? = nil
+    /// Whether the Narrative QA section is expanded.
+    @State private var showNarrativeQA:    Bool = false
 
     // ── Toast feedback ────────────────────────────────────────────────────
     struct DevToast: Identifiable {
@@ -294,8 +310,8 @@ struct DevMenuView: View {
 
             // ── Story beat preview overlay (full StoryModal for visual fidelity) ──
             if let beat = previewingBeat {
-                StoryModal(beat: beat, hasNext: false) {
-                    withAnimation(.easeOut(duration: 0.22)) { previewingBeat = nil }
+                StoryModal(beat: beat, hasNext: !previewBeatQueue.isEmpty) {
+                    withAnimation(.easeOut(duration: 0.22)) { advancePreviewBeatQueue() }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 .zIndex(300)
@@ -2593,6 +2609,10 @@ struct DevMenuView: View {
     private var toolsPanel: some View {
         ScrollView {
             VStack(spacing: 0) {
+                #if DEBUG
+                audioSection
+                TechDivider()
+                #endif
                 onboardingSection
                 TechDivider()
                 #if DEBUG
@@ -2607,6 +2627,107 @@ struct DevMenuView: View {
             }
         }
     }
+
+    // ── Audio Debug ────────────────────────────────────────────────────────
+
+    #if DEBUG
+    @State private var audioToast: String? = nil
+
+    private var audioSection: some View {
+        let am = AudioManager.shared
+        return VStack(spacing: 0) {
+            sectionHeader("AUDIO DEBUG")
+
+            // ── Live status ──────────────────────────────────────────────
+            TimelineView(.periodic(from: Date(), by: 1)) { _ in
+                VStack(spacing: 4) {
+                    HStack {
+                        audioStatusRow("STATE",  am.currentState.debugLabel)
+                        Spacer()
+                        audioStatusRow("TRACK",  am.currentTrackLabel)
+                    }
+                    HStack {
+                        audioStatusRow("MUSIC",  am.musicEnabled ? "ON"  : "OFF")
+                        Spacer()
+                        audioStatusRow("SFX",    am.sfxEnabled   ? "ON"  : "OFF")
+                        Spacer()
+                        audioStatusRow("DUCK",   am.isDucked     ? "YES" : "NO")
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+            }
+
+            TechDivider().padding(.horizontal, 16)
+
+            // ── Simulate state ───────────────────────────────────────────
+            simulateGroup("SIMULATE STATE") {
+                storySimBtn("HOME",    color: AppTheme.textSecondary) { AudioManager.shared.transition(to: .homeIdle)  }
+                storySimBtn("MISSION", color: AppTheme.accentPrimary) { AudioManager.shared.transition(to: .inMission) }
+                storySimBtn("VICTORY", color: AppTheme.sage)          { AudioManager.shared.transition(to: .victory)   }
+                storySimBtn("STORY",   color: AppTheme.sage)          { AudioManager.shared.transition(to: .story)     }
+                storySimBtn("PAYWALL", color: Color.orange)            { AudioManager.shared.transition(to: .paywall)   }
+                storySimBtn("STOP",    color: AppTheme.textSecondary) { AudioManager.shared.stopMusic()                }
+            }
+
+            TechDivider().padding(.horizontal, 16)
+
+            // ── Duck test ────────────────────────────────────────────────
+            simulateGroup("DUCK TEST") {
+                storySimBtn("DUCK ▼",   color: Color.yellow) { AudioManager.shared.duck()   }
+                storySimBtn("UNDUCK ▲", color: Color.yellow) { AudioManager.shared.unduck() }
+            }
+
+            TechDivider().padding(.horizontal, 16)
+
+            // ── SFX library ──────────────────────────────────────────────
+            simulateGroup("SFX — UI") {
+                audioSFXBtn("TAP.P",   .tapPrimary)
+                audioSFXBtn("TAP.S",   .tapSecondary)
+                audioSFXBtn("STORY",   .storyAdvance)
+                audioSFXBtn("SUCCESS", .uiSuccess)
+            }
+            simulateGroup("SFX — MISSION") {
+                audioSFXBtn("ROTATE",  .tileRotate)
+                audioSFXBtn("RELAY",   .relayEnergized)
+                audioSFXBtn("TARGET",  .targetOnline)
+                audioSFXBtn("LOCKED",  .tileLocked)
+                audioSFXBtn("DRIFT",   .drift)
+                audioSFXBtn("OVERLOAD",.overloadArm)
+            }
+            simulateGroup("SFX — RESULT") {
+                audioSFXBtn("WIN",     .win)
+                audioSFXBtn("TICK",    .timerTick)
+            }
+
+            // ── Toast ─────────────────────────────────────────────────────
+            if let toast = audioToast {
+                Text(toast)
+                    .font(AppTheme.mono(9))
+                    .foregroundStyle(AppTheme.accentPrimary)
+                    .padding(.vertical, 6)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private func audioStatusRow(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            TechLabel(text: label, color: AppTheme.textSecondary.opacity(0.7))
+            TechLabel(text: value, color: AppTheme.textPrimary)
+        }
+    }
+
+    private func audioSFXBtn(_ label: String, _ sfx: SoundManager.SFX) -> some View {
+        storySimBtn(label, color: AppTheme.accentPrimary) {
+            SoundManager.debugPlay(sfx)
+            withAnimation(.easeIn(duration: 0.15)) { audioToast = "▶ \(label)" }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                withAnimation(.easeOut(duration: 0.3)) { audioToast = nil }
+            }
+        }
+    }
+    #endif
 
     // ── Onboarding ─────────────────────────────────────────────────────────
 
@@ -3750,11 +3871,300 @@ struct DevMenuView: View {
                 TechDivider()
                 storyAssetSection
                 TechDivider()
+                narrativeQASection
+                TechDivider()
+                storyAssetPreviewSection
+                TechDivider()
                 storySimulateSection
+                TechDivider()
+                storySequenceTesterSection
                 TechDivider()
                 storyBeatList
             }
         }
+    }
+
+    // ── Pending queue inspector ────────────────────────────────────────────
+
+    private var storyPendingQueueSection: some View {
+        let pendingIDs = UserDefaults.standard.stringArray(forKey: "storyQueue.pendingBeatIDs") ?? []
+
+        return VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("PENDING QUEUE")
+                            .font(AppTheme.mono(8, weight: .black)).kerning(1.0)
+                            .foregroundStyle(pendingIDs.isEmpty
+                                             ? AppTheme.textSecondary.opacity(0.40)
+                                             : AppTheme.accentPrimary)
+                        if !pendingIDs.isEmpty {
+                            Text("\(pendingIDs.count)")
+                                .font(AppTheme.mono(7, weight: .bold))
+                                .foregroundStyle(.black)
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(AppTheme.accentPrimary)
+                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                        }
+                    }
+                    if pendingIDs.isEmpty {
+                        Text("no beats waiting")
+                            .font(AppTheme.mono(8))
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.30))
+                    } else {
+                        ForEach(pendingIDs, id: \.self) { beatID in
+                            Text("• \(beatID)")
+                                .font(AppTheme.mono(8))
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                Spacer()
+                if !pendingIDs.isEmpty {
+                    scenarioBtn("CLEAR", icon: "xmark.circle", color: AppTheme.danger) {
+                        UserDefaults.standard.removeObject(forKey: "storyQueue.pendingBeatIDs")
+                        storyRefreshID = UUID()
+                        showToast("Pending queue cleared", style: .warning)
+                    }
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+
+            if let lastID = lastSimulatedID {
+                TechDivider()
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.50))
+                    Text("LAST SIMULATED")
+                        .font(AppTheme.mono(7, weight: .bold)).kerning(0.8)
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.50))
+                    Text(lastID)
+                        .font(AppTheme.mono(8, weight: .semibold))
+                        .foregroundStyle(AppTheme.accentPrimary.opacity(0.70))
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.vertical, 7)
+            }
+        }
+        .background(AppTheme.backgroundSecondary.opacity(0.50))
+        .id(storyRefreshID)  // re-evaluates UserDefaults read when refresh fires
+    }
+
+    // ── Narrative QA ──────────────────────────────────────────────────────
+
+    /// Lightweight catalog-only check — no UIImage calls, runs synchronously.
+    struct NarrativeQAReport {
+        struct Issue { let severity: Severity; let message: String
+            enum Severity { case error, warning }
+        }
+        let issues: [Issue]
+        var errorCount:   Int { issues.filter { $0.severity == .error   }.count }
+        var warningCount: Int { issues.filter { $0.severity == .warning }.count }
+        var isClean: Bool { errorCount == 0 }
+    }
+
+    private func runNarrativeQA() -> NarrativeQAReport {
+        var issues: [NarrativeQAReport.Issue] = []
+        let beats = StoryBeatCatalog.beats
+
+        // 1. Unique IDs
+        let ids = beats.map(\.id)
+        let duplicateIDs = Set(ids.filter { id in ids.filter { $0 == id }.count > 1 })
+        for id in duplicateIDs.sorted() {
+            issues.append(.init(severity: .error, message: "Duplicate beat ID: \(id)"))
+        }
+
+        // 2. Non-empty required fields
+        for beat in beats {
+            if beat.title.isEmpty  { issues.append(.init(severity: .error,   message: "'\(beat.id)' empty title"))  }
+            if beat.body.isEmpty   { issues.append(.init(severity: .error,   message: "'\(beat.id)' empty body"))   }
+            if beat.source.isEmpty { issues.append(.init(severity: .error,   message: "'\(beat.id)' empty source")) }
+        }
+
+        // 3. Locale strings non-empty
+        for beat in beats {
+            if let lt = beat.localizedTitle {
+                if lt.es.isEmpty { issues.append(.init(severity: .error, message: "'\(beat.id)' localizedTitle.es empty")) }
+                if lt.fr.isEmpty { issues.append(.init(severity: .error, message: "'\(beat.id)' localizedTitle.fr empty")) }
+            }
+            if let lb = beat.localizedBody {
+                if lb.es.isEmpty { issues.append(.init(severity: .error, message: "'\(beat.id)' localizedBody.es empty")) }
+                if lb.fr.isEmpty { issues.append(.init(severity: .error, message: "'\(beat.id)' localizedBody.fr empty")) }
+            }
+        }
+
+        // 4. Locale strings distinct per language
+        for beat in beats {
+            if beat.localizedTitle != nil {
+                let en = beat.displayTitle(for: .en)
+                if beat.displayTitle(for: .es) == en { issues.append(.init(severity: .warning, message: "'\(beat.id)' ES title == EN")) }
+                if beat.displayTitle(for: .fr) == en { issues.append(.init(severity: .warning, message: "'\(beat.id)' FR title == EN")) }
+            }
+            if beat.localizedBody != nil {
+                let en = beat.displayBody(for: .en)
+                if beat.displayBody(for: .es) == en { issues.append(.init(severity: .warning, message: "'\(beat.id)' ES body == EN")) }
+                if beat.displayBody(for: .fr) == en { issues.append(.init(severity: .warning, message: "'\(beat.id)' FR body == EN")) }
+            }
+        }
+
+        // 5. Beats with no imageName
+        let noImage = beats.filter { $0.imageName == nil }
+        if !noImage.isEmpty {
+            issues.append(.init(severity: .warning,
+                                message: "\(noImage.count) beat(s) have no imageName: \(noImage.map(\.id).joined(separator: ", "))"))
+        }
+
+        return NarrativeQAReport(issues: issues)
+    }
+
+    private var narrativeQASection: some View {
+        VStack(spacing: 0) {
+            // ── Collapsible header ────────────────────────────────────────
+            Button(action: {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                    showNarrativeQA.toggle()
+                }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "checklist.checked")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(AppTheme.accentPrimary)
+                    Text("NARRATIVE QA")
+                        .font(AppTheme.mono(9, weight: .black)).kerning(1.2)
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Spacer()
+                    if let r = narrativeQAReport {
+                        Text(r.isClean ? "PASS" : "\(r.errorCount)E \(r.warningCount)W")
+                            .font(AppTheme.mono(7, weight: .bold)).kerning(0.6)
+                            .foregroundStyle(r.isClean ? AppTheme.sage : AppTheme.danger)
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background((r.isClean ? AppTheme.sage : AppTheme.danger).opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
+                    Image(systemName: showNarrativeQA ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.50))
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+
+            if showNarrativeQA {
+                TechDivider()
+
+                // ── Run button + summary ──────────────────────────────────
+                VStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        scenarioBtn("RUN CATALOG CHECK", icon: "doc.badge.gearshape", color: AppTheme.accentPrimary) {
+                            let r = runNarrativeQA()
+                            narrativeQAReport = r
+                            showToast(r.isClean
+                                      ? "✓ Catalog clean — \(StoryBeatCatalog.beats.count) beats"
+                                      : "✗ \(r.errorCount) error(s), \(r.warningCount) warning(s)",
+                                      style: r.isClean ? .success : .fail)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+
+                    // ── Issue list ────────────────────────────────────────
+                    if let r = narrativeQAReport {
+                        if r.issues.isEmpty {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(AppTheme.sage)
+                                Text("All \(StoryBeatCatalog.beats.count) beats passed catalog checks")
+                                    .font(AppTheme.mono(8))
+                                    .foregroundStyle(AppTheme.textSecondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                        } else {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(Array(r.issues.enumerated()), id: \.offset) { _, issue in
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Text(issue.severity == .error ? "✗" : "⚠")
+                                            .font(AppTheme.mono(8, weight: .bold))
+                                            .foregroundStyle(issue.severity == .error
+                                                             ? AppTheme.danger : Color(hex: "FFB800"))
+                                        Text(issue.message)
+                                            .font(AppTheme.mono(7))
+                                            .foregroundStyle(AppTheme.textSecondary)
+                                            .lineLimit(2)
+                                        Spacer()
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+
+                    TechDivider()
+
+                    // ── Preview shortcuts ─────────────────────────────────
+                    VStack(alignment: .leading, spacing: 6) {
+                        TechLabel(text: "PREVIEW BY CATEGORY", color: AppTheme.textSecondary.opacity(0.70))
+                            .padding(.horizontal, 16)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(StoryTrigger.allCases, id: \.self) { trigger in
+                                    let beats = StoryBeatCatalog.beats.filter { $0.trigger == trigger }
+                                    if !beats.isEmpty {
+                                        storySimBtn(trigger.rawValue.uppercased().replacingOccurrences(of: "_", with: " "),
+                                                    color: AppTheme.textSecondary) {
+                                            let sorted = beats.sorted { $0.priority < $1.priority }
+                                            if !sorted.isEmpty {
+                                                previewBeatQueue = Array(sorted.dropFirst())
+                                                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                                    previewingBeat = sorted[0]
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                    .padding(.vertical, 10)
+
+                    TechDivider()
+
+                    // ── Conflict simulations ──────────────────────────────
+                    VStack(alignment: .leading, spacing: 6) {
+                        TechLabel(text: "CONFLICT SCENARIOS", color: AppTheme.textSecondary.opacity(0.70))
+                            .padding(.horizontal, 16)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                // Preview the first beat that would fire at onboardingComplete
+                                // while a paywall would normally appear — verifies beat takes priority.
+                                storySimBtn("PAYWALL CONFLICT", color: Color(hex: "FF6B6B")) {
+                                    simulateBeat("story_onboarding_complete")
+                                    showToast("Beat shown — paywall suppressed during story beat", style: .warning)
+                                }
+                                // Preview a beat during simulated cooldown — confirms beat still surfaces.
+                                storySimBtn("COOLDOWN CONFLICT", color: Color(hex: "FFB800")) {
+                                    simulateBeat("story_first_mission_complete")
+                                    showToast("Beat shown — cooldown gate yields to story beat", style: .warning)
+                                }
+                                // Preview all unseen beats in queue order.
+                                storySimBtn("QUEUE: ALL UNSEEN", color: AppTheme.accentPrimary) {
+                                    playUnseenSequence()
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                    .padding(.bottom, 12)
+                }
+                .background(AppTheme.backgroundSecondary.opacity(0.40))
+            }
+        }
+        .background(AppTheme.surface)
     }
 
     // ── Asset validation ───────────────────────────────────────────────────
@@ -3771,30 +4181,88 @@ struct DevMenuView: View {
             .padding(.horizontal, 16).padding(.vertical, 10)
 
             if let result = assetValidation {
-                HStack(spacing: 12) {
-                    if result.isValid {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(AppTheme.sage)
-                        Text("All \(result.checkedCount) assets present")
-                            .font(.system(size: 13, weight: .medium, design: .monospaced))
-                            .foregroundColor(AppTheme.sage)
-                    } else {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(AppTheme.danger)
+                VStack(alignment: .leading, spacing: 10) {
+
+                    // ── Summary bar ───────────────────────────────────────
+                    HStack(spacing: 0) {
+                        miniStat("ERRORS",   "\(result.errorCount)")
+                        statDivider()
+                        miniStat("WARNINGS", "\(result.warningCount)")
+                        statDivider()
+                        miniStat("CHECKED",  "\(result.checkedCount)")
+                        statDivider()
+                        miniStat("ORPHANS",  "\(result.orphanAssets.count)")
+                    }
+                    .padding(.vertical, 6)
+                    .background(result.isValid ? AppTheme.sage.opacity(0.06) : AppTheme.danger.opacity(0.06))
+
+                    // ── 1. Missing assets (ERROR) ─────────────────────────
+                    assetResultGroup(
+                        icon:  result.missingAssets.isEmpty ? "checkmark.circle.fill" : "xmark.circle.fill",
+                        color: result.missingAssets.isEmpty ? AppTheme.sage : AppTheme.danger,
+                        title: result.missingAssets.isEmpty
+                            ? "All \(result.checkedCount) image assets present"
+                            : "\(result.missingAssets.count) missing asset(s)",
+                        items: result.missingAssets
+                    )
+
+                    // ── 2. Beats with no image (WARNING) ──────────────────
+                    assetResultGroup(
+                        icon:  result.beatsWithNoImage.isEmpty ? "photo.fill" : "exclamationmark.triangle.fill",
+                        color: result.beatsWithNoImage.isEmpty ? AppTheme.sage : Color.orange,
+                        title: result.beatsWithNoImage.isEmpty
+                            ? "All beats have images assigned"
+                            : "\(result.beatsWithNoImage.count) beat(s) have no image",
+                        items: result.beatsWithNoImage
+                    )
+
+                    // ── 3. Placeholder images (ERROR) ─────────────────────
+                    if !result.placeholderImages.isEmpty {
+                        assetResultGroup(
+                            icon:  "exclamationmark.octagon.fill",
+                            color: AppTheme.danger,
+                            title: "\(result.placeholderImages.count) placeholder image(s) in production beats",
+                            items: result.placeholderImages
+                        )
+                    }
+
+                    // ── 4. Duplicate mappings (WARNING) ───────────────────
+                    if !result.duplicateMappings.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Missing \(result.missingAssets.count) of \(result.checkedCount):")
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                                .foregroundColor(AppTheme.danger)
-                            ForEach(result.missingAssets, id: \.self) { name in
-                                Text("• \(name)")
-                                    .font(.system(size: 12, design: .monospaced))
-                                    .foregroundColor(AppTheme.danger)
+                            HStack(spacing: 6) {
+                                Image(systemName: "doc.on.doc.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Color.orange)
+                                Text("\(result.duplicateMappings.count) duplicate image mapping(s) — may be intentional")
+                                    .font(AppTheme.mono(10, weight: .bold))
+                                    .foregroundStyle(Color.orange)
+                            }
+                            ForEach(result.duplicateMappings) { dup in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("• \(dup.imageName)")
+                                        .font(AppTheme.mono(9, weight: .semibold))
+                                        .foregroundStyle(Color.orange.opacity(0.90))
+                                    ForEach(dup.beatIDs, id: \.self) { id in
+                                        Text("    ↳ \(id)")
+                                            .font(AppTheme.mono(8))
+                                            .foregroundStyle(AppTheme.textSecondary.opacity(0.70))
+                                    }
+                                }
                             }
                         }
                     }
-                    Spacer()
+
+                    // ── 5. Orphan assets (WARNING) ────────────────────────
+                    assetResultGroup(
+                        icon:  result.orphanAssets.isEmpty ? "square.stack.fill" : "questionmark.square.dashed",
+                        color: result.orphanAssets.isEmpty ? AppTheme.sage : AppTheme.textSecondary,
+                        title: result.orphanAssets.isEmpty
+                            ? "No orphan assets in manifest"
+                            : "\(result.orphanAssets.count) manifest asset(s) unused by any beat",
+                        items: result.orphanAssets
+                    )
                 }
-                .padding(.horizontal, 16).padding(.bottom, 10)
+                .padding(.horizontal, 16).padding(.bottom, 12)
             }
         }
     }
@@ -3845,6 +4313,13 @@ struct DevMenuView: View {
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
+
+            TechDivider()
+
+            // ── Pending queue inspector ───────────────────────────────────
+            // Reads the UserDefaults persistence key written by StoryBeatQueue.
+            // Shows beats staged after a win but not yet dispatched (e.g., app was killed).
+            storyPendingQueueSection
 
             TechDivider()
 
@@ -3909,6 +4384,230 @@ struct DevMenuView: View {
         .background(AppTheme.surface)
     }
 
+    // ── Story Assets Preview ───────────────────────────────────────────────
+
+    private var storyAssetPreviewSection: some View {
+        let beatsWithNoImg = StoryBeatCatalog.beats.filter { $0.imageName == nil }.count
+        let reviewed       = reviewedBeatIDs.count
+        let total          = StoryBeatCatalog.beats.count
+
+        return VStack(spacing: 0) {
+            // Collapsible header
+            Button(action: {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                    showAssetPreview.toggle()
+                }
+            }) {
+                HStack(spacing: 8) {
+                    Text("STORY ASSETS PREVIEW")
+                        .font(AppTheme.mono(9, weight: .black)).kerning(1.2)
+                        .foregroundStyle(AppTheme.textPrimary)
+
+                    Spacer()
+
+                    // Warning badge if any beats have no image
+                    if beatsWithNoImg > 0 {
+                        Text("\(beatsWithNoImg) NO IMG")
+                            .font(AppTheme.mono(6, weight: .bold)).kerning(0.6)
+                            .foregroundStyle(Color.orange)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
+
+                    Text("\(reviewed)/\(total)")
+                        .font(AppTheme.mono(8, weight: .bold)).kerning(0.8)
+                        .foregroundStyle(reviewed == total ? AppTheme.sage : AppTheme.textSecondary.opacity(0.50))
+
+                    Image(systemName: showAssetPreview ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+
+            if showAssetPreview {
+                TechDivider()
+
+                // Quick-action bar
+                HStack(spacing: 8) {
+                    scenarioBtn("MARK ALL REVIEWED", icon: "checkmark.circle", color: AppTheme.sage) {
+                        reviewedBeatIDs = Set(StoryBeatCatalog.beats.map(\.id))
+                    }
+                    scenarioBtn("CLEAR REVIEWED", icon: "xmark.circle", color: AppTheme.textSecondary) {
+                        reviewedBeatIDs.removeAll()
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 8)
+
+                TechDivider()
+
+                ForEach(Array(StoryBeatCatalog.beats.enumerated()), id: \.element.id) { idx, beat in
+                    storyAssetPreviewRow(beat)
+                    if idx < StoryBeatCatalog.beats.count - 1 { TechDivider() }
+                }
+            }
+        }
+        .background(AppTheme.surface)
+    }
+
+    @ViewBuilder
+    private func storyAssetPreviewRow(_ beat: StoryBeat) -> some View {
+        let accent     = beat.accentHex.map { Color(hex: $0) } ?? AppTheme.accentPrimary
+        let isReviewed = reviewedBeatIDs.contains(beat.id)
+        let assetStatus: StoryAssetValidator.BeatAssetStatus = assetValidation.map {
+            StoryAssetValidator.status(for: beat, in: $0)
+        } ?? .ok
+
+        HStack(alignment: .top, spacing: 10) {
+
+            // Image thumbnail
+            Group {
+                if let name = beat.imageName, let uiImg = UIImage(named: name) {
+                    Image(uiImage: uiImg)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 80, height: 45)
+                        .clipped()
+                } else {
+                    ZStack {
+                        AppTheme.backgroundPrimary
+                        VStack(spacing: 3) {
+                            Image(systemName: "photo.slash")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Color.orange)
+                            Text("NO IMAGE")
+                                .font(AppTheme.mono(5, weight: .bold)).kerning(0.5)
+                                .foregroundStyle(Color.orange)
+                        }
+                    }
+                    .frame(width: 80, height: 45)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 3))
+            .overlay(
+                RoundedRectangle(cornerRadius: 3)
+                    .strokeBorder(
+                        storyAssetStatusColor(assetStatus).opacity(0.55),
+                        lineWidth: assetStatus == .ok ? 0.5 : 1.2
+                    )
+            )
+
+            // Text block — beat ID, status badge, title, trilingual body
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
+                    Text(beat.id)
+                        .font(AppTheme.mono(6))
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.40))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    // Status badge — only shown after a validation run
+                    if assetValidation != nil {
+                        storyAssetStatusBadge(assetStatus)
+                    }
+                }
+
+                Text(beat.displayTitle(for: settings.language))
+                    .font(AppTheme.mono(9, weight: .bold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .lineLimit(1)
+
+                Divider()
+                    .background(accent.opacity(0.20))
+
+                ForEach(AppLanguage.allCases, id: \.self) { lang in
+                    HStack(alignment: .top, spacing: 4) {
+                        Text(lang.rawValue.uppercased())
+                            .font(AppTheme.mono(6, weight: .bold)).kerning(0.4)
+                            .foregroundStyle(accent.opacity(0.55))
+                            .frame(width: 14, alignment: .leading)
+                        Text(beat.displayBody(for: lang))
+                            .font(AppTheme.mono(7))
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.65))
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Reviewed toggle
+            Button(action: {
+                if isReviewed {
+                    reviewedBeatIDs.remove(beat.id)
+                } else {
+                    reviewedBeatIDs.insert(beat.id)
+                }
+            }) {
+                Image(systemName: isReviewed ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18))
+                    .foregroundStyle(isReviewed ? AppTheme.sage : AppTheme.textSecondary.opacity(0.28))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(isReviewed ? AppTheme.sage.opacity(0.04) : Color.clear)
+    }
+
+    // ── Asset result group helper ──────────────────────────────────────────
+
+    @ViewBuilder
+    private func assetResultGroup(icon: String, color: Color, title: String, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(AppTheme.mono(10, weight: .bold))
+                    .foregroundStyle(color)
+            }
+            if !items.isEmpty {
+                ForEach(items, id: \.self) { item in
+                    Text("• \(item)")
+                        .font(AppTheme.mono(9))
+                        .foregroundStyle(color.opacity(0.75))
+                }
+            }
+        }
+    }
+
+    // ── Asset status badge helpers ─────────────────────────────────────────
+
+    private func storyAssetStatusColor(_ status: StoryAssetValidator.BeatAssetStatus) -> Color {
+        switch status {
+        case .ok:          return AppTheme.sage
+        case .noImage:     return Color.orange
+        case .missing:     return AppTheme.danger
+        case .placeholder: return AppTheme.danger
+        case .duplicate:   return Color(hex: "FFB800")
+        }
+    }
+
+    @ViewBuilder
+    private func storyAssetStatusBadge(_ status: StoryAssetValidator.BeatAssetStatus) -> some View {
+        let (label, icon): (String, String) = {
+            switch status {
+            case .ok:          return ("OK",          "checkmark.circle.fill")
+            case .noImage:     return ("NO IMG",      "exclamationmark.triangle.fill")
+            case .missing:     return ("MISSING",     "xmark.circle.fill")
+            case .placeholder: return ("PLACEHOLDER", "exclamationmark.octagon.fill")
+            case .duplicate:   return ("DUPLICATE",   "doc.on.doc.fill")
+            }
+        }()
+        let color = storyAssetStatusColor(status)
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 7, weight: .bold))
+            Text(label)
+                .font(AppTheme.mono(5, weight: .black)).kerning(0.4)
+        }
+        .foregroundStyle(status == .ok ? color.opacity(0.50) : color)
+        .padding(.horizontal, 4).padding(.vertical, 2)
+        .background(color.opacity(status == .ok ? 0.05 : 0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 2))
+    }
+
     // ── Simulate triggers ─────────────────────────────────────────────────
 
     private var storySimulateSection: some View {
@@ -3951,13 +4650,16 @@ struct DevMenuView: View {
             }
             TechDivider()
             simulateGroup("OTHER") {
-                storySimBtn("LAUNCH 1",    color: AppTheme.sage)          { simulateBeat("story_intro_01")            }
-                storySimBtn("LAUNCH 2",    color: AppTheme.sage)          { simulateBeat("story_intro_02")            }
-                storySimBtn("LAUNCH 3",    color: AppTheme.sage)          { simulateBeat("story_intro_03")            }
-                storySimBtn("LAUNCH 4",    color: AppTheme.sage)          { simulateBeat("story_intro_04")            }
-                storySimBtn("POST-INTRO",  color: AppTheme.sage)          { simulateBeat("story_post_onboarding_01")  }
-                storySimBtn("READY",       color: AppTheme.sage)          { simulateBeat("story_first_mission_ready") }
+                storySimBtn("LAUNCH 1",    color: AppTheme.sage)          { simulateBeat("story_intro_01")             }
+                storySimBtn("LAUNCH 3",    color: AppTheme.sage)          { simulateBeat("story_intro_03")             }
+                storySimBtn("POST-INTRO",  color: AppTheme.sage)          { simulateBeat("story_onboarding_complete")  }
+                storySimBtn("READY",       color: AppTheme.sage)          { simulateBeat("story_first_mission_ready")  }
                 storySimBtn("FIRST WIN",   color: AppTheme.accentPrimary) { simulateBeat("story_first_mission_complete") }
+            }
+            TechDivider()
+            simulateGroup("SEQUENCE") {
+                storySimBtn("PLAY INTRO",   color: AppTheme.sage)         { playIntroSequence()  }
+                storySimBtn("PLAY UNSEEN",  color: AppTheme.sage)         { playUnseenSequence() }
             }
         }
         .background(AppTheme.surface)
@@ -3987,6 +4689,243 @@ struct DevMenuView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 2))
         }
         .buttonStyle(.plain)
+    }
+
+    // ── Story Sequence Tester ─────────────────────────────────────────────
+
+    private var storySequenceTesterSection: some View {
+        VStack(spacing: 0) {
+            // Collapsible header
+            Button(action: {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                    showSequenceTester.toggle()
+                }
+            }) {
+                HStack(spacing: 8) {
+                    Text("STORY SEQUENCE TESTER")
+                        .font(AppTheme.mono(9, weight: .black)).kerning(1.2)
+                        .foregroundStyle(AppTheme.textPrimary)
+                    Spacer()
+                    Text("SCENARIO · REPORT")
+                        .font(AppTheme.mono(6, weight: .bold)).kerning(0.8)
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.40))
+                    Image(systemName: showSequenceTester ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+
+            if showSequenceTester {
+                TechDivider()
+
+                // ── SECTOR COMPLETE SEQUENCES ──────────────────────────────
+                simulateGroup("SECTOR COMPLETE SEQUENCE") {
+                    storySimBtn("S1", color: Color(hex: "4DB87A")) {
+                        playBeatSequence(["story_earth_complete",
+                                         "story_lunar_pass_granted", "story_lunar_intro"])
+                    }
+                    storySimBtn("S2", color: Color(hex: "D9E7D8")) {
+                        playBeatSequence(["sector_2_clear",
+                                         "story_mars_unlock", "enter_sector_3"])
+                    }
+                    storySimBtn("S3", color: Color(hex: "FF6A3D")) {
+                        playBeatSequence(["sector_3_clear",
+                                         "pass_sector_3", "enter_sector_4"])
+                    }
+                    storySimBtn("S4", color: Color(hex: "FFB800")) {
+                        playBeatSequence(["sector_4_clear",
+                                         "pass_sector_4", "enter_sector_5"])
+                    }
+                    storySimBtn("S5", color: Color(hex: "D4A055")) {
+                        playBeatSequence(["sector_5_clear",
+                                         "pass_sector_5", "enter_sector_6"])
+                    }
+                    storySimBtn("S6", color: Color(hex: "E4C87A")) {
+                        playBeatSequence(["sector_6_clear",
+                                         "pass_sector_6", "enter_sector_7"])
+                    }
+                    storySimBtn("S7", color: Color(hex: "7EC8E3")) {
+                        playBeatSequence(["sector_7_clear",
+                                         "pass_sector_7", "enter_sector_8"])
+                    }
+                    storySimBtn("S8", color: Color(hex: "4B70DD")) {
+                        playBeatSequence(["sector_8_clear"])
+                    }
+                }
+
+                TechDivider()
+
+                // ── RANK UP ────────────────────────────────────────────────
+                simulateGroup("RANK UP") {
+                    storySimBtn("LVL 2",  color: AppTheme.accentPrimary) {
+                        playBeatSequence(["rank_up_2"])
+                    }
+                    storySimBtn("LVL 5",  color: AppTheme.accentPrimary) {
+                        playBeatSequence(["rank_up_5"])
+                    }
+                    storySimBtn("LVL 10", color: Color(hex: "4B70DD")) {
+                        playBeatSequence(["rank_up_10"])
+                    }
+                }
+
+                TechDivider()
+
+                // ── NARRATIVE MOMENTS ──────────────────────────────────────
+                simulateGroup("NARRATIVE MOMENTS") {
+                    storySimBtn("FIRST WIN",  color: AppTheme.sage) {
+                        playBeatSequence(["story_first_mission_complete"])
+                    }
+                    storySimBtn("GATE",       color: AppTheme.accentPrimary) {
+                        playBeatSequence(["story_onboarding_complete"])
+                    }
+                    storySimBtn("FULL INTRO", color: AppTheme.sage) {
+                        playBeatSequence(["story_intro_01", "story_intro_03",
+                                          "story_first_mission_ready",
+                                          "story_first_mission_complete",
+                                          "story_onboarding_complete"])
+                    }
+                    storySimBtn("FULL S1",    color: Color(hex: "4DB87A")) {
+                        playBeatSequence(["story_intro_01", "story_intro_03",
+                                          "story_first_mission_ready",
+                                          "story_first_mission_complete",
+                                          "story_onboarding_complete",
+                                          "story_earth_complete",
+                                          "story_lunar_pass_granted",
+                                          "story_lunar_intro"])
+                    }
+                }
+
+                TechDivider()
+
+                // ── CONSISTENCY REPORT ─────────────────────────────────────
+                sectionHeader("CONSISTENCY REPORT")
+
+                HStack(spacing: 8) {
+                    scenarioBtn("RUN REPORT", icon: "doc.text.magnifyingglass",
+                                color: AppTheme.textSecondary) {
+                        consistencyReport = buildConsistencyReport()
+                        showToast("Report generated", style: .info)
+                    }
+                    if consistencyReport != nil {
+                        scenarioBtn("CLEAR", icon: "xmark.circle", color: AppTheme.danger) {
+                            consistencyReport = nil
+                        }
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 8)
+
+                if let lines = consistencyReport {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                                Text(line)
+                                    .font(AppTheme.mono(8))
+                                    .foregroundStyle(
+                                        line.hasPrefix("──") ? AppTheme.accentPrimary.opacity(0.80) :
+                                        line.hasPrefix("⚠️") ? Color.orange :
+                                        line.hasPrefix("✓")  ? AppTheme.sage :
+                                        line.hasPrefix("  ") ? AppTheme.textSecondary.opacity(0.70) :
+                                        AppTheme.textPrimary
+                                    )
+                            }
+                        }
+                        .padding(.horizontal, 16).padding(.bottom, 14)
+                    }
+                }
+            }
+        }
+        .background(AppTheme.surface)
+    }
+
+    // ── Helpers: sequence playback ─────────────────────────────────────────
+
+    /// Preview a specific list of beat IDs in sequence via the StoryModal overlay.
+    /// Ignores seen status — always shows all specified beats.
+    private func playBeatSequence(_ ids: [String]) {
+        let queue = ids.compactMap { id in StoryBeatCatalog.beats.first(where: { $0.id == id }) }
+        guard !queue.isEmpty else {
+            showToast("No beats found for sequence", style: .info)
+            return
+        }
+        previewBeatQueue = Array(queue.dropFirst())
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+            previewingBeat = queue[0]
+        }
+    }
+
+    // ── Consistency report generator ───────────────────────────────────────
+
+    private func buildConsistencyReport() -> [String] {
+        let beats   = StoryBeatCatalog.beats
+        let seenSet = StoryStore.seenIDs
+        var lines   = [String]()
+
+        lines.append("── BEAT CATALOG  (\(beats.count) total) ─────────────────────")
+        for trigger in StoryTrigger.allCases {
+            let group = beats.filter { $0.trigger == trigger }.sorted { $0.priority < $1.priority }
+            guard !group.isEmpty else { continue }
+            lines.append("\(storyTriggerLabel(trigger).padding(toLength: 14, withPad: " ", startingAt: 0)): \(group.count) beat(s)")
+            for b in group {
+                let img  = b.imageName != nil ? "🖼" : "⚠️"
+                let seen = seenSet.contains(b.id) ? "✓" : "○"
+                let once = b.onceOnly ? "" : " ↻"
+                lines.append("  [\(String(b.priority).padding(toLength: 2, withPad: " ", startingAt: 0))] \(seen)\(img)\(once) \(b.id)")
+            }
+        }
+
+        lines.append("")
+        lines.append("── IMAGES ────────────────────────────────────────────")
+        let noImg = beats.filter { $0.imageName == nil }
+        if noImg.isEmpty {
+            lines.append("✓ All \(beats.count) beats have images assigned")
+        } else {
+            lines.append("⚠️ \(noImg.count) beat(s) have no image:")
+            for b in noImg { lines.append("  \(b.id)") }
+        }
+
+        lines.append("")
+        lines.append("── REPEATABILITY ─────────────────────────────────────")
+        let repeatable = beats.filter { !$0.onceOnly }
+        lines.append("Once-only: \(beats.count - repeatable.count)  Repeatable: \(repeatable.count)")
+        for b in repeatable { lines.append("  ↻ \(b.id)") }
+
+        lines.append("")
+        lines.append("── SEQUENCE GROUPS ───────────────────────────────────")
+        let grouped = Dictionary(grouping: beats.filter { $0.sequenceGroup != nil },
+                                 by: { $0.sequenceGroup! })
+        if grouped.isEmpty {
+            lines.append("  (none)")
+        } else {
+            for key in grouped.keys.sorted() {
+                let members = grouped[key]!.sorted { $0.orderInSequence < $1.orderInSequence }
+                lines.append("  [\(key)] \(members.count) beats:")
+                for b in members { lines.append("    [\(b.orderInSequence)] \(b.id)") }
+            }
+        }
+
+        lines.append("")
+        lines.append("── PRIORITY CONFLICTS ────────────────────────────────")
+        var conflicts = false
+        for trigger in StoryTrigger.allCases {
+            let group = beats.filter { $0.trigger == trigger }
+            let priorityCounts = Dictionary(grouping: group, by: { $0.priority })
+            for (priority, dupes) in priorityCounts where dupes.count > 1 {
+                conflicts = true
+                lines.append("⚠️ Trigger \(storyTriggerLabel(trigger)) has \(dupes.count) beats at priority \(priority):")
+                for b in dupes { lines.append("  \(b.id)") }
+            }
+        }
+        if !conflicts { lines.append("✓ No priority conflicts") }
+
+        lines.append("")
+        lines.append("── PROGRESS ──────────────────────────────────────────")
+        let seenCount = beats.filter { seenSet.contains($0.id) }.count
+        lines.append("Seen:   \(seenCount) / \(beats.count)")
+        lines.append("Unseen: \(beats.count - seenCount)")
+
+        return lines
     }
 
     // ── Beat catalog list ─────────────────────────────────────────────────
@@ -4185,7 +5124,34 @@ struct DevMenuView: View {
 
     private func simulateBeat(_ id: String) {
         guard let beat = StoryBeatCatalog.beats.first(where: { $0.id == id }) else { return }
+        lastSimulatedID = id
+        previewBeatQueue = []
         withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) { previewingBeat = beat }
+    }
+
+    private func advancePreviewBeatQueue() {
+        if previewBeatQueue.isEmpty {
+            previewingBeat = nil
+        } else {
+            previewingBeat = previewBeatQueue.removeFirst()
+        }
+    }
+
+    private func playIntroSequence() {
+        let ids = ["story_intro_01", "story_intro_03", "story_first_mission_ready",
+                   "story_first_mission_complete", "story_onboarding_complete"]
+        let queue = ids.compactMap { id in StoryBeatCatalog.beats.first(where: { $0.id == id }) }
+        guard !queue.isEmpty else { return }
+        previewBeatQueue = Array(queue.dropFirst())
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) { previewingBeat = queue[0] }
+    }
+
+    private func playUnseenSequence() {
+        let seen  = StoryStore.seenIDs
+        let queue = StoryBeatCatalog.beats.filter { !seen.contains($0.id) }
+        guard !queue.isEmpty else { return }
+        previewBeatQueue = Array(queue.dropFirst())
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) { previewingBeat = queue[0] }
     }
 
     /// Returns the catalog beat ID for a given sector-complete event.

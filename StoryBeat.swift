@@ -303,6 +303,7 @@ enum StoryBeatCatalog {
             trigger:        .onboardingComplete,
             accentHex:      "FF6A3D",
             footerHint:     "NEXT WINDOW: 24H",
+            imageName:      "intro_alert",
             priority:       5,
             localizedTitle: LocalizedText(
                 en: "SIGNAL LOCKED",
@@ -771,7 +772,7 @@ enum StoryBeatCatalog {
             accentHex:      "FF6A3D",
             imageName:      "intro_repair",
             priority:       70,               // fires only after specific beats are seen
-            onceOnly:       false,            // repeatable — fires for each new mechanic
+            onceOnly:       true,             // one-time fallback — fires only when no specific beat exists for a mechanic
             localizedTitle: LocalizedText(
                 en: "SYSTEMS AHEAD",
                 es: "SISTEMAS AVANZADOS",

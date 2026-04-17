@@ -34,10 +34,23 @@ struct ContentView: View {
     @State private var storyQueue = StoryBeatQueue()
 
     private static func initialIntroStep() -> IntroStep? {
-        guard !OnboardingStore.hasCompletedIntro else { return nil }
-        // Instant play: skip story beats and narrative panels — go straight to the intro mission.
-        // Mark narrative as seen so relaunches don't fall back to the panel flow.
-        OnboardingStore.markNarrativeSeen()
+        guard !OnboardingStore.hasCompletedIntro else {
+            // Intro was completed in a previous session. Check whether the
+            // firstMissionReady beat was killed before the player dismissed it:
+            // if still unseen, re-surface the step so the beat can play.
+            if !StoryStore.pendingAll(for: .firstMissionReady).isEmpty {
+                return .firstMissionReadyBeat
+            }
+            return nil
+        }
+        if !OnboardingStore.hasSeenNarrativeIntro {
+            // True first launch — show the two intro story beats before the gameplay mission.
+            // markNarrativeSeen is deferred to the .firstLaunchBeats onChange so it only fires
+            // after the beats are dismissed (or if none are pending).
+            return .firstLaunchBeats
+        }
+        // App killed mid-onboarding (relaunched before finishing the intro mission) —
+        // skip beats and go straight to the gameplay mission.
         return .gameplay
     }
 
@@ -58,7 +71,8 @@ struct ContentView: View {
 
                 // ── Step 0: firstLaunch story beats ───────────────────────
                 // Dark backdrop only — the StoryModal overlay (zIndex 50) renders
-                // on top. When the queue empties, .onChange transitions to .narrative.
+                // on top. When the queue empties, .onChange transitions to .gameplay
+                // (skipping the 4-panel narrative for instant play).
                 case .firstLaunchBeats:
                     Color.black.ignoresSafeArea()
                         .transition(.opacity)
@@ -66,7 +80,9 @@ struct ContentView: View {
                         .onAppear {
                             let beats = StoryStore.pendingAll(for: .firstLaunch)
                             if beats.isEmpty {
-                                withAnimation(.easeIn(duration: 0.35)) { introStep = .narrative }
+                                // No beats pending — jump straight to the intro mission.
+                                OnboardingStore.markNarrativeSeen()
+                                withAnimation(.easeIn(duration: 0.35)) { introStep = .gameplay }
                             } else {
                                 storyQueue.enqueue(beats)
                             }
@@ -75,10 +91,25 @@ struct ContentView: View {
                 // ── Step 4b: firstMissionReady beat ───────────────────────
                 // Shown after MissionClearanceView — same dark backdrop pattern.
                 // When the queue empties, .onChange opens Mission 1.
+                // Also acts as recovery point: if the app was killed after
+                // markIntroCompleted() but before the beat was dismissed, the
+                // queue is empty on relaunch — onAppear re-enqueues the beat.
                 case .firstMissionReadyBeat:
                     Color.black.ignoresSafeArea()
                         .transition(.opacity)
                         .zIndex(9)
+                        .onAppear {
+                            // Guard: queue already populated by onIntroComplete in the same session.
+                            guard storyQueue.current == nil else { return }
+                            let beats = StoryStore.pendingAll(for: .firstMissionReady)
+                            if beats.isEmpty {
+                                // Beat was already seen (e.g., dev replay) — skip to Mission 1.
+                                introStep   = nil
+                                activeLevel = LevelGenerator.levels.first
+                            } else {
+                                storyQueue.enqueue(beats)
+                            }
+                        }
 
                 // ── Step 1: 4-panel narrative ─────────────────────────────
                 case .narrative:
@@ -99,10 +130,18 @@ struct ContentView: View {
                             introStep = nil
                         },
                         onIntroComplete: {
-                            // Flow loop: mark complete and go directly to Mission 1 — no overlay, no beat.
                             OnboardingStore.markIntroCompleted()
-                            introStep   = nil
-                            activeLevel = LevelGenerator.levels.first
+                            // Show "ready for mission 1" beat before opening Mission 1.
+                            // Falls back to direct navigation if the beat was already seen
+                            // (e.g., dev replay or pre-fix installs).
+                            let readyBeats = StoryStore.pendingAll(for: .firstMissionReady)
+                            if readyBeats.isEmpty {
+                                introStep   = nil
+                                activeLevel = LevelGenerator.levels.first
+                            } else {
+                                storyQueue.enqueue(readyBeats)
+                                introStep = .firstMissionReadyBeat
+                            }
                         }
                     )
                     .transition(.opacity)
@@ -231,8 +270,9 @@ struct ContentView: View {
             guard newBeat == nil else { return }
             switch introStep {
             case .firstLaunchBeats:
-                // All firstLaunch beats seen — proceed to narrative panels
-                withAnimation(.easeIn(duration: 0.35)) { introStep = .narrative }
+                // All firstLaunch beats seen — go straight to intro mission (no narrative panels).
+                OnboardingStore.markNarrativeSeen()
+                withAnimation(.easeIn(duration: 0.35)) { introStep = .gameplay }
             case .firstMissionReadyBeat:
                 // firstMissionReady beat dismissed — open Mission 1
                 introStep  = nil

@@ -1346,3 +1346,222 @@ struct GameCenterManagerStateTests {
         }
     }
 }
+
+// MARK: - Narrative Regression Tests
+// Automated safety net for the story system. Covers:
+//   1. Catalog integrity — unique IDs, non-empty required fields, valid triggers, locale strings
+//   2. Once-only behavior — beats disappear after markSeen(), reappear after markUnseen()
+//   3. Queue ordering — results are priority-ascending and deduplicated
+//   4. Persistence — seenIDs round-trip correctly through UserDefaults
+//   5. Localization coverage — every beat returns non-empty strings in EN, ES, FR
+//
+// Note: UIImage asset-resolution tests are intentionally omitted — the unit-test
+// bundle does not include story image assets, so UIImage(named:) would always fail.
+// Asset presence is validated at runtime via StoryAssetValidator (DevMenuView / DEBUG launch).
+@Suite("NarrativeRegression — Story System Safety Net", .serialized)
+struct NarrativeRegressionTests {
+
+    /// Reset seen-IDs before every test to prevent inter-test state pollution.
+    init() {
+        StoryStore.reset()
+    }
+
+    // MARK: 1. Catalog Integrity
+
+    @Test("All beat IDs are unique")
+    func beatIDsAreUnique() {
+        let ids = StoryBeatCatalog.beats.map(\.id)
+        let duplicates = ids.filter { id in ids.filter { $0 == id }.count > 1 }
+        #expect(duplicates.isEmpty,
+                "Duplicate beat IDs found: \(Set(duplicates).sorted().joined(separator: ", "))")
+    }
+
+    @Test("No beat has an empty ID, title, body, or source")
+    func beatsMandatoryFieldsNonEmpty() {
+        for beat in StoryBeatCatalog.beats {
+            #expect(!beat.id.isEmpty,     "Beat has empty id")
+            #expect(!beat.title.isEmpty,  "Beat '\(beat.id)' has empty title")
+            #expect(!beat.body.isEmpty,   "Beat '\(beat.id)' has empty body")
+            #expect(!beat.source.isEmpty, "Beat '\(beat.id)' has empty source")
+        }
+    }
+
+    @Test("All beats have a valid StoryTrigger")
+    func beatsHaveValidTrigger() {
+        let valid = Set(StoryTrigger.allCases)
+        for beat in StoryBeatCatalog.beats {
+            #expect(valid.contains(beat.trigger),
+                    "Beat '\(beat.id)' has unknown trigger '\(beat.trigger.rawValue)'")
+        }
+    }
+
+    @Test("Beats with localizedTitle have non-empty ES and FR strings")
+    func localizedTitleStringsNonEmpty() {
+        for beat in StoryBeatCatalog.beats {
+            guard let lt = beat.localizedTitle else { continue }
+            #expect(!lt.es.isEmpty, "Beat '\(beat.id)' localizedTitle.es is empty")
+            #expect(!lt.fr.isEmpty, "Beat '\(beat.id)' localizedTitle.fr is empty")
+        }
+    }
+
+    @Test("Beats with localizedBody have non-empty ES and FR strings")
+    func localizedBodyStringsNonEmpty() {
+        for beat in StoryBeatCatalog.beats {
+            guard let lb = beat.localizedBody else { continue }
+            #expect(!lb.es.isEmpty, "Beat '\(beat.id)' localizedBody.es is empty")
+            #expect(!lb.fr.isEmpty, "Beat '\(beat.id)' localizedBody.fr is empty")
+        }
+    }
+
+    // MARK: 2. Once-Only Behavior
+
+    @Test("A once-only beat appears in pendingAll() when unseen")
+    func onceOnlyBeatAppearsWhenUnseen() {
+        guard let beat = StoryBeatCatalog.beats.first(where: { $0.onceOnly }) else { return }
+        // Already reset in init — beat must be unseen
+        let results = StoryStore.pendingAll(for: beat.trigger)
+        #expect(results.contains(where: { $0.id == beat.id }),
+                "Once-only beat '\(beat.id)' must appear in pendingAll() when unseen")
+    }
+
+    @Test("A once-only beat does not appear in pendingAll() after markSeen()")
+    func onceOnlyBeatDisappearsAfterSeen() {
+        guard let beat = StoryBeatCatalog.beats.first(where: { $0.onceOnly }) else { return }
+        StoryStore.markSeen(beat)
+        let results = StoryStore.pendingAll(for: beat.trigger)
+        #expect(!results.contains(where: { $0.id == beat.id }),
+                "Once-only beat '\(beat.id)' must not reappear after markSeen()")
+    }
+
+    @Test("A once-only beat reappears in pendingAll() after markUnseen()")
+    func onceOnlyBeatReappearsAfterUnseen() {
+        guard let beat = StoryBeatCatalog.beats.first(where: { $0.onceOnly }) else { return }
+        StoryStore.markSeen(beat)
+        StoryStore.markUnseen(beat)
+        let results = StoryStore.pendingAll(for: beat.trigger)
+        #expect(results.contains(where: { $0.id == beat.id }),
+                "Beat '\(beat.id)' must reappear in pendingAll() after markUnseen()")
+    }
+
+    @Test("markSeen is idempotent — calling it twice does not corrupt seenIDs")
+    func markSeenIsIdempotent() {
+        guard let beat = StoryBeatCatalog.beats.first else { return }
+        StoryStore.markSeen(beat)
+        StoryStore.markSeen(beat)   // second call must be a no-op
+        #expect(StoryStore.isSeen(beat.id), "Beat must still be seen after double markSeen()")
+        let count = StoryStore.seenIDs.filter { $0 == beat.id }.count
+        #expect(count == 1, "seenIDs must not contain duplicate entries; found \(count)")
+    }
+
+    // MARK: 3. Queue Ordering
+
+    @Test("pendingAll() returns beats in priority-ascending order")
+    func pendingAllSortedByPriority() {
+        for trigger in StoryTrigger.allCases {
+            let beats = StoryStore.pendingAll(for: trigger)
+            guard beats.count > 1 else { continue }
+            let priorities = beats.map(\.priority)
+            #expect(priorities == priorities.sorted(),
+                    ".\(trigger.rawValue) beats are not sorted by priority: \(priorities)")
+        }
+    }
+
+    @Test("pendingQueue() does not return the same once-only beat twice when trigger is repeated")
+    func pendingQueueDeduplicatesOnceOnlyBeats() {
+        // Feed the same trigger twice — a once-only beat may only fire once per queue evaluation
+        guard let trigger = StoryTrigger.allCases.first(where: {
+            StoryStore.pendingAll(for: $0).contains(where: { $0.onceOnly })
+        }) else { return }
+
+        let pairs: [(trigger: StoryTrigger, context: StoryContext)] = [
+            (trigger, StoryContext()),
+            (trigger, StoryContext()),
+        ]
+        let queue = StoryStore.pendingQueue(triggers: pairs)
+        let onceOnlyIDs = queue.filter(\.onceOnly).map(\.id)
+        let uniqueIDs   = Set(onceOnlyIDs)
+        #expect(onceOnlyIDs.count == uniqueIDs.count,
+                "pendingQueue() produced duplicate once-only beats: \(onceOnlyIDs)")
+    }
+
+    // MARK: 4. Persistence
+
+    @Test("reset() clears all seen beats — isSeen returns false for every catalog beat")
+    func resetClearsAllSeenBeats() {
+        StoryStore.markAllSeen()
+        StoryStore.reset()
+        for beat in StoryBeatCatalog.beats {
+            #expect(!StoryStore.isSeen(beat.id),
+                    "Beat '\(beat.id)' must not be seen after reset()")
+        }
+    }
+
+    @Test("markSeen persists — isSeen returns true immediately after marking")
+    func markSeenPersistsToUserDefaults() {
+        guard let beat = StoryBeatCatalog.beats.first else { return }
+        StoryStore.markSeen(beat)
+        #expect(StoryStore.isSeen(beat.id),
+                "isSeen must return true immediately after markSeen('\(beat.id)')")
+    }
+
+    @Test("markAllSeen marks every catalog beat as seen")
+    func markAllSeenCoversFullCatalog() {
+        StoryStore.markAllSeen()
+        for beat in StoryBeatCatalog.beats {
+            #expect(StoryStore.isSeen(beat.id),
+                    "Beat '\(beat.id)' must be seen after markAllSeen()")
+        }
+    }
+
+    @Test("pendingAll() returns no once-only beats when markAllSeen() has been called")
+    func noPendingOnceOnlyBeatsWhenAllSeen() {
+        StoryStore.markAllSeen()
+        for trigger in StoryTrigger.allCases {
+            let onceOnly = StoryStore.pendingAll(for: trigger).filter(\.onceOnly)
+            #expect(onceOnly.isEmpty,
+                    ".\(trigger.rawValue): \(onceOnly.count) once-only beat(s) still pending after markAllSeen()")
+        }
+    }
+
+    // MARK: 5. Localization Coverage
+
+    @Test("displayTitle(for:) returns non-empty strings in EN, ES, and FR")
+    func displayTitleNonEmptyAllLanguages() {
+        for beat in StoryBeatCatalog.beats {
+            #expect(!beat.displayTitle(for: .en).isEmpty, "Beat '\(beat.id)' EN title is empty")
+            #expect(!beat.displayTitle(for: .es).isEmpty, "Beat '\(beat.id)' ES title is empty")
+            #expect(!beat.displayTitle(for: .fr).isEmpty, "Beat '\(beat.id)' FR title is empty")
+        }
+    }
+
+    @Test("displayBody(for:) returns non-empty strings in EN, ES, and FR")
+    func displayBodyNonEmptyAllLanguages() {
+        for beat in StoryBeatCatalog.beats {
+            #expect(!beat.displayBody(for: .en).isEmpty, "Beat '\(beat.id)' EN body is empty")
+            #expect(!beat.displayBody(for: .es).isEmpty, "Beat '\(beat.id)' ES body is empty")
+            #expect(!beat.displayBody(for: .fr).isEmpty, "Beat '\(beat.id)' FR body is empty")
+        }
+    }
+
+    @Test("Beats with localizedTitle display distinct strings in ES and FR vs EN")
+    func localizedTitleDistinctPerLanguage() {
+        for beat in StoryBeatCatalog.beats where beat.localizedTitle != nil {
+            let en = beat.displayTitle(for: .en)
+            #expect(beat.displayTitle(for: .es) != en,
+                    "Beat '\(beat.id)' ES title matches EN — localizedTitle.es may be wrong")
+            #expect(beat.displayTitle(for: .fr) != en,
+                    "Beat '\(beat.id)' FR title matches EN — localizedTitle.fr may be wrong")
+        }
+    }
+
+    @Test("Beats with localizedBody display distinct strings in ES and FR vs EN")
+    func localizedBodyDistinctPerLanguage() {
+        for beat in StoryBeatCatalog.beats where beat.localizedBody != nil {
+            let en = beat.displayBody(for: .en)
+            #expect(beat.displayBody(for: .es) != en,
+                    "Beat '\(beat.id)' ES body matches EN — localizedBody.es may be wrong")
+            #expect(beat.displayBody(for: .fr) != en,
+                    "Beat '\(beat.id)' FR body matches EN — localizedBody.fr may be wrong")
+        }
+    }
+}

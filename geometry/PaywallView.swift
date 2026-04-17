@@ -102,7 +102,10 @@ struct PaywallView: View {
         }
         // Auto-dismiss once premium is activated (purchase or restore)
         .onChange(of: entitlement.isPremium) { _, isPremium in
-            if isPremium { onDismiss() }
+            if isPremium {
+                SoundManager.play(.sonicLogoFull)   // full logo — premium purchase milestone
+                onDismiss()
+            }
         }
         .task {
             await storeKit.loadProduct()
@@ -137,6 +140,7 @@ struct PaywallView: View {
             Spacer()
             Button {
                 HapticsManager.light()
+                SoundManager.play(.tapSecondary)
                 handleDismiss()
             } label: {
                 Image(systemName: "xmark")
@@ -371,6 +375,7 @@ struct PaywallView: View {
                       || storeKit.purchaseState == .loading
             Button {
                 HapticsManager.medium()
+                SoundManager.play(.tapPrimary)
                 MonetizationAnalytics.shared.trackPaywallCTATap()
                 Task { await storeKit.purchase() }
             } label: {
@@ -417,7 +422,7 @@ struct PaywallView: View {
             }
 
             // ── Secondary: dismiss (ghost style matching Home's secondary buttons) ──
-            Button(action: handleDismiss) {
+            Button(action: { SoundManager.play(.tapSecondary); handleDismiss() }) {
                 HStack(spacing: 0) {
                     Spacer(minLength: 0)
                     Text(dismissLabel)
