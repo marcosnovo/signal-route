@@ -22,6 +22,8 @@ final class GameCenterManager: ObservableObject {
     /// Post-win rank feedback. Set after a score is submitted and the player's rank is loaded.
     /// Cleared when a new game starts.
     @Published private(set) var rankFeedback: RankFeedback? = nil
+    /// Last score submitted to the leaderboard (0–1000 scale). Nil before any submission.
+    @Published private(set) var lastSubmittedScore: Int? = nil
 
     // MARK: - Rank feedback
     enum RankFeedback: Equatable {
@@ -83,9 +85,14 @@ final class GameCenterManager: ObservableObject {
     }
 
     // MARK: - Open Game Center dashboard
-    /// Uses GKAccessPoint to present the dashboard — the modern API for iOS 14+.
+    /// Presents the Game Center dashboard from the topmost view controller.
+    /// Uses GKGameCenterViewController for reliable presentation regardless of GKAccessPoint state.
     func openDashboard() {
-        GKAccessPoint.shared.trigger { }
+        guard isAuthenticated else { return }
+        guard let topVC = topPresentedViewController() else { return }
+        let vc = GKGameCenterViewController(state: .dashboard)
+        vc.gameCenterDelegate = leaderboardDismissDelegate
+        topVC.present(vc, animated: true)
     }
 
     // MARK: - Leaderboard — submit
@@ -97,6 +104,7 @@ final class GameCenterManager: ObservableObject {
         guard isAuthenticated else { return }
         rankFeedback = nil
         let score = Int((efficiency * 1000).rounded())
+        lastSubmittedScore = score
 
         do {
             try await GKLeaderboard.submitScore(
@@ -121,23 +129,49 @@ final class GameCenterManager: ObservableObject {
 
     // MARK: - Leaderboard — present
 
-    /// Present the leaderboard sheet via UIKit. No-op if not authenticated.
+    /// Present the leaderboard for `leaderboardID` from the topmost view controller.
+    ///
+    /// If the user is not authenticated, triggers the GK authentication flow instead —
+    /// the leaderboard will be openable once they sign in.
     func openLeaderboards() {
-        guard isAuthenticated else { return }
+        guard isAuthenticated else {
+            // Kick off sign-in; leaderboard can be opened once authenticated.
+            authenticate()
+            return
+        }
+        guard let topVC = topPresentedViewController() else { return }
+        let vc = GKGameCenterViewController(
+            leaderboardID: Self.leaderboardID,
+            playerScope:   .global,
+            timeScope:     .allTime
+        )
+        vc.gameCenterDelegate = leaderboardDismissDelegate
+        topVC.present(vc, animated: true)
+    }
+
+    // MARK: - Private — VC presentation
+
+    /// Returns the topmost presented UIViewController in the key window hierarchy.
+    ///
+    /// SwiftUI sheets and fullScreenCovers sit *above* the root UIHostingController.
+    /// Presenting GKGameCenterViewController from the root when a sheet is already on screen
+    /// causes layout artifacts and garbled text. Traversing to the top avoids this.
+    private func topPresentedViewController() -> UIViewController? {
         guard let root = UIApplication.shared
             .connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .flatMap({ $0.windows })
             .first(where: { $0.isKeyWindow })?
-            .rootViewController else { return }
+            .rootViewController else { return nil }
+        return traverse(from: root)
+    }
 
-        let vc = GKGameCenterViewController(
-            leaderboardID:   Self.leaderboardID,
-            playerScope:     .global,
-            timeScope:       .allTime
-        )
-        vc.gameCenterDelegate = leaderboardDismissDelegate
-        root.present(vc, animated: true)
+    private func traverse(from vc: UIViewController) -> UIViewController {
+        // Stop at a VC that is currently being dismissed — presenting over it would crash.
+        guard let next = vc.presentedViewController, !next.isBeingDismissed else {
+            return vc
+        }
+        return traverse(from: next)
     }
 
     // MARK: - Private — rank loading

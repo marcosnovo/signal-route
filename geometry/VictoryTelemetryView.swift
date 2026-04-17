@@ -396,34 +396,88 @@ struct VictoryTelemetryView: View {
     private var ctaStrip: some View {
         VStack(spacing: 0) {
 
-            // ── Primary: NEXT MISSION — locked upgrade gate when daily limit reached ─
-            if let next = nextMission {
+            // ── FASE 2: When blocked, premium CTA is the dominant element ─────
+            if !canContinue, let onUpgrade, let next = nextMission {
+                Button(action: onUpgrade) {
+                    HStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(S.unlockUnlimitedAccess)
+                                .font(AppTheme.mono(13, weight: .black))
+                                .foregroundStyle(.white)
+                                .kerning(1)
+                            Text(S.keepPlayingWithoutWaiting)
+                                .font(AppTheme.mono(9, weight: .regular))
+                                .foregroundStyle(.white.opacity(0.65))
+                        }
+                        .padding(.leading, 20)
+                        Spacer()
+                        ZStack {
+                            Color.black.opacity(0.16).frame(width: 56)
+                            Image(systemName: "infinity")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 60)
+                    .background(AppTheme.accentPrimary)
+                }
+                .breathingCTA()
+
+                // Subordinate: locked next-mission row with countdown
+                TimelineView(.periodic(from: Date(), by: 1)) { _ in
+                    let remaining = entitlement.remainingCooldown
+                    HStack(spacing: 10) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.50))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(S.nextMissionLabel(next.displayID))
+                                .font(AppTheme.mono(8, weight: .regular))
+                                .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
+                                .kerning(1.5)
+                            Text(remaining > 0 ? S.backIn(formatCooldown(remaining)) : S.play)
+                                .font(AppTheme.mono(11, weight: .bold))
+                                .foregroundStyle(AppTheme.textSecondary.opacity(0.55))
+                                .monospacedDigit()
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(AppTheme.backgroundSecondary.opacity(0.35))
+                }
+
+                TechDivider()
+            }
+
+            // ── Primary: NEXT MISSION — only when free to play ───────────────
+            if canContinue, let next = nextMission {
                 Button(action: { onNextMission?() }) {
                     HStack(spacing: 0) {
                         VStack(alignment: .leading, spacing: 2) {
-                            // Sub-label: mission ID when free, "UPGRADE" when locked
-                            Text(canContinue ? S.nextMissionLabel(next.displayID) : S.upgradeLabel)
-                                .font(AppTheme.mono(9, weight: canContinue ? .regular : .bold))
-                                .foregroundStyle(canContinue ? .white.opacity(0.55) : .black.opacity(0.55))
+                            Text(S.nextMissionLabel(next.displayID))
+                                .font(AppTheme.mono(9, weight: .regular))
+                                .foregroundStyle(.white.opacity(0.55))
                                 .kerning(2)
                             Text(S.nextMission)
                                 .font(AppTheme.mono(16, weight: .black))
-                                .foregroundStyle(canContinue ? .white : .black.opacity(0.80))
+                                .foregroundStyle(.white)
                                 .kerning(1)
                         }
                         .padding(.leading, 20)
                         Spacer()
                         ZStack {
-                            Color.black.opacity(canContinue ? 0.16 : 0.10).frame(width: 56)
-                            // Arrow when free, lock when gated
-                            Image(systemName: canContinue ? "arrow.right" : "lock.fill")
+                            Color.black.opacity(0.16).frame(width: 56)
+                            Image(systemName: "arrow.right")
                                 .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(canContinue ? .white : .black.opacity(0.65))
+                                .foregroundStyle(.white)
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 60)
-                    .background(canContinue ? AppTheme.accentPrimary : AppTheme.accentPrimary.opacity(0.45))
+                    .background(AppTheme.accentPrimary)
                 }
                 .breathingCTA()
 
@@ -487,6 +541,14 @@ struct VictoryTelemetryView: View {
                 .overlay(alignment: .top) { TechDivider() }
             }
         }
+    }
+
+    private func formatCooldown(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds)
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        return String(format: "%02d:%02d:%02d", h, m, s)
     }
 
     @ViewBuilder

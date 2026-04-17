@@ -300,6 +300,7 @@ struct ContentView: View {
     /// Called immediately on win (before navigation) so profile context is accurate.
     ///
     /// Beat sequence per sector-completing win:
+    ///   0. onboardingComplete   (only when the 3rd free-intro win just occurred)
     ///   1. firstMissionComplete (only on the very first mission ever)
     ///   2. sectorComplete       — retrospective of what was accomplished
     ///   3. passUnlocked         — official authorization for the next sector
@@ -308,6 +309,15 @@ struct ContentView: View {
     private func collectStoryBeats(for level: Level, event: LevelUpEvent?) {
         let profile = ProgressionStore.profile
         var triggers: [(StoryTrigger, StoryContext)] = []
+
+        // 0. Onboarding complete — fires the first time the free-intro quota is exhausted.
+        //    recordAttempt has already been called, so freeIntroCompleted == freeIntroLimit here.
+        let ent = EntitlementStore.shared
+        if !ent.isPremium,
+           !ent.isInIntroPhase,
+           !StoryStore.isSeen("story_onboarding_complete") {
+            triggers.append((.onboardingComplete, StoryContext(playerLevel: profile.level)))
+        }
 
         // 1. First mission ever completed
         if profile.uniqueCompletions == 1 {

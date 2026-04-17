@@ -26,6 +26,7 @@ enum StoryTrigger: String, Codable, Equatable, CaseIterable {
     case postOnboarding         // intro mission completed
     case firstMissionReady      // player is cleared to begin their first real mission
     case firstMissionComplete   // first regular mission won
+    case onboardingComplete     // 3rd mission won — free-intro quota exhausted, 24h gate begins
     case sectorComplete         // all missions in a sector finished
     case passUnlocked           // a new PlanetPass issued
     case rankUp                 // astronaut level increases
@@ -285,6 +286,33 @@ enum StoryBeatCatalog {
                 en: "Small systems first. Longer routes later. Every stable network expands the reach of the next mission.",
                 es: "Primero sistemas pequeños. Luego rutas más largas. Cada red estable amplía el alcance de la siguiente misión.",
                 fr: "D'abord les petits systèmes. Ensuite les routes plus longues. Chaque réseau stabilisé étend la portée de la mission suivante."
+            )
+        ),
+
+        // ══════════════════════════════════════════════════════════════
+        // ONBOARDING COMPLETE — fires after the 3rd free mission win
+        // Shown when the player returns to Home; appears before the
+        // hard gate so the narrative context is clear before they're blocked.
+        // ══════════════════════════════════════════════════════════════
+
+        StoryBeat(
+            id:             "story_onboarding_complete",
+            title:          "SIGNAL LOCKED",
+            body:           "Your clearance window has closed. New routes are ready — but the next orbital window opens in 24 hours. Or request immediate access.",
+            source:         "MISSION CONTROL",
+            trigger:        .onboardingComplete,
+            accentHex:      "FF6A3D",
+            footerHint:     "NEXT WINDOW: 24H",
+            priority:       5,
+            localizedTitle: LocalizedText(
+                en: "SIGNAL LOCKED",
+                es: "SEÑAL BLOQUEADA",
+                fr: "SIGNAL VERROUILLÉ"
+            ),
+            localizedBody: LocalizedText(
+                en: "Your clearance window has closed. New routes are ready — but the next orbital window opens in 24 hours. Or request immediate access.",
+                es: "Tu ventana de autorización se ha cerrado. Nuevas rutas están listas, pero la siguiente ventana orbital se abre en 24 horas. O solicita acceso inmediato.",
+                fr: "Ta fenêtre d'accréditation est terminée. De nouvelles routes sont prêtes — mais la prochaine fenêtre orbitale s'ouvre dans 24 heures. Ou demande un accès immédiat."
             )
         ),
 

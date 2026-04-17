@@ -352,6 +352,7 @@ struct AppStrings {
         case .postOnboarding:       return t("TRAINING COMPLETE",   "ENTRENAMIENTO LISTO",     "ENTRAÎNEMENT TERMINÉ")
         case .firstMissionReady:    return t("MISSION READY",       "MISIÓN LISTA",            "MISSION PRÊTE")
         case .firstMissionComplete: return t("MISSION REPORT",      "INFORME DE MISIÓN",       "RAPPORT DE MISSION")
+        case .onboardingComplete:   return t("GATE ACTIVE",         "COMPUERTA ACTIVA",        "PORTE ACTIVE")
         case .sectorComplete:       return t("SECTOR CLEARED",      "SECTOR DESPEJADO",        "SECTEUR DÉGAGÉ")
         case .passUnlocked:         return t("PASS ISSUED",         "PASE EMITIDO",            "LAISSEZ-PASSER ÉMIS")
         case .rankUp:               return t("RANK UPDATE",         "ACTUALIZACIÓN DE RANGO",  "MISE À JOUR DU RANG")
@@ -366,6 +367,40 @@ struct AppStrings {
     var upgradeLabel:             String { t("UPGRADE",                   "MEJORAR",                   "AMÉLIORER") }
     var unlockUnlimitedAccess:    String { t("UNLOCK UNLIMITED ACCESS",   "DESBLOQUEAR ACCESO",        "DÉBLOQUER L'ACCÈS") }
     var playWithoutDailyLimit:    String { t("Play without daily limit",  "Juega sin límite diario",   "Joue sans limite quotidienne") }
+    var gateLocked:               String { t("ACCESS LOCKED",             "ACCESO BLOQUEADO",          "ACCÈS VERROUILLÉ") }
+    var availableIn:              String { t("Available in",              "Disponible en",             "Disponible dans") }
+    var cooldownActive:           String { t("NEXT WINDOW OPENS IN",      "PRÓXIMA VENTANA EN",        "PROCHAINE FENÊTRE DANS") }
+    var upgradeForInstantAccess:  String { t("Upgrade for instant access","Mejora para acceso inmediato","Améliorer pour accès immédiat") }
+    var keepPlayingWithoutWaiting: String { t("Keep playing without waiting", "Sigue jugando sin esperas", "Continuez sans attendre") }
+    var leaderboard:               String { t("RANKING",   "CLASIFICACIÓN", "CLASSEMENT") }
+    var connectForLeaderboard:     String { t("CONNECT",   "CONECTAR",  "CONNECTER") }
+    func backIn(_ time: String) -> String { t("Back in \(time)", "Vuelve a jugar en \(time)", "De retour dans \(time)") }
+    func dailyPlaysLabel(used: Int, limit: Int) -> String {
+        t("\(used)/\(limit) missions used today",
+          "\(used)/\(limit) misiones usadas hoy",
+          "\(used)/\(limit) missions utilisées aujourd'hui")
+    }
+
+    // MARK: - Discount codes
+    var discountCodePlaceholder: String { t("Discount code",     "Código de descuento", "Code de réduction") }
+    var applyCode:               String { t("APPLY",             "APLICAR",             "APPLIQUER") }
+    var discountValid:           String { t("Code applied",      "Código aplicado",     "Code appliqué") }
+    var discountInvalid:         String { t("Invalid code",      "Código inválido",     "Code invalide") }
+    var discountExpired:         String { t("Code expired",      "Código expirado",     "Code expiré") }
+    var discountInactive:        String { t("Code not active",   "Código inactivo",     "Code inactif") }
+    var discountExhausted:       String { t("Usage limit reached","Límite de usos alcanzado","Limite d'utilisations atteinte") }
+    func discountOff(_ pct: Int) -> String { t("\(pct)% off", "\(pct)% de descuento", "\(pct)% de réduction") }
+    func discountedPrice(original: String, discounted: String) -> String {
+        t("\(original) → \(discounted)", "\(original) → \(discounted)", "\(original) → \(discounted)")
+    }
+
+    // MARK: - Local notifications
+    var notifCooldownTitle: String { t("The network is live again",
+                                       "La red vuelve a estar disponible",
+                                       "Le réseau est de nouveau disponible") }
+    var notifCooldownBody:  String { t("You can play again in Signal Route.",
+                                       "Ya puedes volver a jugar en Signal Route.",
+                                       "Vous pouvez rejouer dans Signal Route.") }
 
     // MARK: - Home V2 / V3
     var play:        String { t("PLAY",          "JUGAR",               "JOUER") }
@@ -379,6 +414,7 @@ struct AppStrings {
           "\(done) de \(total) misiones completadas",
           "\(done) sur \(total) missions terminées")
     }
+    var missionsCompletedShort: String { t("missions completed", "misiones completadas", "missions terminées") }
 
     // MARK: - Victory telemetry
     var missionDebrief:  String { t("MISSION\nDEBRIEF",  "INFORME\nDE MISIÓN",  "COMPTE-RENDU\nDE MISSION") }

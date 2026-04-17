@@ -5,6 +5,7 @@
 //  Created by Marcos on 10/04/2026.
 //
 
+import Foundation
 import Testing
 @testable import geometry
 
@@ -480,10 +481,10 @@ struct EntitlementAccessTests {
 
     // ── Business-logic constants ───────────────────────────────────────────
 
-    @Test("freeIntroLimit == 5 and dailyLimit == 3")
+    @Test("freeIntroLimit == 3 and dailyLimit == 1")
     func entitlementLimitsAreCorrect() {
-        #expect(EntitlementStore.freeIntroLimit == 5)
-        #expect(EntitlementStore.dailyLimit      == 3)
+        #expect(EntitlementStore.freeIntroLimit == 3)
+        #expect(EntitlementStore.dailyLimit      == 1)
     }
 
     // ── Free-user intro phase ──────────────────────────────────────────────
@@ -494,36 +495,29 @@ struct EntitlementAccessTests {
         #expect(EntitlementStore.shared.canPlay(anyLevel))
     }
 
-    @Test("Free user — 4 of 5 intro missions used — can play")
-    func freeUserIntro4CanPlay() {
-        EntitlementStore.shared.setFreeIntroCompleted(4)
+    @Test("Free user — 2 of 3 intro missions used — can play")
+    func freeUserIntro2CanPlay() {
+        EntitlementStore.shared.setFreeIntroCompleted(2)
         #expect(EntitlementStore.shared.canPlay(anyLevel))
     }
 
-    // ── Free-user daily phase ──────────────────────────────────────────────
+    // ── Free-user Phase 2 (24h cooldown) ──────────────────────────────────
 
-    @Test("Free user — intro exhausted + 0 daily — can play")
-    func freeUserIntroExhaustedDaily0CanPlay() {
-        EntitlementStore.shared.setFreeIntroCompleted(5)
-        EntitlementStore.shared.setDailyAttemptsUsed(0)
+    @Test("Free user — intro exhausted + no cooldown — can play")
+    func freeUserIntroExhaustedNoCooldownCanPlay() {
+        EntitlementStore.shared.setFreeIntroCompleted(3)
+        EntitlementStore.shared.setDailyAttemptsUsed(0)   // clear cooldown
         #expect(EntitlementStore.shared.canPlay(anyLevel))
     }
 
-    @Test("Free user — intro exhausted + 2 of 3 daily — can play")
-    func freeUserIntroExhaustedDaily2CanPlay() {
-        EntitlementStore.shared.setFreeIntroCompleted(5)
-        EntitlementStore.shared.setDailyAttemptsUsed(2)
-        #expect(EntitlementStore.shared.canPlay(anyLevel))
-    }
-
-    @Test("Free user — intro exhausted + daily limit reached — blocked and paywall eligible")
-    func freeUserDailyLimitReachedIsBlocked() {
-        EntitlementStore.shared.setFreeIntroCompleted(5)
-        EntitlementStore.shared.setDailyAttemptsUsed(3)
+    @Test("Free user — intro exhausted + cooldown active — blocked and paywall eligible")
+    func freeUserCooldownActiveIsBlocked() {
+        EntitlementStore.shared.setFreeIntroCompleted(3)
+        EntitlementStore.shared.setDailyAttemptsUsed(1)   // arm cooldown
         #expect(!EntitlementStore.shared.canPlay(anyLevel),
-                "canPlay must return false when daily limit is reached")
+                "canPlay must return false when 24h cooldown is active")
         #expect(EntitlementStore.shared.dailyLimitReached,
-                "dailyLimitReached must be true")
+                "dailyLimitReached must be true during cooldown")
         #expect(EntitlementStore.shared.reasonBlocked != nil,
                 "reasonBlocked must describe the block reason")
     }
@@ -533,8 +527,8 @@ struct EntitlementAccessTests {
     @Test("Premium user — always allowed regardless of counters")
     func premiumUserAlwaysAllowed() {
         EntitlementStore.shared.setPremium(true)
-        EntitlementStore.shared.setFreeIntroCompleted(5)
-        EntitlementStore.shared.setDailyAttemptsUsed(3)
+        EntitlementStore.shared.setFreeIntroCompleted(3)
+        EntitlementStore.shared.setDailyAttemptsUsed(1)   // arm cooldown
         defer { EntitlementStore.shared.setPremium(false) }
         #expect(EntitlementStore.shared.canPlay(anyLevel),
                 "Premium user must always be allowed to play")
@@ -576,65 +570,77 @@ struct EntitlementConsumptionTests {
 
     @Test("canPlay does not increment any counter")
     func canPlayDoesNotConsumeCounter() {
-        EntitlementStore.shared.setFreeIntroCompleted(2)
+        EntitlementStore.shared.setFreeIntroCompleted(2)  // mid-intro, no cooldown
         let introBefore = EntitlementStore.shared.freeIntroCompleted
         let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed
         _ = EntitlementStore.shared.canPlay(anyLevel)
         #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
                 "Intro counter must not change on canPlay")
         #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
-                "Daily counter must not change on canPlay")
+                "Daily indicator must not change on canPlay")
     }
 
     // ── Intro phase — WON increments, FAILED is free ──────────────────────
 
-    @Test("recordAttempt(didWin: true) during intro increments only freeIntroCompleted")
-    func winDuringIntroIncrementsIntroCounter() {
-        EntitlementStore.shared.setFreeIntroCompleted(2)
-        let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed
+    @Test("recordAttempt(didWin: true) mid-intro increments only freeIntroCompleted")
+    func winMidIntroIncrementsIntroCounter() {
+        EntitlementStore.shared.setFreeIntroCompleted(1)  // 1/3 — NOT the last win
+        let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed  // 0
+        EntitlementStore.shared.recordAttempt(anyLevel, didWin: true)
+        #expect(EntitlementStore.shared.freeIntroCompleted == 2,
+                "Intro counter must increment from 1 to 2 on win")
+        #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
+                "Daily indicator must not change during mid-intro win")
+    }
+
+    @Test("recordAttempt(didWin: true) on last intro win exhausts phase and arms cooldown")
+    func lastIntroWinArmsCooldown() {
+        EntitlementStore.shared.setFreeIntroCompleted(2)  // 2/3 — about to exhaust
         EntitlementStore.shared.recordAttempt(anyLevel, didWin: true)
         #expect(EntitlementStore.shared.freeIntroCompleted == 3,
-                "Intro counter must increment from 2 to 3 on win")
-        #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
-                "Daily counter must not change during intro phase")
+                "Intro counter must reach freeIntroLimit")
+        #expect(!EntitlementStore.shared.isInIntroPhase,
+                "Must have exited intro phase")
+        #expect(EntitlementStore.shared.dailyLimitReached,
+                "24h cooldown must be armed immediately after intro exhaustion")
     }
 
     @Test("recordAttempt(didWin: false) during intro does NOT increment any counter")
     func failDuringIntroIsFreePasses() {
-        EntitlementStore.shared.setFreeIntroCompleted(2)
+        EntitlementStore.shared.setFreeIntroCompleted(1)
         let introBefore = EntitlementStore.shared.freeIntroCompleted
         let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed
         EntitlementStore.shared.recordAttempt(anyLevel, didWin: false)
         #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
                 "Intro counter must NOT increment on failure during intro phase")
         #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
-                "Daily counter must NOT increment on failure during intro phase")
+                "Daily indicator must NOT change on failure during intro phase")
     }
 
-    // ── Daily phase — both WON and FAILED consume ─────────────────────────
+    // ── Phase 2 — play arms 24h cooldown ─────────────────────────────────
 
-    @Test("recordAttempt(didWin: true) after intro exhausted increments only dailyAttemptsUsed")
-    func winAfterIntroIncrementsOnlyDailyCounter() {
-        EntitlementStore.shared.setFreeIntroCompleted(5)
+    @Test("recordAttempt(didWin: true) in Phase 2 arms cooldown")
+    func winInPhase2ArmsCooldown() {
+        EntitlementStore.shared.setFreeIntroCompleted(3)
         let introBefore = EntitlementStore.shared.freeIntroCompleted
-        EntitlementStore.shared.setDailyAttemptsUsed(0)
+        EntitlementStore.shared.setDailyAttemptsUsed(0)   // clear cooldown
         EntitlementStore.shared.recordAttempt(anyLevel, didWin: true)
         #expect(EntitlementStore.shared.dailyAttemptsUsed == 1,
-                "Daily counter must increment from 0 to 1 on win after intro")
+                "Daily indicator must show 1 (cooldown active) after Phase 2 play")
         #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
-                "Intro counter must not change after intro phase is exhausted")
+                "Intro counter must not change in Phase 2")
     }
 
-    @Test("recordAttempt(didWin: false) after intro exhausted also increments dailyAttemptsUsed")
-    func failAfterIntroConsumesAttempt() {
-        EntitlementStore.shared.setFreeIntroCompleted(5)
+    @Test("recordAttempt(didWin: false) in Phase 2 also arms cooldown")
+    func failInPhase2ArmsCooldown() {
+        EntitlementStore.shared.setFreeIntroCompleted(3)
         let introBefore = EntitlementStore.shared.freeIntroCompleted
         EntitlementStore.shared.setDailyAttemptsUsed(0)
         EntitlementStore.shared.recordAttempt(anyLevel, didWin: false)
         #expect(EntitlementStore.shared.dailyAttemptsUsed == 1,
-                "Daily counter must increment from 0 to 1 on failure after intro")
+                "Daily indicator must show 1 (cooldown active) after Phase 2 fail")
         #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
-                "Intro counter must not change on daily failure")
+                "Intro counter must not change on Phase 2 failure")
     }
 
     // ── Premium no-op ──────────────────────────────────────────────────────
@@ -650,7 +656,7 @@ struct EntitlementConsumptionTests {
         #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
                 "Intro counter must not change for premium user")
         #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
-                "Daily counter must not change for premium user")
+                "Daily indicator must not change for premium user")
     }
 }
 #endif
@@ -792,6 +798,551 @@ struct StoryBeatLocalizationTests {
                     "ES mechanic message for .\(mechanic) matches EN — not localized")
             #expect(fr.mechanicMessage(mechanic) != enMsg,
                     "FR mechanic message for .\(mechanic) matches EN — not localized")
+        }
+    }
+}
+
+// MARK: - DiscountCode Model Tests
+// Pure struct tests — no I/O, no singletons, no MainActor.
+@Suite("DiscountCode — Model")
+struct DiscountCodeModelTests {
+
+    private func make(
+        code: String = "TEST10",
+        percentageOff: Int = 10,
+        isActive: Bool = true,
+        expiresAt: Date? = nil,
+        usageLimit: Int? = nil,
+        usageCount: Int = 0
+    ) -> DiscountCode {
+        DiscountCode(code: code, percentageOff: percentageOff, isActive: isActive,
+                     expiresAt: expiresAt, usageLimit: usageLimit, usageCount: usageCount)
+    }
+
+    @Test("id computed property equals the code string")
+    func idEqualsCode() {
+        let c = make(code: "WELCOME25")
+        #expect(c.id == "WELCOME25")
+    }
+
+    @Test("isExpired is false when no expiresAt")
+    func isExpiredFalseWithoutExpiry() {
+        #expect(!make(expiresAt: nil).isExpired)
+    }
+
+    @Test("isExpired is false when expiresAt is in the future")
+    func isExpiredFalseForFutureDate() {
+        #expect(!make(expiresAt: Date().addingTimeInterval(3600)).isExpired)
+    }
+
+    @Test("isExpired is true when expiresAt is in the past")
+    func isExpiredTrueForPastDate() {
+        #expect(make(expiresAt: Date().addingTimeInterval(-1)).isExpired)
+    }
+
+    @Test("isExhausted is false when usageLimit is nil (unlimited)")
+    func isExhaustedFalseWhenNoLimit() {
+        #expect(!make(usageLimit: nil, usageCount: 9999).isExhausted)
+    }
+
+    @Test("isExhausted is false when usageCount is below limit")
+    func isExhaustedFalseWhenBelowLimit() {
+        #expect(!make(usageLimit: 5, usageCount: 4).isExhausted)
+    }
+
+    @Test("isExhausted is true when usageCount equals limit")
+    func isExhaustedTrueAtLimit() {
+        #expect(make(usageLimit: 5, usageCount: 5).isExhausted)
+    }
+
+    @Test("isExhausted is true when usageCount exceeds limit")
+    func isExhaustedTrueAboveLimit() {
+        #expect(make(usageLimit: 5, usageCount: 10).isExhausted)
+    }
+
+    @Test("percentageOff of 100 is representable")
+    func fullDiscountRepresentable() {
+        let c = make(percentageOff: 100)
+        #expect(c.percentageOff == 100)
+    }
+}
+
+// MARK: - DiscountStore Tests
+// Validates validation logic, redemption, CRUD, case-insensitivity, and persistence invariants.
+// Runs serially and resets the store before each test to avoid inter-test state pollution.
+#if DEBUG
+@Suite("DiscountStore — Validation & CRUD", .serialized)
+@MainActor
+struct DiscountStoreTests {
+
+    init() {
+        // Start each test with a clean slate
+        DiscountStore.shared.deleteAll()
+    }
+
+    // Helper — add a fully valid code with no restrictions
+    private func addValid(code: String = "ALPHA20", pct: Int = 20) -> DiscountCode {
+        let dc = DiscountCode(code: code, percentageOff: pct, isActive: true,
+                              expiresAt: nil, usageLimit: nil, usageCount: 0)
+        DiscountStore.shared.add(dc)
+        return dc
+    }
+
+    // MARK: validate — happy path
+
+    @Test("validate returns .invalid for unknown code in empty catalog")
+    func validateInvalidWhenCatalogEmpty() {
+        let result = DiscountStore.shared.validate("NOPE")
+        #expect(result == .invalid)
+    }
+
+    @Test("validate returns .valid for a known, active, unexpired, non-exhausted code")
+    func validateValidForGoodCode() {
+        let dc = addValid()
+        let result = DiscountStore.shared.validate(dc.code)
+        #expect(result == .valid(dc))
+    }
+
+    @Test("validate is case-insensitive — lowercase input matches uppercase stored code")
+    func validateCaseInsensitive() {
+        let dc = addValid(code: "UPPER50")
+        let result = DiscountStore.shared.validate("upper50")
+        #expect(result == .valid(dc))
+    }
+
+    @Test("validate trims leading/trailing whitespace before matching")
+    func validateTrimsWhitespace() {
+        let dc = addValid(code: "SPACE10")
+        let result = DiscountStore.shared.validate("  SPACE10  ")
+        #expect(result == .valid(dc))
+    }
+
+    // MARK: validate — failure paths
+
+    @Test("validate returns .inactive for a deactivated code")
+    func validateInactiveForDeactivatedCode() {
+        let dc = DiscountCode(code: "OFF30", percentageOff: 30, isActive: false,
+                              expiresAt: nil, usageLimit: nil, usageCount: 0)
+        DiscountStore.shared.add(dc)
+        #expect(DiscountStore.shared.validate("OFF30") == .inactive)
+    }
+
+    @Test("validate returns .expired for a code past its expiry date")
+    func validateExpiredForPastExpiry() {
+        let dc = DiscountCode(code: "EXP10", percentageOff: 10, isActive: true,
+                              expiresAt: Date().addingTimeInterval(-1),
+                              usageLimit: nil, usageCount: 0)
+        DiscountStore.shared.add(dc)
+        #expect(DiscountStore.shared.validate("EXP10") == .expired)
+    }
+
+    @Test("validate returns .exhausted for a code that has reached its usage limit")
+    func validateExhaustedAtLimit() {
+        let dc = DiscountCode(code: "USED5", percentageOff: 5, isActive: true,
+                              expiresAt: nil, usageLimit: 3, usageCount: 3)
+        DiscountStore.shared.add(dc)
+        #expect(DiscountStore.shared.validate("USED5") == .exhausted)
+    }
+
+    // MARK: redeem
+
+    @Test("redeem increments usageCount by 1 for a valid code")
+    func redeemIncrementsUsageCount() {
+        _ = addValid(code: "REDEEM10")
+        let countBefore = DiscountStore.shared.codes.first(where: { $0.code == "REDEEM10" })?.usageCount ?? -1
+        _ = DiscountStore.shared.redeem("REDEEM10")
+        let countAfter = DiscountStore.shared.codes.first(where: { $0.code == "REDEEM10" })?.usageCount ?? -1
+        #expect(countAfter == countBefore + 1)
+    }
+
+    @Test("redeem returns the DiscountCode on success")
+    func redeemReturnsCodeOnSuccess() {
+        _ = addValid(code: "RET20")
+        let result = DiscountStore.shared.redeem("RET20")
+        #expect(result != nil)
+        #expect(result?.code == "RET20")
+    }
+
+    @Test("redeem returns nil for an unknown code")
+    func redeemNilForUnknownCode() {
+        #expect(DiscountStore.shared.redeem("GHOST") == nil)
+    }
+
+    @Test("redeem returns nil for an inactive code")
+    func redeemNilForInactiveCode() {
+        let dc = DiscountCode(code: "NOPE", percentageOff: 10, isActive: false,
+                              expiresAt: nil, usageLimit: nil, usageCount: 0)
+        DiscountStore.shared.add(dc)
+        #expect(DiscountStore.shared.redeem("NOPE") == nil)
+    }
+
+    @Test("redeem returns nil and does not increment count for an exhausted code")
+    func redeemNilWhenExhausted() {
+        let dc = DiscountCode(code: "FULL", percentageOff: 10, isActive: true,
+                              expiresAt: nil, usageLimit: 1, usageCount: 1)
+        DiscountStore.shared.add(dc)
+        let result = DiscountStore.shared.redeem("FULL")
+        let countAfter = DiscountStore.shared.codes.first(where: { $0.code == "FULL" })?.usageCount ?? -1
+        #expect(result == nil)
+        #expect(countAfter == 1, "usageCount must not increment for an exhausted redemption")
+    }
+
+    // MARK: CRUD
+
+    @Test("add rejects duplicate codes (case-insensitive)")
+    func addRejectsDuplicates() {
+        _ = addValid(code: "DUP10")
+        let before = DiscountStore.shared.codes.count
+        let duplicate = DiscountCode(code: "dup10", percentageOff: 99, isActive: true,
+                                     expiresAt: nil, usageLimit: nil, usageCount: 0)
+        DiscountStore.shared.add(duplicate)
+        #expect(DiscountStore.shared.codes.count == before,
+                "Duplicate code must not be added — catalog count must stay the same")
+    }
+
+    @Test("toggleActive flips the isActive flag")
+    func toggleActiveFlipsFlag() {
+        let dc = addValid(code: "TOGGLE")
+        let before = DiscountStore.shared.codes.first(where: { $0.code == "TOGGLE" })!.isActive
+        DiscountStore.shared.toggleActive(dc)
+        let after = DiscountStore.shared.codes.first(where: { $0.code == "TOGGLE" })!.isActive
+        #expect(after == !before)
+    }
+
+    @Test("delete removes the code from the catalog")
+    func deleteRemovesCode() {
+        let dc = addValid(code: "DEL10")
+        DiscountStore.shared.delete(dc)
+        #expect(DiscountStore.shared.codes.first(where: { $0.code == "DEL10" }) == nil)
+    }
+
+    @Test("resetUsage sets usageCount back to 0")
+    func resetUsageZerosCount() {
+        let dc = DiscountCode(code: "RESET", percentageOff: 10, isActive: true,
+                              expiresAt: nil, usageLimit: 10, usageCount: 7)
+        DiscountStore.shared.add(dc)
+        DiscountStore.shared.resetUsage(dc)
+        let count = DiscountStore.shared.codes.first(where: { $0.code == "RESET" })?.usageCount
+        #expect(count == 0)
+    }
+
+    @Test("deleteAll empties the entire catalog")
+    func deleteAllEmptiesCatalog() {
+        _ = addValid(code: "A10")
+        _ = addValid(code: "B20")
+        DiscountStore.shared.deleteAll()
+        #expect(DiscountStore.shared.codes.isEmpty)
+    }
+
+    @Test("validate returns .invalid after the code's only use is exhausted by redeem")
+    func validateBlocksAfterFinalRedemption() {
+        let dc = DiscountCode(code: "ONCE", percentageOff: 50, isActive: true,
+                              expiresAt: nil, usageLimit: 1, usageCount: 0)
+        DiscountStore.shared.add(dc)
+        _ = DiscountStore.shared.redeem("ONCE")   // consumes the 1 allowed use
+        #expect(DiscountStore.shared.validate("ONCE") == .exhausted,
+                "After the only redemption, code must appear exhausted")
+    }
+}
+#endif
+
+// MARK: - EntitlementStore Cooldown State Tests
+// Supplements the existing Access/Consumption suites with cooldown-specific derived state.
+#if DEBUG
+@Suite("EntitlementStore — Cooldown State", .serialized)
+@MainActor
+struct EntitlementCooldownStateTests {
+
+    init() {
+        EntitlementStore.shared.setPremium(false)
+        EntitlementStore.shared.resetIntroCount()
+        EntitlementStore.shared.resetDailyCount()
+    }
+
+    private var anyLevel: Level { LevelGenerator.levels[0] }
+
+    // MARK: remainingCooldown
+
+    @Test("remainingCooldown is 0 when no cooldown is active")
+    func remainingCooldownZeroWhenFree() {
+        EntitlementStore.shared.setFreeIntroCompleted(3)
+        EntitlementStore.shared.setDailyAttemptsUsed(0)
+        #expect(EntitlementStore.shared.remainingCooldown == 0)
+    }
+
+    @Test("remainingCooldown is > 0 immediately after cooldown is armed")
+    func remainingCooldownPositiveWhenArmed() {
+        EntitlementStore.shared.setFreeIntroCompleted(3)
+        EntitlementStore.shared.setDailyAttemptsUsed(1)   // arms cooldown
+        #expect(EntitlementStore.shared.remainingCooldown > 0,
+                "remainingCooldown must be positive while the 24h gate is active")
+    }
+
+    @Test("remainingCooldown approaches 24h (86400s) right after arming")
+    func remainingCooldownNear24h() {
+        EntitlementStore.shared.setFreeIntroCompleted(3)
+        EntitlementStore.shared.setDailyAttemptsUsed(1)
+        // Allow ±5 s tolerance for clock jitter in CI
+        let remaining = EntitlementStore.shared.remainingCooldown
+        #expect(remaining > 86_390 && remaining <= 86_400,
+                "Immediately after arming, remaining cooldown must be ~86400s, got \(remaining)s")
+    }
+
+    // MARK: canPlayNextMission
+
+    @Test("canPlayNextMission returns false during cooldown")
+    func canPlayNextMissionFalseWhenBlocked() {
+        let levels = LevelGenerator.levels
+        guard levels.count >= 2 else { return }
+        let first = levels[0]
+        EntitlementStore.shared.setFreeIntroCompleted(3)
+        EntitlementStore.shared.setDailyAttemptsUsed(1)
+        #expect(!EntitlementStore.shared.canPlayNextMission(after: first),
+                "canPlayNextMission must return false when the 24h gate is active")
+    }
+
+    @Test("canPlayNextMission returns false for the last level (no next exists)")
+    func canPlayNextMissionFalseForLastLevel() {
+        let last = LevelGenerator.levels.last!
+        // Even premium should get false here because there is no next level
+        EntitlementStore.shared.setPremium(true)
+        defer { EntitlementStore.shared.setPremium(false) }
+        #expect(!EntitlementStore.shared.canPlayNextMission(after: last),
+                "canPlayNextMission must return false when no subsequent level exists")
+    }
+
+    // MARK: forceCooldown / clearCooldown
+
+    @Test("forceCooldown arms cooldown and blocks canPlay")
+    func forceCooldownBlocksPlay() {
+        EntitlementStore.shared.forceCooldown()
+        #expect(!EntitlementStore.shared.canPlay(anyLevel),
+                "canPlay must return false immediately after forceCooldown()")
+        #expect(EntitlementStore.shared.dailyLimitReached,
+                "dailyLimitReached must be true after forceCooldown()")
+    }
+
+    @Test("clearCooldown unblocks play for a free user")
+    func clearCooldownUnblocksPlay() {
+        EntitlementStore.shared.setFreeIntroCompleted(3)
+        EntitlementStore.shared.setDailyAttemptsUsed(1)   // arm
+        EntitlementStore.shared.clearCooldown()            // clear
+        #expect(EntitlementStore.shared.canPlay(anyLevel),
+                "canPlay must return true immediately after clearCooldown()")
+        #expect(!EntitlementStore.shared.dailyLimitReached,
+                "dailyLimitReached must be false after clearCooldown()")
+        #expect(EntitlementStore.shared.remainingCooldown == 0,
+                "remainingCooldown must be 0 after clearCooldown()")
+    }
+
+    @Test("setFreeIntroCompleted below freeIntroLimit clears any active cooldown")
+    func setIntroCompletedBelowLimitClearsCooldown() {
+        EntitlementStore.shared.forceCooldown()            // Phase 2 + cooldown armed
+        EntitlementStore.shared.setFreeIntroCompleted(1)   // return to Phase 1
+        #expect(EntitlementStore.shared.isInIntroPhase,
+                "Must be back in intro phase after setFreeIntroCompleted(1)")
+        #expect(EntitlementStore.shared.canPlay(anyLevel),
+                "canPlay must return true after returning to intro phase")
+    }
+}
+#endif
+
+// MARK: - Notification Copy Tests
+// Validates that all three languages produce non-empty, distinct notification strings.
+// Does NOT schedule actual notifications — purely tests AppStrings string values.
+@Suite("NotificationManager — Copy Strings")
+struct NotificationCopyTests {
+
+    private let en = AppStrings(lang: .en)
+    private let es = AppStrings(lang: .es)
+    private let fr = AppStrings(lang: .fr)
+
+    @Test("notifCooldownTitle is non-empty in all three languages")
+    func cooldownTitleNonEmpty() {
+        #expect(!en.notifCooldownTitle.isEmpty)
+        #expect(!es.notifCooldownTitle.isEmpty)
+        #expect(!fr.notifCooldownTitle.isEmpty)
+    }
+
+    @Test("notifCooldownBody is non-empty in all three languages")
+    func cooldownBodyNonEmpty() {
+        #expect(!en.notifCooldownBody.isEmpty)
+        #expect(!es.notifCooldownBody.isEmpty)
+        #expect(!fr.notifCooldownBody.isEmpty)
+    }
+
+    @Test("notifCooldownTitle is localized — ES and FR differ from EN")
+    func cooldownTitleLocalized() {
+        #expect(es.notifCooldownTitle != en.notifCooldownTitle,
+                "ES cooldown title must not be identical to EN")
+        #expect(fr.notifCooldownTitle != en.notifCooldownTitle,
+                "FR cooldown title must not be identical to EN")
+    }
+
+    @Test("notifCooldownBody is localized — ES and FR differ from EN")
+    func cooldownBodyLocalized() {
+        #expect(es.notifCooldownBody != en.notifCooldownBody,
+                "ES cooldown body must not be identical to EN")
+        #expect(fr.notifCooldownBody != en.notifCooldownBody,
+                "FR cooldown body must not be identical to EN")
+    }
+}
+
+// MARK: - FASE 2-4 AppStrings Localization Tests
+// Validates that all strings added in FASE 2 (gating CTA), FASE 3 (notifications),
+// and FASE 4 (discount codes) are correctly localized for EN, ES, and FR.
+@Suite("AppStrings — FASE 2-4 Localization")
+struct Fase24AppStringsTests {
+
+    private let en = AppStrings(lang: .en)
+    private let es = AppStrings(lang: .es)
+    private let fr = AppStrings(lang: .fr)
+
+    // ── FASE 2: gating CTA strings ─────────────────────────────────────────
+
+    @Test("keepPlayingWithoutWaiting is non-empty in all languages")
+    func keepPlayingNonEmpty() {
+        #expect(!en.keepPlayingWithoutWaiting.isEmpty)
+        #expect(!es.keepPlayingWithoutWaiting.isEmpty)
+        #expect(!fr.keepPlayingWithoutWaiting.isEmpty)
+    }
+
+    @Test("keepPlayingWithoutWaiting is localized — ES and FR differ from EN")
+    func keepPlayingLocalized() {
+        #expect(es.keepPlayingWithoutWaiting != en.keepPlayingWithoutWaiting)
+        #expect(fr.keepPlayingWithoutWaiting != en.keepPlayingWithoutWaiting)
+    }
+
+    @Test("backIn(_:) embeds the time argument in all three languages")
+    func backInContainsTimeArgument() {
+        let time = "12:34:56"
+        #expect(en.backIn(time).contains(time), "EN backIn must include the time string")
+        #expect(es.backIn(time).contains(time), "ES backIn must include the time string")
+        #expect(fr.backIn(time).contains(time), "FR backIn must include the time string")
+    }
+
+    @Test("backIn(_:) is localized — ES and FR differ from EN")
+    func backInLocalized() {
+        let time = "00:01:00"
+        #expect(es.backIn(time) != en.backIn(time))
+        #expect(fr.backIn(time) != en.backIn(time))
+    }
+
+    // ── FASE 4: discount code strings ──────────────────────────────────────
+
+    @Test("discountCodePlaceholder is non-empty and localized")
+    func discountPlaceholderLocalized() {
+        #expect(!en.discountCodePlaceholder.isEmpty)
+        #expect(es.discountCodePlaceholder != en.discountCodePlaceholder)
+        #expect(fr.discountCodePlaceholder != en.discountCodePlaceholder)
+    }
+
+    @Test("applyCode is non-empty and localized")
+    func applyCodeLocalized() {
+        #expect(!en.applyCode.isEmpty)
+        #expect(es.applyCode != en.applyCode)
+        #expect(fr.applyCode != en.applyCode)
+    }
+
+    @Test("discountValid is non-empty and localized")
+    func discountValidLocalized() {
+        #expect(!en.discountValid.isEmpty)
+        #expect(es.discountValid != en.discountValid)
+        #expect(fr.discountValid != en.discountValid)
+    }
+
+    @Test("discountInvalid is non-empty and localized")
+    func discountInvalidLocalized() {
+        #expect(!en.discountInvalid.isEmpty)
+        #expect(es.discountInvalid != en.discountInvalid)
+        #expect(fr.discountInvalid != en.discountInvalid)
+    }
+
+    @Test("discountExpired is non-empty and localized")
+    func discountExpiredLocalized() {
+        #expect(!en.discountExpired.isEmpty)
+        #expect(es.discountExpired != en.discountExpired)
+        #expect(fr.discountExpired != en.discountExpired)
+    }
+
+    @Test("discountInactive is non-empty and localized")
+    func discountInactiveLocalized() {
+        #expect(!en.discountInactive.isEmpty)
+        #expect(es.discountInactive != en.discountInactive)
+        #expect(fr.discountInactive != en.discountInactive)
+    }
+
+    @Test("discountExhausted is non-empty and localized")
+    func discountExhaustedLocalized() {
+        #expect(!en.discountExhausted.isEmpty)
+        #expect(es.discountExhausted != en.discountExhausted)
+        #expect(fr.discountExhausted != en.discountExhausted)
+    }
+
+    @Test("discountOff(_:) embeds the percentage in all languages")
+    func discountOffContainsPercentage() {
+        #expect(en.discountOff(20).contains("20"))
+        #expect(es.discountOff(20).contains("20"))
+        #expect(fr.discountOff(20).contains("20"))
+    }
+
+    @Test("discountOff(_:) is localized — ES and FR differ from EN")
+    func discountOffLocalized() {
+        #expect(es.discountOff(15) != en.discountOff(15))
+        #expect(fr.discountOff(15) != en.discountOff(15))
+    }
+
+    @Test("discountedPrice(original:discounted:) contains both price strings")
+    func discountedPriceContainsBothValues() {
+        let original = "$9.99"
+        let discounted = "$7.99"
+        let result = en.discountedPrice(original: original, discounted: discounted)
+        #expect(result.contains(original),   "EN discountedPrice must contain the original price")
+        #expect(result.contains(discounted), "EN discountedPrice must contain the discounted price")
+    }
+}
+
+// MARK: - GameCenterManager Smoke Tests
+// Validates the observable state contract of the shared singleton.
+// Does not attempt GK authentication — purely checks initial state and safe no-ops.
+@Suite("GameCenterManager — State Contract")
+@MainActor
+struct GameCenterManagerStateTests {
+
+    @Test("rankFeedback starts nil before any score is submitted")
+    func rankFeedbackInitiallyNil() {
+        // rankFeedback is only set after a successful submitScore+leaderboard load.
+        // In the test environment (no GK auth) it must remain nil.
+        #expect(GameCenterManager.shared.rankFeedback == nil)
+    }
+
+    @Test("lastSubmittedScore starts nil before any submission")
+    func lastSubmittedScoreInitiallyNil() {
+        // lastSubmittedScore is only set inside submitScore(efficiency:).
+        // Without a real GK session this must remain nil.
+        #expect(GameCenterManager.shared.lastSubmittedScore == nil)
+    }
+
+    @Test("clearRankFeedback is safe to call when rankFeedback is already nil")
+    func clearRankFeedbackNoOpWhenNil() {
+        GameCenterManager.shared.clearRankFeedback()
+        #expect(GameCenterManager.shared.rankFeedback == nil)
+    }
+
+    @Test("isGameCenterEnabled matches isAuthenticated")
+    func gameCenterEnabledMirrorsAuthenticated() {
+        // Both flags are set/cleared together in the authenticateHandler.
+        let gcm = GameCenterManager.shared
+        #expect(gcm.isGameCenterEnabled == gcm.isAuthenticated,
+                "isGameCenterEnabled and isAuthenticated must always agree")
+    }
+
+    @Test("displayName is empty when not authenticated")
+    func displayNameEmptyWhenUnauthenticated() {
+        // In the simulator / unit test context GK is not signed in.
+        if !GameCenterManager.shared.isAuthenticated {
+            #expect(GameCenterManager.shared.displayName.isEmpty,
+                    "displayName must be empty when isAuthenticated is false")
         }
     }
 }

@@ -18,7 +18,7 @@
                BlueprintIdentifier = "6A68C0EB2F890D860077D0E0"
                BuildableName = "geometry.app"
                BlueprintName = "geometry"
-               ReferencedContainer = "container:Signal Void.xcodeproj">
+               ReferencedContainer = "container:geometry.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -38,7 +38,7 @@
                BlueprintIdentifier = "6A68C0F82F890D870077D0E0"
                BuildableName = "geometryTests.xctest"
                BlueprintName = "geometryTests"
-               ReferencedContainer = "container:Signal Void.xcodeproj">
+               ReferencedContainer = "container:geometry.xcodeproj">
             </BuildableReference>
          </TestableReference>
          <TestableReference
@@ -49,7 +49,7 @@
                BlueprintIdentifier = "6A68C1022F890D870077D0E0"
                BuildableName = "geometryUITests.xctest"
                BlueprintName = "geometryUITests"
-               ReferencedContainer = "container:Signal Void.xcodeproj">
+               ReferencedContainer = "container:geometry.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -72,7 +72,7 @@
             BlueprintIdentifier = "6A68C0EB2F890D860077D0E0"
             BuildableName = "geometry.app"
             BlueprintName = "geometry"
-            ReferencedContainer = "container:Signal Void.xcodeproj">
+            ReferencedContainer = "container:geometry.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -89,7 +89,7 @@
             BlueprintIdentifier = "6A68C0EB2F890D860077D0E0"
             BuildableName = "geometry.app"
             BlueprintName = "geometry"
-            ReferencedContainer = "container:Signal Void.xcodeproj">
+            ReferencedContainer = "container:geometry.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

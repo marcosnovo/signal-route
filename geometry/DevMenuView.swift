@@ -129,6 +129,21 @@ struct DevMenuView: View {
     @State private var showingDevPaywall  = false
     @State private var devPaywallContext: PaywallContext = .nextMissionBlocked
 
+    // ── DISCOUNT CODES section ─────────────────────────────────────────────
+    @State private var showAddCodeForm:   Bool    = false
+    @State private var newCodeText:       String  = ""
+    @State private var newCodePct:        Int     = 25
+    @State private var newCodeHasExpiry:  Bool    = false
+    @State private var newCodeExpiry:     Date    = Date().addingTimeInterval(86400 * 30)
+    @State private var newCodeHasLimit:   Bool    = false
+    @State private var newCodeLimit:      Int     = 10
+    @State private var discountTestInput: String  = ""
+    @State private var discountTestResult: String = ""
+
+    // ── NOTIFICATIONS section ──────────────────────────────────────────────
+    @State private var notifStatusLabel:  String  = "…"
+    @State private var notifPendingIDs:   [String] = []
+
     // ── RESET tab ─────────────────────────────────────────────────────────
     @State private var pendingReset: ResetAction? = nil
 
@@ -187,6 +202,37 @@ struct DevMenuView: View {
 
     // ── Body ──────────────────────────────────────────────────────────────
 
+    /// Type-erased tab content. `AnyView` breaks the deep opaque-type chain that
+    /// causes a stack overflow in SwiftUI's layout engine on complex view hierarchies.
+    private var tabContent: some View {
+        switch activeTab {
+        case .overview:
+            return AnyView(overviewPanel)
+        case .missions:
+            return AnyView(Group {
+                missionJumpBar
+                filterBar
+                TechDivider()
+                levelList
+            })
+        case .story:
+            return AnyView(storyPanel)
+        case .tools:
+            return AnyView(toolsPanel)
+        case .money:
+            return AnyView(moneyPanel)
+        case .reset:
+            return AnyView(resetPanel)
+        case .qa:
+            return AnyView(SelfQAView(runner: qaRunner) { level in
+                onSelect(level)
+                onDismiss()
+            })
+        case .sim:
+            return AnyView(PlayerSimulationView(runner: simRunner))
+        }
+    }
+
     var body: some View {
         ZStack {
             AppTheme.backgroundPrimary.ignoresSafeArea()
@@ -199,30 +245,7 @@ struct DevMenuView: View {
                 tabBar
                 TechDivider()
 
-                switch activeTab {
-                case .overview:
-                    overviewPanel
-                case .missions:
-                    missionJumpBar
-                    filterBar
-                    TechDivider()
-                    levelList
-                case .story:
-                    storyPanel
-                case .tools:
-                    toolsPanel
-                case .money:
-                    moneyPanel
-                case .reset:
-                    resetPanel
-                case .qa:
-                    SelfQAView(runner: qaRunner) { level in
-                        onSelect(level)
-                        onDismiss()
-                    }
-                case .sim:
-                    PlayerSimulationView(runner: simRunner)
-                }
+                tabContent
             }
 
             // ── Dev toast ─────────────────────────────────────────────────
@@ -358,9 +381,13 @@ struct DevMenuView: View {
                 miniStatC("PLAN",    isPrem ? "PREMIUM" : "FREE",
                           isPrem ? AppTheme.accentPrimary : AppTheme.sage)
                 statDivider()
-                miniStat("DAILY",   isPrem ? "∞" : store.isInIntroPhase
-                          ? "INTRO \(store.freeIntroCompleted)/\(EntitlementStore.freeIntroLimit)"
-                          : "\(store.dailyAttemptsUsed)/\(EntitlementStore.dailyLimit)")
+                miniStatC("GATE",
+                          isPrem ? "∞" : store.isInIntroPhase
+                              ? "INTRO \(store.freeIntroCompleted)/\(EntitlementStore.freeIntroLimit)"
+                              : store.canPlayNow ? "OPEN" : "LOCKED",
+                          isPrem ? AppTheme.accentPrimary
+                              : store.isInIntroPhase ? AppTheme.sage
+                              : store.canPlayNow ? AppTheme.success : AppTheme.danger)
                 statDivider()
                 miniStatC("STORY",  unseen > 0 ? "\(unseen) UNSEEN" : "ALL SEEN",
                           unseen > 0 ? Color.orange : AppTheme.success)
@@ -567,6 +594,8 @@ struct DevMenuView: View {
             VStack(spacing: 0) {
                 systemHealthSection
                 TechDivider()
+                gameCenterSection
+                TechDivider()
                 progressionSection
                 TechDivider()
                 coherenceSection
@@ -731,9 +760,103 @@ struct DevMenuView: View {
             VStack(spacing: 0) {
                 monetizationSection
                 TechDivider()
+                discountCodesSection
+                TechDivider()
+                notificationsSection
+                TechDivider()
                 cloudSaveSection
             }
         }
+    }
+
+    // ── Game Center ─────────────────────────────────────────────────────────
+
+    private var gameCenterSection: some View {
+        _ = refreshID
+        let auth       = gcManager.isAuthenticated
+        let name       = gcManager.displayName
+        let hasAvatar  = gcManager.playerAvatar != nil
+        let lastScore  = gcManager.lastSubmittedScore
+        let lbID       = GameCenterManager.leaderboardID
+        let rankLabel: String = {
+            guard let fb = gcManager.rankFeedback else { return "—" }
+            switch fb {
+            case .newRecord:        return "#1 ★"
+            case .topPercent(let p): return "TOP \(p)%"
+            case .ranked(let r):    return "#\(r)"
+            }
+        }()
+
+        return VStack(spacing: 0) {
+            sectionHeader("GAME CENTER")
+
+            // Row 1 — auth + player
+            HStack(spacing: 0) {
+                miniStatC("AUTH",   auth ? "YES" : "NO",
+                          auth ? AppTheme.success : AppTheme.danger)
+                statDivider()
+                miniStat("PLAYER",  name.isEmpty ? "—" : String(name.prefix(12)).uppercased())
+                statDivider()
+                miniStatC("AVATAR", hasAvatar ? "LOADED" : "—",
+                          hasAvatar ? AppTheme.success : AppTheme.textSecondary)
+            }
+            .padding(.vertical, 10)
+
+            TechDivider()
+
+            // Row 2 — leaderboard + last score + rank
+            HStack(spacing: 0) {
+                miniStat("LAST SCORE", lastScore.map { "\($0)" } ?? "—")
+                statDivider()
+                miniStatC("RANK FB", rankLabel,
+                          gcManager.rankFeedback != nil ? AppTheme.accentPrimary : AppTheme.textSecondary)
+            }
+            .padding(.vertical, 10)
+
+            // Leaderboard ID row
+            HStack(spacing: 6) {
+                Image(systemName: "tag.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.50))
+                Text("LB ID: \(lbID)")
+                    .font(AppTheme.mono(7))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.55))
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 6)
+
+            TechDivider()
+
+            // Controls
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    scenarioBtn("LEADERBOARD", icon: "chart.bar.fill", color: AppTheme.accentPrimary) {
+                        gcManager.openLeaderboards()
+                        showToast("Opening leaderboard…", style: .info)
+                    }
+                    scenarioBtn("DASHBOARD", icon: "gamecontroller.fill", color: AppTheme.sage) {
+                        gcManager.openDashboard()
+                        showToast("Opening GC dashboard…", style: .info)
+                    }
+                    if !auth {
+                        scenarioBtn("AUTHENTICATE", icon: "person.crop.circle.badge.checkmark",
+                                    color: AppTheme.success) {
+                            gcManager.authenticate()
+                            showToast("GC auth triggered…", style: .info)
+                        }
+                    }
+                    scenarioBtn("CLEAR RANK", icon: "xmark.circle", color: AppTheme.textSecondary) {
+                        gcManager.clearRankFeedback()
+                        refreshID = UUID()
+                        showToast("Rank feedback cleared")
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.vertical, 10)
+        }
+        .background(AppTheme.surface)
     }
 
     // ── Progression ────────────────────────────────────────────────────────
@@ -851,7 +974,6 @@ struct DevMenuView: View {
         let store      = EntitlementStore.shared
         let isPremium  = store.isPremium
         let intro      = store.freeIntroCompleted
-        let daily      = store.dailyAttemptsUsed
         let remaining  = store.remainingToday
         let canPlay    = store.canPlay(LevelGenerator.levels.first ?? LevelGenerator.levels[0])
         let blocked    = store.reasonBlocked
@@ -879,36 +1001,74 @@ struct DevMenuView: View {
             }
         }()
 
+        let cooldownRemaining = store.remainingCooldown
+        let cooldownLabel: String = {
+            guard !store.canPlayNow else { return "—" }
+            let total = Int(cooldownRemaining)
+            let h = total / 3600; let m = (total % 3600) / 60; let s = total % 60
+            return String(format: "%02d:%02d:%02d", h, m, s)
+        }()
+        let nextDateLabel: String = {
+            guard let d = store.nextPlayableDate else { return "—" }
+            let fmt = DateFormatter(); fmt.dateFormat = "HH:mm:ss 'on' dd/MM"
+            return fmt.string(from: d)
+        }()
+
         return VStack(spacing: 0) {
             sectionHeader("MONETIZATION  ·  STATUS")
 
-            // Row 1 — plan + counters
+            // Row 1 — plan + intro counter + gate state
             HStack(spacing: 0) {
-                miniStatC("PLAN",    isPremium ? "PREMIUM" : "FREE",
+                miniStatC("PLAN",     isPremium ? "PREMIUM" : "FREE",
                           isPremium ? AppTheme.accentPrimary : AppTheme.sage)
                 statDivider()
-                miniStat("INTRO",   "\(intro)/\(EntitlementStore.freeIntroLimit)")
+                miniStat("INTRO",     "\(intro)/\(EntitlementStore.freeIntroLimit)")
                 statDivider()
-                miniStat("DAILY",   isPremium ? "∞" : "\(daily)/\(EntitlementStore.dailyLimit)")
+                miniStatC("GATE",
+                          isPremium ? "∞" : store.isInIntroPhase ? "INTRO"
+                              : store.canPlayNow ? "OPEN" : "LOCKED",
+                          isPremium ? AppTheme.accentPrimary
+                              : store.isInIntroPhase ? AppTheme.sage
+                              : store.canPlayNow ? AppTheme.success : AppTheme.danger)
                 statDivider()
-                miniStat("REMAIN",  isPremium ? "∞" : "\(remaining)")
+                miniStat("REMAIN",    isPremium ? "∞" : "\(remaining)")
             }
             .padding(.vertical, 10)
 
             TechDivider()
 
-            // Row 2 — canPlayNow + reasonBlocked
+            // Row 2 — daily counter + cooldown + phase
             HStack(spacing: 0) {
                 miniStatC("CAN PLAY", canPlay ? "YES" : "NO",
                           canPlay ? AppTheme.success : AppTheme.danger)
                 statDivider()
-                miniStatC("PHASE", store.isInIntroPhase ? "INTRO" : "DAILY",
+                miniStatC("PHASE",    store.isInIntroPhase ? "INTRO" : "PHASE 2",
                           store.isInIntroPhase ? AppTheme.accentSecondary : AppTheme.sage)
                 statDivider()
-                miniStatC("BLOCKED", blocked != nil ? "YES" : "—",
-                          blocked != nil ? AppTheme.danger : AppTheme.textSecondary)
+                miniStatC("DAILY",
+                          store.isPremium ? "∞" : store.isInIntroPhase ? "—"
+                              : "\(store.dailyPlaysUsed)/\(EntitlementStore.dailyLimit)",
+                          store.dailyPlaysUsed >= EntitlementStore.dailyLimit ? AppTheme.danger
+                              : store.dailyPlaysUsed > 0 ? Color.orange : AppTheme.textSecondary)
+                statDivider()
+                miniStatC("COOLDOWN", cooldownLabel,
+                          store.canPlayNow ? AppTheme.textSecondary : AppTheme.danger)
             }
             .padding(.vertical, 10)
+
+            // nextPlayableDate row
+            if store.nextPlayableDate != nil {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.fill")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(AppTheme.danger)
+                    Text("NEXT PLAYABLE: \(nextDateLabel)")
+                        .font(AppTheme.mono(7))
+                        .foregroundStyle(AppTheme.danger.opacity(0.80))
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.bottom, 6)
+            }
 
             if let reason = blocked {
                 HStack(spacing: 6) {
@@ -992,29 +1152,38 @@ struct DevMenuView: View {
                         refreshID = UUID()
                         showToast("Intro count → 0")
                     }
-                    scenarioBtn("RESET DAILY", icon: "arrow.counterclockwise", color: AppTheme.sage) {
-                        store.resetDailyCount()
+                    scenarioBtn("CLEAR COOLDOWN", icon: "arrow.counterclockwise", color: AppTheme.sage) {
+                        store.clearCooldown()
                         refreshID = UUID()
-                        showToast("Daily count → 0")
+                        showToast("Cooldown cleared → can play")
+                    }
+                    scenarioBtn("FORCE COOLDOWN", icon: "lock.fill", color: AppTheme.danger) {
+                        store.forceCooldown()
+                        refreshID = UUID()
+                        showToast("24h cooldown armed", style: .warning)
+                    }
+                    // Set daily plays count explicitly (0–dailyLimit)
+                    ForEach(0...EntitlementStore.dailyLimit, id: \.self) { n in
+                        scenarioBtn("DAY \(n)/\(EntitlementStore.dailyLimit)",
+                                    icon: n == 0 ? "arrow.counterclockwise"
+                                        : n < EntitlementStore.dailyLimit ? "circle.fill"
+                                        : "lock.fill",
+                                    color: n == EntitlementStore.dailyLimit ? AppTheme.danger
+                                        : n > 0 ? Color.orange : AppTheme.sage) {
+                            store.setDailyAttemptsUsed(n)
+                            refreshID = UUID()
+                            showToast("Daily → \(n)/\(EntitlementStore.dailyLimit)",
+                                      style: n == EntitlementStore.dailyLimit ? .warning : .info)
+                        }
                     }
                     // Set intro counter explicitly
                     ForEach(0...EntitlementStore.freeIntroLimit, id: \.self) { n in
                         scenarioBtn("INTRO \(n)/\(EntitlementStore.freeIntroLimit)", icon: "number",
                                     color: n == EntitlementStore.freeIntroLimit ? AppTheme.danger : AppTheme.textSecondary) {
                             store.setFreeIntroCompleted(n)
-                            store.resetDailyCount()
+                            if n < EntitlementStore.freeIntroLimit { store.clearCooldown() }
                             refreshID = UUID()
                             showToast("Intro → \(n)/\(EntitlementStore.freeIntroLimit)")
-                        }
-                    }
-                    // Set daily counter explicitly
-                    ForEach(0...EntitlementStore.dailyLimit, id: \.self) { n in
-                        scenarioBtn("DAILY \(n)/\(EntitlementStore.dailyLimit)", icon: "number",
-                                    color: n == EntitlementStore.dailyLimit ? AppTheme.danger : AppTheme.textSecondary) {
-                            store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit) // enter Phase 2
-                            store.setDailyAttemptsUsed(n)
-                            refreshID = UUID()
-                            showToast("Daily → \(n)/\(EntitlementStore.dailyLimit)")
                         }
                     }
                 }
@@ -1041,9 +1210,8 @@ struct DevMenuView: View {
                         withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) { showingDevPaywall = true }
                     }
                     scenarioBtn("NEXT BLOCKED", icon: "lock.fill", color: AppTheme.danger) {
-                        // Force Phase 2 + daily limit hit
-                        store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
-                        store.setDailyAttemptsUsed(EntitlementStore.dailyLimit)
+                        // Force Phase 2 + 24h cooldown active
+                        store.forceCooldown()
                         devPaywallContext = .nextMissionBlocked
                         withAnimation(.spring(response: 0.40, dampingFraction: 0.88)) { showingDevPaywall = true }
                         refreshID = UUID()
@@ -1133,29 +1301,51 @@ struct DevMenuView: View {
                         refreshID = UUID()
                         showToast("Intro 0/\(EntitlementStore.freeIntroLimit) · Phase 1")
                     }
-                    // 2. Phase 1, 4 intro missions used (1 remaining)
-                    scenarioBtn("4 INTRO USED", icon: "4.circle.fill", color: AppTheme.sage) {
+                    // 2. Phase 1, 2 intro missions used (1 remaining)
+                    scenarioBtn("2 INTRO USED", icon: "2.circle.fill", color: AppTheme.sage) {
                         store.setPremium(false)
-                        store.setFreeIntroCompleted(4)
-                        store.resetDailyCount()
+                        store.setFreeIntroCompleted(2)
+                        store.clearCooldown()
                         refreshID = UUID()
-                        showToast("Intro 4/\(EntitlementStore.freeIntroLimit) · 1 slot left")
+                        showToast("Intro 2/\(EntitlementStore.freeIntroLimit) · 1 slot left")
                     }
-                    // 3. Phase 1 exhausted → just entered Phase 2, daily = 0
-                    scenarioBtn("5 INTRO USED", icon: "5.circle.fill", color: .orange) {
+                    // 3. Phase 2 — just entered, cooldown NOT yet armed (can play once more)
+                    scenarioBtn("JUST FINISHED 3rd", icon: "3.circle.fill", color: .orange) {
                         store.setPremium(false)
                         store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
-                        store.resetDailyCount()
+                        store.clearCooldown()
+                        StoryStore.markUnseen("story_onboarding_complete")
                         refreshID = UUID()
-                        showToast("Intro DONE · Phase 2 · \(EntitlementStore.dailyLimit) daily slots")
+                        showToast("3rd mission done · story pending · gate active")
                     }
-                    // 4. Phase 2 — daily limit hit
-                    scenarioBtn("DAILY COUNT = \(EntitlementStore.dailyLimit)", icon: "hand.raised.fill", color: AppTheme.danger) {
+                    // 3b. Phase 2 — 1 play used (2 remaining today)
+                    scenarioBtn("DAY: 1/3 USED", icon: "1.circle.fill", color: Color.orange.opacity(0.7)) {
+                        store.setPremium(false)
+                        store.setDailyAttemptsUsed(1)
+                        refreshID = UUID()
+                        showToast("Phase 2 · 1/3 plays used · 2 remaining")
+                    }
+                    // 3c. Phase 2 — 2 plays used (1 remaining today)
+                    scenarioBtn("DAY: 2/3 USED", icon: "2.circle.fill", color: Color.orange) {
+                        store.setPremium(false)
+                        store.setDailyAttemptsUsed(2)
+                        refreshID = UUID()
+                        showToast("Phase 2 · 2/3 plays used · 1 remaining")
+                    }
+                    // 3d. Phase 2 — cooldown just expired (fresh window, can play again)
+                    scenarioBtn("COOLDOWN EXPIRED", icon: "checkmark.circle", color: AppTheme.success) {
                         store.setPremium(false)
                         store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
-                        store.setDailyAttemptsUsed(EntitlementStore.dailyLimit)
+                        store.clearCooldown()
                         refreshID = UUID()
-                        showToast("Daily \(EntitlementStore.dailyLimit)/\(EntitlementStore.dailyLimit) · BLOCKED", style: .warning)
+                        showToast("Cooldown expired · gate OPEN", style: .success)
+                    }
+                    // 4. Phase 2 — cooldown active (hard blocked)
+                    scenarioBtn("BLOCKED (24H)", icon: "hand.raised.fill", color: AppTheme.danger) {
+                        store.setPremium(false)
+                        store.forceCooldown()
+                        refreshID = UUID()
+                        showToast("24h cooldown armed · BLOCKED", style: .warning)
                     }
                     // 5. Premium
                     scenarioBtn("PREMIUM", icon: "star.fill", color: AppTheme.accentPrimary) {
@@ -1165,10 +1355,8 @@ struct DevMenuView: View {
                     }
                     #if DEBUG
                     scenarioBtn("STRUGGLING FREE", icon: "exclamationmark.triangle.fill", color: AppTheme.danger) {
-                        // Simulate a frustrated free player at the daily limit
-                        store.setPremium(false)
-                        store.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
-                        store.setDailyAttemptsUsed(EntitlementStore.dailyLimit)
+                        // Simulate a frustrated free player with active cooldown
+                        store.forceCooldown()
                         PlayerSkillTracker.shared.overrideSkillScore(0.12)
                         SessionTracker.shared.overrideFailuresInSession(4)
                         SessionTracker.shared.overrideStreakCount(0)
@@ -1226,6 +1414,373 @@ struct DevMenuView: View {
             .padding(.vertical, 10)
         }
         .background(AppTheme.surface)
+    }
+
+    // ── Discount Codes ──────────────────────────────────────────────────────
+
+    private var discountCodesSection: some View {
+        let store = DiscountStore.shared
+        return VStack(spacing: 0) {
+            sectionHeader("DISCOUNT CODES  ·  APP-LAYER SIMULATION")
+
+            // Code list
+            if store.codes.isEmpty {
+                HStack {
+                    Text("No codes — add one below")
+                        .font(AppTheme.mono(8))
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(store.codes) { code in
+                        discountCodeRow(code)
+                        if code.id != store.codes.last?.id {
+                            Rectangle().fill(AppTheme.sage.opacity(0.10)).frame(height: 0.5)
+                        }
+                    }
+                }
+            }
+
+            TechDivider()
+
+            // Test row
+            HStack(spacing: 8) {
+                TextField("Test code…", text: $discountTestInput)
+                    .font(AppTheme.mono(10))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                    .padding(.leading, 12).padding(.vertical, 8)
+                    .background(AppTheme.backgroundSecondary)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+
+                Button("VALIDATE") {
+                    let result = store.validate(discountTestInput)
+                    switch result {
+                    case .valid(let c):  discountTestResult = "✓ \(c.code) — \(c.percentageOff)% off"
+                                         showToast("\(c.percentageOff)% off")
+                    case .invalid:       discountTestResult = "✗ Invalid"
+                    case .inactive:      discountTestResult = "✗ Inactive"
+                    case .expired:       discountTestResult = "✗ Expired"
+                    case .exhausted:     discountTestResult = "✗ Exhausted"
+                    }
+                }
+                .font(AppTheme.mono(8, weight: .bold))
+                .foregroundStyle(AppTheme.accentPrimary)
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(AppTheme.accentPrimary.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+
+            if !discountTestResult.isEmpty {
+                HStack {
+                    Text(discountTestResult)
+                        .font(AppTheme.mono(8))
+                        .foregroundStyle(discountTestResult.hasPrefix("✓") ? AppTheme.success : AppTheme.danger)
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.bottom, 8)
+            }
+
+            TechDivider()
+
+            // Add / delete-all controls
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    scenarioBtn(showAddCodeForm ? "CANCEL" : "ADD CODE",
+                                icon: showAddCodeForm ? "xmark" : "plus",
+                                color: showAddCodeForm ? AppTheme.danger : AppTheme.success) {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            showAddCodeForm.toggle()
+                        }
+                    }
+                    if !store.codes.isEmpty {
+                        scenarioBtn("DELETE ALL", icon: "trash.fill", color: AppTheme.danger) {
+                            store.deleteAll()
+                            showToast("All codes deleted", style: .warning)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.vertical, 10)
+
+            // Add-code form (collapsible)
+            if showAddCodeForm {
+                addCodeForm
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(AppTheme.surface)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: showAddCodeForm)
+    }
+
+    private func discountCodeRow(_ code: DiscountCode) -> some View {
+        let store = DiscountStore.shared
+        return HStack(spacing: 8) {
+            // Status indicator
+            Circle()
+                .fill(code.isActive && !code.isExpired && !code.isExhausted
+                      ? AppTheme.success : AppTheme.danger)
+                .frame(width: 6, height: 6)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(code.code)
+                    .font(AppTheme.mono(10, weight: .black))
+                    .foregroundStyle(AppTheme.textPrimary)
+                HStack(spacing: 6) {
+                    Text("\(code.percentageOff)% OFF")
+                        .font(AppTheme.mono(7, weight: .bold))
+                        .foregroundStyle(AppTheme.accentPrimary)
+                    if let exp = code.expiresAt {
+                        let fmt: DateFormatter = {
+                            let f = DateFormatter(); f.dateFormat = "dd/MM/yy"; return f
+                        }()
+                        Text("EXP \(fmt.string(from: exp))")
+                            .font(AppTheme.mono(7))
+                            .foregroundStyle(code.isExpired ? AppTheme.danger : AppTheme.textSecondary.opacity(0.55))
+                    }
+                    if let limit = code.usageLimit {
+                        Text("USES \(code.usageCount)/\(limit)")
+                            .font(AppTheme.mono(7))
+                            .foregroundStyle(code.isExhausted ? AppTheme.danger : AppTheme.textSecondary.opacity(0.55))
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Per-code actions
+            HStack(spacing: 4) {
+                Button(code.isActive ? "OFF" : "ON") {
+                    store.toggleActive(code)
+                    refreshID = UUID()
+                }
+                .font(AppTheme.mono(7, weight: .bold))
+                .foregroundStyle(code.isActive ? AppTheme.sage : AppTheme.success)
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background((code.isActive ? AppTheme.sage : AppTheme.success).opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                Button("RESET") {
+                    store.resetUsage(code)
+                    refreshID = UUID()
+                }
+                .font(AppTheme.mono(7, weight: .bold))
+                .foregroundStyle(AppTheme.textSecondary)
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(AppTheme.backgroundSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                Button(action: { store.delete(code); refreshID = UUID() }) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AppTheme.danger)
+                        .padding(6)
+                        .background(AppTheme.danger.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    private var addCodeForm: some View {
+        let store = DiscountStore.shared
+        return VStack(alignment: .leading, spacing: 0) {
+            TechDivider()
+            sectionHeader("NEW CODE")
+
+            VStack(spacing: 12) {
+                // Code text
+                HStack(spacing: 0) {
+                    Text("CODE")
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 60, alignment: .leading)
+                    TextField("SIGNAL25", text: $newCodeText)
+                        .font(AppTheme.mono(11, weight: .black))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.characters)
+                }
+                .padding(.horizontal, 16)
+
+                // Percentage
+                HStack(spacing: 8) {
+                    Text("% OFF")
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 60, alignment: .leading)
+                    Slider(value: Binding(
+                        get: { Double(newCodePct) },
+                        set: { newCodePct = Int($0) }
+                    ), in: 1...100, step: 1)
+                    .tint(AppTheme.accentPrimary)
+                    Text("\(newCodePct)%")
+                        .font(AppTheme.mono(11, weight: .black))
+                        .foregroundStyle(AppTheme.accentPrimary)
+                        .frame(width: 36, alignment: .trailing)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, 16)
+
+                // Expiry toggle
+                HStack(spacing: 8) {
+                    Toggle(isOn: $newCodeHasExpiry) {
+                        Text("EXPIRY")
+                            .font(AppTheme.mono(8, weight: .bold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .tint(AppTheme.accentPrimary)
+                    .padding(.horizontal, 16)
+                }
+                if newCodeHasExpiry {
+                    DatePicker("", selection: $newCodeExpiry, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .tint(AppTheme.accentPrimary)
+                        .padding(.horizontal, 16)
+                        .labelsHidden()
+                }
+
+                // Usage limit toggle
+                HStack(spacing: 8) {
+                    Toggle(isOn: $newCodeHasLimit) {
+                        Text("USAGE LIMIT")
+                            .font(AppTheme.mono(8, weight: .bold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .tint(AppTheme.accentPrimary)
+                    .padding(.horizontal, 16)
+                }
+                if newCodeHasLimit {
+                    Stepper(value: $newCodeLimit, in: 1...999) {
+                        Text("Max uses: \(newCodeLimit)")
+                            .font(AppTheme.mono(9))
+                            .foregroundStyle(AppTheme.textPrimary)
+                    }
+                    .padding(.horizontal, 16)
+                }
+
+                // Create button
+                Button(action: {
+                    let trimmed = newCodeText.trimmingCharacters(in: .whitespaces).uppercased()
+                    guard !trimmed.isEmpty else {
+                        showToast("Code text is empty", style: .fail); return
+                    }
+                    let code = DiscountCode(
+                        code:          trimmed,
+                        percentageOff: newCodePct,
+                        isActive:      true,
+                        expiresAt:     newCodeHasExpiry ? newCodeExpiry : nil,
+                        usageLimit:    newCodeHasLimit  ? newCodeLimit  : nil,
+                        usageCount:    0
+                    )
+                    store.add(code)
+                    refreshID = UUID()
+                    newCodeText = ""
+                    withAnimation { showAddCodeForm = false }
+                    showToast("\(trimmed) created (\(newCodePct)% off)", style: .success)
+                }) {
+                    Text("CREATE CODE")
+                        .font(AppTheme.mono(10, weight: .black)).kerning(1)
+                        .foregroundStyle(newCodeText.isEmpty ? AppTheme.textSecondary : .black)
+                        .frame(maxWidth: .infinity).frame(height: 40)
+                        .background(newCodeText.isEmpty ? AppTheme.backgroundSecondary : AppTheme.success)
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                }
+                .disabled(newCodeText.isEmpty)
+                .padding(.horizontal, 16)
+            }
+            .padding(.vertical, 12)
+        }
+    }
+
+    // ── Notifications ───────────────────────────────────────────────────────
+
+    private var notificationsSection: some View {
+        VStack(spacing: 0) {
+            sectionHeader("NOTIFICATIONS")
+
+            // Status row
+            HStack(spacing: 0) {
+                miniStatC("PERMISSION", notifStatusLabel,
+                          notifStatusLabel == "AUTHORIZED" ? AppTheme.success
+                              : notifStatusLabel == "DENIED" ? AppTheme.danger
+                              : AppTheme.textSecondary)
+                statDivider()
+                miniStat("PENDING", "\(notifPendingIDs.count)")
+            }
+            .padding(.vertical, 10)
+
+            // Pending IDs list
+            if !notifPendingIDs.isEmpty {
+                ForEach(notifPendingIDs, id: \.self) { id in
+                    HStack(spacing: 6) {
+                        Image(systemName: "bell.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(AppTheme.accentPrimary.opacity(0.70))
+                        Text(id)
+                            .font(AppTheme.mono(7))
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.65))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 4)
+                }
+            }
+
+            TechDivider()
+
+            // Controls
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    scenarioBtn("REQUEST PERMISSION", icon: "bell.badge", color: AppTheme.accentPrimary) {
+                        Task {
+                            let granted = await NotificationManager.shared.requestPermissionIfNeeded()
+                            showToast(granted ? "Permission granted" : "Permission denied",
+                                      style: granted ? .success : .fail)
+                            await refreshNotifState()
+                        }
+                    }
+                    scenarioBtn("TEST (10s)", icon: "bell.and.waves.left.and.right", color: AppTheme.sage) {
+                        NotificationManager.shared.scheduleTest(
+                            after: 10,
+                            language: settings.language
+                        )
+                        showToast("Test notification in 10s", style: .info)
+                        Task { await refreshNotifState() }
+                    }
+                    scenarioBtn("CANCEL ALL", icon: "bell.slash.fill", color: AppTheme.danger) {
+                        NotificationManager.shared.cancelAll()
+                        showToast("All notifications cancelled", style: .warning)
+                        Task { await refreshNotifState() }
+                    }
+                    scenarioBtn("REFRESH", icon: "arrow.clockwise", color: AppTheme.textSecondary) {
+                        Task { await refreshNotifState() }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.vertical, 10)
+        }
+        .background(AppTheme.surface)
+        .task { await refreshNotifState() }
+    }
+
+    private func refreshNotifState() async {
+        let status = await NotificationManager.shared.currentStatus()
+        notifStatusLabel = switch status {
+            case .authorized:   "AUTHORIZED"
+            case .denied:       "DENIED"
+            case .provisional:  "PROVISIONAL"
+            case .notDetermined: "NOT SET"
+            default:            "UNKNOWN"
+        }
+        notifPendingIDs = await NotificationManager.shared.pendingIDs()
     }
 
     // ── Cloud save ─────────────────────────────────────────────────────────
@@ -3619,6 +4174,7 @@ struct DevMenuView: View {
         case .postOnboarding:        return "POST-INTRO"
         case .firstMissionReady:     return "READY"
         case .firstMissionComplete:  return "FIRST WIN"
+        case .onboardingComplete:    return "GATE"
         case .sectorComplete:        return "SECTOR"
         case .passUnlocked:          return "PASS"
         case .rankUp:                return "RANK"

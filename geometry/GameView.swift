@@ -86,7 +86,14 @@ struct GameView: View {
                     )
             } else if !isIntro && overlayVisible && vm.status == .won {
                 VictoryTelemetryView(vm: vm,
-                                     onRestart: { vm.setupLevel() },
+                                     onRestart: {
+                                         // Gate every retry: daily limit may have armed during this session
+                                         if EntitlementStore.shared.canPlay(vm.currentLevel) {
+                                             vm.setupLevel()
+                                         } else {
+                                             onDismiss()
+                                         }
+                                     },
                                      onDismiss: onDismiss,
                                      onNextMission: onNextMission,
                                      onMissions: onMissions,
@@ -94,7 +101,14 @@ struct GameView: View {
                     .transition(.opacity)
             } else if !isIntro && overlayVisible && vm.status == .lost {
                 MissionOverlay(vm: vm,
-                               onRestart: { vm.setupLevel() },
+                               onRestart: {
+                                   // Gate every retry: daily limit may have armed during this session
+                                   if EntitlementStore.shared.canPlay(vm.currentLevel) {
+                                       vm.setupLevel()
+                                   } else {
+                                       onDismiss()
+                                   }
+                               },
                                onDismiss: onDismiss)
                     .transition(
                         .asymmetric(
