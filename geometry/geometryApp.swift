@@ -49,9 +49,8 @@ struct geometryApp: App {
             .task {
                 // Game Center auth is fire-and-forget — not a splash gate.
                 gcManager.authenticate()
-                // Sonic logo: plays during splash so it's audible on cold launch.
-                SoundManager.play(.sonicLogoSubtle)
                 // Coordinator runs audio + StoreKit concurrently (max 3 s).
+                // Sonic logo is played inside run() after the SFX pool is ready.
                 await splash.run(storeKit: storeKit)
                 #if DEBUG
                 StoryAssetValidator.validate()

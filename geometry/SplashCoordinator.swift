@@ -74,6 +74,8 @@ final class SplashCoordinator {
                 #endif
                 await AudioManager.shared.prepare()
                 self.isAudioReady = true
+                // Play sonic logo now — SFX pool is guaranteed built at this point.
+                SoundManager.play(.sonicLogoSubtle)
                 #if DEBUG
                 print(String(format: "[Splash] ✓ Audio ready  %.2fs", Date().timeIntervalSince(t)))
                 #endif

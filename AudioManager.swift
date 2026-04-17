@@ -46,9 +46,9 @@ final class AudioManager {
         set { SoundManager.sfxEnabled = newValue }
     }
 
-    /// Whether background music should play. Default OFF.
+    /// Whether background music should play. Default ON.
     var musicEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: "musicEnabled") as? Bool ?? false }
+        get { UserDefaults.standard.object(forKey: "musicEnabled") as? Bool ?? true }
         set {
             UserDefaults.standard.set(newValue, forKey: "musicEnabled")
             if newValue { resumeCurrentTrack() } else { stopMusic() }
@@ -118,6 +118,9 @@ final class AudioManager {
     // MARK: - Public API
 
     /// Call once at app launch. Synthesises SFX + all music tracks on a background thread.
+    /// Immediately starts the track for the current state once tracks are built —
+    /// ContentView.onAppear fires before this completes, so the initial transition()
+    /// call is a no-op (state already matches). This call ensures music starts.
     func prepare() async {
         await SoundManager.prepare()
 
@@ -132,11 +135,17 @@ final class AudioManager {
             player.prepareToPlay()
             musicPlayers[state] = player
         }
+
+        // Start music for currentState now that tracks are ready.
+        resumeCurrentTrack()
     }
 
     /// Switch to a new audio state and crossfade to the matching track.
     func transition(to newState: AudioState) {
         guard newState != currentState else { return }
+        #if DEBUG
+        print("[Audio] \(currentState.debugLabel) → \(newState.debugLabel)")
+        #endif
         if newState == .inMission { missionIntensity = 0 }   // fresh ramp for each mission
         currentState = newState
         resumeCurrentTrack()
@@ -266,7 +275,13 @@ final class AudioManager {
 
     /// Start (or crossfade to) the music track for `currentState`.
     private func resumeCurrentTrack() {
-        guard musicEnabled else { stopMusic(); return }
+        guard musicEnabled else {
+            #if DEBUG
+            print("[Audio] ⛔ track blocked — musicEnabled=false")
+            #endif
+            stopMusic()
+            return
+        }
 
         let newPlayer = musicPlayers[currentState]
         let old       = currentMusicPlayer
@@ -291,6 +306,9 @@ final class AudioManager {
         }
 
         guard let player = newPlayer else {
+            #if DEBUG
+            print("[Audio] ⚠️ no track built for state \(currentState.debugLabel)")
+            #endif
             currentMusicPlayer = nil
             return
         }
@@ -305,6 +323,9 @@ final class AudioManager {
             player.volume = 0
             player.play()
             player.setVolume(targetVolume, fadeDuration: fadeInDuration)
+            #if DEBUG
+            print("[Audio] ▶️ \(currentTrackLabel) started")
+            #endif
         }
     }
 }

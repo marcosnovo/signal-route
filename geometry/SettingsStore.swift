@@ -40,7 +40,7 @@ final class SettingsStore: ObservableObject {
     private init() {
         // Mirror SoundManager's existing UserDefaults keys for sfx + music
         soundEnabled   = UserDefaults.standard.object(forKey: "sfxEnabled")     as? Bool ?? true
-        musicEnabled   = UserDefaults.standard.object(forKey: "musicEnabled")   as? Bool ?? false
+        musicEnabled   = UserDefaults.standard.object(forKey: "musicEnabled")   as? Bool ?? true
         hapticsEnabled = UserDefaults.standard.object(forKey: "hapticsEnabled") as? Bool ?? true
         reducedMotion  = UserDefaults.standard.object(forKey: "reducedMotion")  as? Bool ?? false
 

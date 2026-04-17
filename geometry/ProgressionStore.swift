@@ -12,6 +12,10 @@ enum ProgressionStore {
 
     private static let key = "astronaut-profile-v1"
 
+    /// In-memory cache — eliminates repeated UserDefaults JSON decodes.
+    /// Invalidated on every save() / reset() so it never goes stale.
+    private static var _cache: AstronautProfile?
+
     // MARK: - Profile access
 
     /// Current profile — returns a default Level-1 profile if no data exists yet.
@@ -20,22 +24,31 @@ enum ProgressionStore {
     /// includes `lastEfficiencyByLevel`: if the new field is empty but `bestEfficiencyByLevel`
     /// is not, we seed `last` from `best` so existing players keep their progress intact.
     static var profile: AstronautProfile {
+        if let cached = _cache { return cached }
+
         guard
             let data    = UserDefaults.standard.data(forKey: key),
             var decoded = try? JSONDecoder().decode(AstronautProfile.self, from: data)
-        else { return AstronautProfile() }
+        else {
+            let fresh = AstronautProfile()
+            _cache = fresh
+            return fresh
+        }
 
         // One-time migration: seed last-score store from best-score store
         if decoded.lastEfficiencyByLevel.isEmpty && !decoded.bestEfficiencyByLevel.isEmpty {
             decoded.lastEfficiencyByLevel = decoded.bestEfficiencyByLevel
-            save(decoded)
+            save(decoded)   // save() also sets _cache
+        } else {
+            _cache = decoded
         }
 
         return decoded
     }
 
-    /// Persist the given profile to UserDefaults.
+    /// Persist the given profile to UserDefaults and update the in-memory cache.
     static func save(_ profile: AstronautProfile) {
+        _cache = profile
         guard let data = try? JSONEncoder().encode(profile) else { return }
         UserDefaults.standard.set(data, forKey: key)
     }
@@ -110,6 +123,7 @@ enum ProgressionStore {
 
     /// Resets the profile to a fresh Level-1 state.
     static func reset() {
+        _cache = nil
         UserDefaults.standard.removeObject(forKey: key)
     }
 
