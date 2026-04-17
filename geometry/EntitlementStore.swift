@@ -45,6 +45,8 @@ final class EntitlementStore: ObservableObject {
         static let nextPlayableDate   = "entitlement.nextPlayableDate"
         static let dailyPlaysUsed     = "entitlement.dailyPlaysUsed"
         static let dailyWindowStart   = "entitlement.dailyWindowStart"
+        static let premiumByCode      = "entitlement.premiumByCode"
+        static let activeCodeID       = "entitlement.activeCodeID"
     }
 
     // ── Published state ───────────────────────────────────────────────────
@@ -57,6 +59,10 @@ final class EntitlementStore: ObservableObject {
     @Published private(set) var dailyPlaysUsed:     Int
     /// When the current 24h window started (nil if no play yet this window).
     private var dailyWindowStart: Date?
+    /// True when premium was granted via an unlock code (not a StoreKit purchase).
+    @Published private(set) var premiumByCode: Bool
+    /// The code string that activated premium, if applicable.
+    @Published private(set) var activeCodeID:  String?
 
     // ── Init ──────────────────────────────────────────────────────────────
 
@@ -67,6 +73,8 @@ final class EntitlementStore: ObservableObject {
         nextPlayableDate   = d.object(forKey: Key.nextPlayableDate) as? Date
         dailyPlaysUsed     = d.integer(forKey: Key.dailyPlaysUsed)
         dailyWindowStart   = d.object(forKey: Key.dailyWindowStart) as? Date
+        premiumByCode      = d.bool(forKey: Key.premiumByCode)
+        activeCodeID       = d.string(forKey: Key.activeCodeID)
         // Schedule automatic unlock if a cooldown was persisted from a previous session
         if nextPlayableDate != nil { scheduleUnlock() }
     }
@@ -207,11 +215,49 @@ final class EntitlementStore: ObservableObject {
         }
     }
 
+    // MARK: - Unlock code activation
+
+    /// Grant premium access via an unlock code.
+    ///
+    /// Sets `isPremium = true`, records the source code, clears any active cooldown,
+    /// and cancels pending cooldown notifications. Safe to call when the player already
+    /// has premium via a real purchase — it will not downgrade or change the source flag
+    /// in that case (StoreKit-granted premium takes precedence).
+    func activateByCode(_ codeID: String) {
+        guard !isPremium else { return }   // real purchase already active — no-op
+        isPremium     = true
+        premiumByCode = true
+        activeCodeID  = codeID
+        save()
+        clearCooldown()   // also cancels cooldown notifications
+        #if DEBUG
+        print("[ENTITLEMENT] activateByCode(\(codeID)) → premium granted via unlock code")
+        #endif
+    }
+
+    /// Remove code-granted premium. Only valid when `premiumByCode == true`.
+    /// Has no effect if premium was granted by a real StoreKit purchase.
+    func revokeCodePremium() {
+        guard premiumByCode else { return }
+        isPremium     = false
+        premiumByCode = false
+        activeCodeID  = nil
+        save()
+        #if DEBUG
+        print("[ENTITLEMENT] revokeCodePremium → code premium removed")
+        #endif
+    }
+
     // MARK: - Dev helpers
 
     /// Toggle premium state.
     func setPremium(_ value: Bool) {
         isPremium = value
+        if !value {
+            // Clear code-premium source when disabling premium
+            premiumByCode = false
+            activeCodeID  = nil
+        }
         save()
         // Premium removes all gates — cancel any pending "playable again" notification
         if value { NotificationManager.shared.cancelCooldown() }
@@ -333,5 +379,7 @@ final class EntitlementStore: ObservableObject {
         d.set(nextPlayableDate,   forKey: Key.nextPlayableDate)
         d.set(dailyPlaysUsed,     forKey: Key.dailyPlaysUsed)
         d.set(dailyWindowStart,   forKey: Key.dailyWindowStart)
+        d.set(premiumByCode,      forKey: Key.premiumByCode)
+        d.set(activeCodeID,       forKey: Key.activeCodeID)
     }
 }

@@ -156,6 +156,17 @@ struct DevMenuView: View {
     @State private var discountTestInput: String  = ""
     @State private var discountTestResult: String = ""
 
+    // ── UNLOCK CODES section ───────────────────────────────────────────────
+    @State private var showAddUnlockCodeForm:  Bool   = false
+    @State private var newUnlockCodeText:      String = ""
+    @State private var newUnlockCodeNote:      String = ""
+    @State private var newUnlockCodeHasExpiry: Bool   = false
+    @State private var newUnlockCodeExpiry:    Date   = Date().addingTimeInterval(86400 * 30)
+    @State private var newUnlockCodeHasLimit:  Bool   = false
+    @State private var newUnlockCodeLimit:     Int    = 10
+    @State private var unlockTestInput:        String = ""
+    @State private var unlockTestResult:       String = ""
+
     // ── NOTIFICATIONS section ──────────────────────────────────────────────
     @State private var notifStatusLabel:  String  = "…"
     @State private var notifPendingIDs:   [String] = []
@@ -775,6 +786,8 @@ struct DevMenuView: View {
         ScrollView {
             VStack(spacing: 0) {
                 monetizationSection
+                TechDivider()
+                unlockCodesSection
                 TechDivider()
                 discountCodesSection
                 TechDivider()
@@ -1430,6 +1443,329 @@ struct DevMenuView: View {
             .padding(.vertical, 10)
         }
         .background(AppTheme.surface)
+    }
+
+    // ── Unlock Codes ────────────────────────────────────────────────────────
+
+    private var unlockCodesSection: some View {
+        let store      = UnlockCodeStore.shared
+        let entitle    = EntitlementStore.shared
+        return VStack(spacing: 0) {
+            sectionHeader("UNLOCK CODES  ·  GRANT FULL ACCESS")
+
+            // Active code badge
+            if entitle.premiumByCode, let codeID = entitle.activeCodeID {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(AppTheme.success)
+                    Text("ACTIVE: \(codeID)")
+                        .font(AppTheme.mono(9, weight: .black))
+                        .foregroundStyle(AppTheme.success)
+                    Spacer()
+                    Button("REVOKE") {
+                        entitle.revokeCodePremium()
+                        refreshID = UUID()
+                        showToast("Code premium revoked", style: .warning)
+                    }
+                    .font(AppTheme.mono(7, weight: .bold))
+                    .foregroundStyle(AppTheme.danger)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(AppTheme.danger.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(AppTheme.success.opacity(0.06))
+                TechDivider()
+            }
+
+            // Code list
+            if store.codes.isEmpty {
+                HStack {
+                    Text("No unlock codes — add one below")
+                        .font(AppTheme.mono(8))
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(store.codes) { code in
+                        unlockCodeRow(code)
+                        if code.id != store.codes.last?.id {
+                            Rectangle().fill(AppTheme.sage.opacity(0.10)).frame(height: 0.5)
+                        }
+                    }
+                }
+            }
+
+            TechDivider()
+
+            // Test / simulate row
+            HStack(spacing: 8) {
+                TextField("Test code…", text: $unlockTestInput)
+                    .font(AppTheme.mono(10))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                    .padding(.leading, 12).padding(.vertical, 8)
+                    .background(AppTheme.backgroundSecondary)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+
+                Button("VALIDATE") {
+                    switch store.validate(unlockTestInput) {
+                    case .valid(let c):  unlockTestResult = "✓ \(c.code) — \(c.type.label)"
+                    case .invalid:       unlockTestResult = "✗ Invalid"
+                    case .inactive:      unlockTestResult = "✗ Inactive"
+                    case .expired:       unlockTestResult = "✗ Expired"
+                    case .exhausted:     unlockTestResult = "✗ Exhausted"
+                    }
+                }
+                .font(AppTheme.mono(8, weight: .bold))
+                .foregroundStyle(AppTheme.accentPrimary)
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(AppTheme.accentPrimary.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+
+                Button("APPLY") {
+                    switch store.validate(unlockTestInput) {
+                    case .valid:
+                        store.redeem(unlockTestInput)
+                        refreshID = UUID()
+                        showToast("Unlock code applied — premium granted", style: .success)
+                    case .invalid:   showToast("Invalid code", style: .fail)
+                    case .inactive:  showToast("Code inactive", style: .fail)
+                    case .expired:   showToast("Code expired", style: .fail)
+                    case .exhausted: showToast("Usage limit reached", style: .fail)
+                    }
+                }
+                .font(AppTheme.mono(8, weight: .bold))
+                .foregroundStyle(AppTheme.success)
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(AppTheme.success.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+
+            if !unlockTestResult.isEmpty {
+                HStack {
+                    Text(unlockTestResult)
+                        .font(AppTheme.mono(8))
+                        .foregroundStyle(unlockTestResult.hasPrefix("✓") ? AppTheme.success : AppTheme.danger)
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.bottom, 8)
+            }
+
+            TechDivider()
+
+            // Controls
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    scenarioBtn(showAddUnlockCodeForm ? "CANCEL" : "ADD CODE",
+                                icon: showAddUnlockCodeForm ? "xmark" : "plus",
+                                color: showAddUnlockCodeForm ? AppTheme.danger : AppTheme.success) {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            showAddUnlockCodeForm.toggle()
+                        }
+                    }
+                    if !store.codes.isEmpty {
+                        scenarioBtn("DELETE ALL", icon: "trash.fill", color: AppTheme.danger) {
+                            store.deleteAll()
+                            showToast("All unlock codes deleted", style: .warning)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.vertical, 10)
+
+            if showAddUnlockCodeForm {
+                addUnlockCodeForm
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .background(AppTheme.surface)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: showAddUnlockCodeForm)
+    }
+
+    private func unlockCodeRow(_ code: UnlockCode) -> some View {
+        let store = UnlockCodeStore.shared
+        return HStack(spacing: 8) {
+            Circle()
+                .fill(code.isActive && !code.isExpired && !code.isExhausted
+                      ? AppTheme.success : AppTheme.danger)
+                .frame(width: 6, height: 6)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(code.code)
+                    .font(AppTheme.mono(10, weight: .black))
+                    .foregroundStyle(AppTheme.textPrimary)
+                HStack(spacing: 6) {
+                    Text(code.type.label)
+                        .font(AppTheme.mono(7, weight: .bold))
+                        .foregroundStyle(AppTheme.accentPrimary)
+                    if let exp = code.expiresAt {
+                        let fmt: DateFormatter = {
+                            let f = DateFormatter(); f.dateFormat = "dd/MM/yy"; return f
+                        }()
+                        Text("EXP \(fmt.string(from: exp))")
+                            .font(AppTheme.mono(7))
+                            .foregroundStyle(code.isExpired ? AppTheme.danger : AppTheme.textSecondary.opacity(0.55))
+                    }
+                    if let max = code.maxUses {
+                        Text("USES \(code.usesCount)/\(max)")
+                            .font(AppTheme.mono(7))
+                            .foregroundStyle(code.isExhausted ? AppTheme.danger : AppTheme.textSecondary.opacity(0.55))
+                    }
+                    if let note = code.note, !note.isEmpty {
+                        Text("· \(note)")
+                            .font(AppTheme.mono(7))
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.40))
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Spacer()
+
+            HStack(spacing: 4) {
+                Button(code.isActive ? "OFF" : "ON") {
+                    store.toggleActive(code)
+                    refreshID = UUID()
+                }
+                .font(AppTheme.mono(7, weight: .bold))
+                .foregroundStyle(code.isActive ? AppTheme.sage : AppTheme.success)
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background((code.isActive ? AppTheme.sage : AppTheme.success).opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                Button("RESET") {
+                    store.resetUsage(code)
+                    refreshID = UUID()
+                }
+                .font(AppTheme.mono(7, weight: .bold))
+                .foregroundStyle(AppTheme.textSecondary)
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .background(AppTheme.backgroundSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                Button(action: { store.delete(code); refreshID = UUID() }) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AppTheme.danger)
+                        .padding(6)
+                        .background(AppTheme.danger.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    private var addUnlockCodeForm: some View {
+        let store = UnlockCodeStore.shared
+        return VStack(alignment: .leading, spacing: 0) {
+            TechDivider()
+            sectionHeader("NEW UNLOCK CODE")
+
+            VStack(spacing: 12) {
+                // Code text
+                HStack(spacing: 0) {
+                    Text("CODE")
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 60, alignment: .leading)
+                    TextField("PRESS2024", text: $newUnlockCodeText)
+                        .font(AppTheme.mono(11, weight: .black))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.characters)
+                }
+                .padding(.horizontal, 16)
+
+                // Dev note
+                HStack(spacing: 0) {
+                    Text("NOTE")
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(width: 60, alignment: .leading)
+                    TextField("Press copy, reviewer, etc.", text: $newUnlockCodeNote)
+                        .font(AppTheme.mono(10))
+                        .foregroundStyle(AppTheme.textPrimary.opacity(0.70))
+                        .autocorrectionDisabled()
+                }
+                .padding(.horizontal, 16)
+
+                // Expiry toggle
+                Toggle(isOn: $newUnlockCodeHasExpiry) {
+                    Text("EXPIRY")
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+                .tint(AppTheme.accentPrimary)
+                .padding(.horizontal, 16)
+
+                if newUnlockCodeHasExpiry {
+                    DatePicker("", selection: $newUnlockCodeExpiry, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .tint(AppTheme.accentPrimary)
+                        .padding(.horizontal, 16)
+                        .labelsHidden()
+                }
+
+                // Usage limit toggle
+                Toggle(isOn: $newUnlockCodeHasLimit) {
+                    Text("USAGE LIMIT")
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                }
+                .tint(AppTheme.accentPrimary)
+                .padding(.horizontal, 16)
+
+                if newUnlockCodeHasLimit {
+                    Stepper(value: $newUnlockCodeLimit, in: 1...999) {
+                        Text("Max uses: \(newUnlockCodeLimit)")
+                            .font(AppTheme.mono(9))
+                            .foregroundStyle(AppTheme.textPrimary)
+                    }
+                    .padding(.horizontal, 16)
+                }
+
+                // Create button
+                Button(action: {
+                    let trimmed = newUnlockCodeText.trimmingCharacters(in: .whitespaces).uppercased()
+                    guard !trimmed.isEmpty else {
+                        showToast("Code text is empty", style: .fail); return
+                    }
+                    let code = UnlockCode(
+                        code:      trimmed,
+                        type:      .fullUnlock,
+                        isActive:  true,
+                        expiresAt: newUnlockCodeHasExpiry ? newUnlockCodeExpiry : nil,
+                        maxUses:   newUnlockCodeHasLimit  ? newUnlockCodeLimit  : nil,
+                        usesCount: 0,
+                        note:      newUnlockCodeNote.isEmpty ? nil : newUnlockCodeNote
+                    )
+                    store.add(code)
+                    refreshID = UUID()
+                    newUnlockCodeText = ""
+                    newUnlockCodeNote = ""
+                    withAnimation { showAddUnlockCodeForm = false }
+                    showToast("\(trimmed) created (FULL UNLOCK)", style: .success)
+                }) {
+                    Text("CREATE UNLOCK CODE")
+                        .font(AppTheme.mono(10, weight: .black)).kerning(1)
+                        .foregroundStyle(newUnlockCodeText.isEmpty ? AppTheme.textSecondary : .black)
+                        .frame(maxWidth: .infinity).frame(height: 40)
+                        .background(newUnlockCodeText.isEmpty ? AppTheme.backgroundSecondary : AppTheme.success)
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                }
+                .disabled(newUnlockCodeText.isEmpty)
+                .padding(.horizontal, 16)
+            }
+            .padding(.vertical, 12)
+        }
     }
 
     // ── Discount Codes ──────────────────────────────────────────────────────

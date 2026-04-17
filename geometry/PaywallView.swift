@@ -6,6 +6,7 @@ import StoreKit
 private enum DiscountState: Equatable {
     case idle
     case valid(DiscountCode)
+    case unlocked    // full premium granted via unlock code
     case invalid
     case inactive
     case expired
@@ -289,8 +290,28 @@ struct PaywallView: View {
 
     private func applyDiscount() {
         codeFieldFocused = false
-        let result = DiscountStore.shared.validate(codeInput)
-        switch result {
+
+        // 1. Check unlock codes first — they take priority over discount codes.
+        switch UnlockCodeStore.shared.validate(codeInput) {
+        case .valid:
+            // Redeem triggers EntitlementStore.activateByCode → isPremium = true.
+            // The .onChange(of: entitlement.isPremium) handler plays the sound + dismisses.
+            UnlockCodeStore.shared.redeem(codeInput)
+            discountState = .unlocked
+            HapticsManager.success()
+            return
+        case .inactive:
+            discountState = .inactive;  HapticsManager.light(); return
+        case .expired:
+            discountState = .expired;   HapticsManager.light(); return
+        case .exhausted:
+            discountState = .exhausted; HapticsManager.light(); return
+        case .invalid:
+            break   // not an unlock code — fall through to discount code check
+        }
+
+        // 2. Check discount codes (price display only, no access change).
+        switch DiscountStore.shared.validate(codeInput) {
         case .valid(let code):
             discountState = .valid(code)
             DiscountStore.shared.redeem(codeInput)
@@ -306,30 +327,33 @@ struct PaywallView: View {
 
     private var discountBorderColor: Color {
         switch discountState {
-        case .idle:            return sage.opacity(0.20)
-        case .valid:           return AppTheme.success.opacity(0.55)
+        case .idle:                                      return sage.opacity(0.20)
+        case .valid, .unlocked:                          return AppTheme.success.opacity(0.55)
         case .invalid, .inactive, .expired, .exhausted: return AppTheme.danger.opacity(0.45)
         }
     }
 
     private var discountFeedbackIcon: String {
         switch discountState {
-        case .idle:  return "tag"
-        case .valid: return "checkmark.circle.fill"
-        default:     return "xmark.circle.fill"
+        case .idle:              return "tag"
+        case .valid, .unlocked:  return "checkmark.circle.fill"
+        default:                 return "xmark.circle.fill"
         }
     }
 
     private var discountFeedbackColor: Color {
         switch discountState {
-        case .valid: return AppTheme.success
-        default:     return AppTheme.danger
+        case .valid, .unlocked: return AppTheme.success
+        default:                return AppTheme.danger
         }
     }
 
     private var discountFeedbackText: String {
         switch (discountState, settings.language) {
         case (.idle, _):           return ""
+        case (.unlocked,  .en):    return "Full access unlocked"
+        case (.unlocked,  .es):    return "Acceso completo desbloqueado"
+        case (.unlocked,  .fr):    return "Accès complet débloqué"
         case (.valid(let c), .en): return "\(c.code) — Code applied"
         case (.valid(let c), .es): return "\(c.code) — Código aplicado"
         case (.valid(let c), .fr): return "\(c.code) — Code appliqué"
@@ -657,9 +681,9 @@ struct PaywallView: View {
 
     private var discountPlaceholderLabel: String {
         switch settings.language {
-        case .en: return "Discount code"
-        case .es: return "Código de descuento"
-        case .fr: return "Code de réduction"
+        case .en: return "Code"
+        case .es: return "Código"
+        case .fr: return "Code"
         }
     }
 
