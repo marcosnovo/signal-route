@@ -3,7 +3,12 @@ import Foundation
 // MARK: - MusicSynthesizer
 /// Synthesises all background music tracks from raw PCM data.
 /// All methods are pure computation — safe to call from background threads.
-/// Sample rate 22050 Hz (half of SFX) keeps memory around 4 MB total for all 5 tracks.
+/// Sample rate 22050 Hz keeps memory around 4 MB total for all 4 tracks.
+///
+/// Design: Interstellar-inspired cinematic organ/pad synthesis.
+///   • Drawbar organ: 8' (fundamental) + 16' (×0.5 sub) + 4' (×2 upper) harmonics
+///   • Stereo width: L/R detuning ±0.01–0.02% → beating period >50 s (imperceptible)
+///   • Breath LFO: very slow sinusoidal AM, depth 6–8% — large acoustic space feel
 enum MusicSynthesizer {
 
     nonisolated static let sr = 22050
@@ -20,81 +25,94 @@ enum MusicSynthesizer {
         ]
     }
 
-    // MARK: - home_idle  (16 s stereo loop)
+    // MARK: - home_idle  (20 s stereo loop)
     //
-    // Soft A-minor pentatonic pad stack: A1·A2·E3·A3
-    // Very slow breath LFO (~18 s cycle) — background presence only.
+    // A-major drawbar organ: A1·A2·E3·A3·C#4
+    // Contemplative, spacious, warm — balanced warm/cold equilibrium.
+    // 22 s breath LFO (8% depth) simulates a large resonant space.
 
     nonisolated static func homeIdle() -> Data {
-        let n = sampleCount(seconds: 16)
+        let n = sampleCount(seconds: 20)
         var L = [Float](repeating: 0, count: n)
         var R = [Float](repeating: 0, count: n)
 
-        let voices: [(fL: Double, fR: Double, amp: Double)] = [
-            (55.00,  55.03,  0.30),
-            (110.00, 110.05, 0.40),
-            (164.81, 164.88, 0.30),
-            (220.00, 220.09, 0.20),
+        // Drawbar organ voices — each has 8' (main), 16' (sub-octave), 4' (upper) depths.
+        // L/R frequencies detuned ±0.01–0.015% — stereo width, beating period >50 s.
+        let voices: [(fL: Double, fR: Double, amp: Double, d16: Double, d4: Double)] = [
+            (55.000,  55.006,  0.26, 0.55, 0.06),   // A1 sub — deep foundation
+            (109.989, 110.011, 0.46, 0.44, 0.12),   // A2 root — core warmth
+            (164.797, 164.823, 0.36, 0.30, 0.10),   // E3 fifth — open space
+            (219.978, 220.022, 0.28, 0.20, 0.08),   // A3 octave — brightness
+            (277.167, 277.213, 0.16, 0.14, 0.05),   // C#4 third — warmth color
         ]
-        let lfoHz = 0.055    // ~18 s cycle
+        let lfoHz    = 1.0 / 22.0   // 22 s breath cycle
+        let lfoDepth = 0.08          // 8% AM depth
 
         for i in 0..<n {
             let t   = Double(i) / Double(sr)
-            let lfo = 0.78 + 0.22 * sin(2 * .pi * lfoHz * t)
+            let lfo = 1.0 - lfoDepth + lfoDepth * (0.5 + 0.5 * sin(2 * .pi * lfoHz * t - .pi / 2))
             var vL  = 0.0, vR = 0.0
             for v in voices {
-                vL += sin(2 * .pi * v.fL * t) * v.amp
-                vR += sin(2 * .pi * v.fR * t) * v.amp
+                // Additive drawbar: 8' fundamental + soft 16' sub + gentle 4' upper
+                vL += (sin(2 * .pi * v.fL * t)
+                     + sin(2 * .pi * v.fL * 0.5 * t) * v.d16
+                     + sin(2 * .pi * v.fL * 2.0 * t) * v.d4) * v.amp
+                vR += (sin(2 * .pi * v.fR * t)
+                     + sin(2 * .pi * v.fR * 0.5 * t) * v.d16
+                     + sin(2 * .pi * v.fR * 2.0 * t) * v.d4) * v.amp
             }
             L[i] = Float(vL * lfo)
             R[i] = Float(vR * lfo)
         }
 
         normalize(&L, &R)
-        fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 2.0))
+        fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 2.5))
         return wavData(L: L, R: R)
     }
 
-    // MARK: - mission_active  (8 s stereo loop)
+    // MARK: - mission_active  (10 s stereo loop)
     //
-    // D-Dorian tension pad (D3·G3·A3·D4) with slow LFO pulse.
-    // 120 BPM soft electronic tick adds rhythmic drive without melody.
+    // A-minor drawbar organ: A2·E3·A3·C4
+    // 60 BPM sub-bass heartbeat (A1, 55 Hz) — focused tension, not aggressive.
+    // Slow 10 s LFO for subtle intensity variation.
 
     nonisolated static func missionActive() -> Data {
-        let n = sampleCount(seconds: 8)
+        let n = sampleCount(seconds: 10)
         var L = [Float](repeating: 0, count: n)
         var R = [Float](repeating: 0, count: n)
 
-        let pad: [(fL: Double, fR: Double, amp: Double)] = [
-            (146.83, 146.89, 0.35),
-            (196.00, 196.07, 0.28),
-            (220.00, 220.08, 0.22),
-            (293.66, 293.74, 0.15),
+        // A natural minor drawbar pad
+        let pad: [(fL: Double, fR: Double, amp: Double, d16: Double)] = [
+            (109.989, 110.011, 0.44, 0.40),   // A2 root
+            (164.797, 164.823, 0.32, 0.28),   // E3 fifth
+            (219.978, 220.022, 0.26, 0.20),   // A3 upper
+            (261.620, 261.640, 0.18, 0.14),   // C4 minor third
         ]
-        let lfoHz = 0.14    // slight tension pulse
+        let lfoHz   = 0.10    // 10 s slow tension pulse
+        let lfoBase = 0.82    // range: 0.82–1.00 (subtle)
 
-        // Pad layer
         for i in 0..<n {
             let t   = Double(i) / Double(sr)
-            let lfo = 0.72 + 0.28 * sin(2 * .pi * lfoHz * t)
+            let lfo = lfoBase + (1.0 - lfoBase) * (0.5 + 0.5 * sin(2 * .pi * lfoHz * t))
             var vL  = 0.0, vR = 0.0
             for p in pad {
-                vL += sin(2 * .pi * p.fL * t) * p.amp
-                vR += sin(2 * .pi * p.fR * t) * p.amp
+                vL += (sin(2 * .pi * p.fL * t)
+                     + sin(2 * .pi * p.fL * 0.5 * t) * p.d16) * p.amp
+                vR += (sin(2 * .pi * p.fR * t)
+                     + sin(2 * .pi * p.fR * 0.5 * t) * p.d16) * p.amp
             }
             L[i] = Float(vL * lfo)
             R[i] = Float(vR * lfo)
         }
 
-        // Rhythmic tick layer — 120 BPM quarter notes, centered in stereo
-        let beatSamples = Int(Double(sr) * 60.0 / 120.0)   // 0.5 s
-        let clickN      = sampleCount(seconds: 0.040)
+        // 60 BPM sub-bass heartbeat — soft A1 (55 Hz) thud, 120 ms, exp(-18) decay
+        let beatSamples = Int(Double(sr) * 1.0)   // 60 BPM = 1.0 s per beat
+        let thumN       = sampleCount(seconds: 0.120)
         var beat        = 0
         while beat < n {
-            for j in 0..<min(clickN, n - beat) {
-                let t   = Double(j) / Double(sr)
-                let env = exp(-80.0 * t)
-                let s   = Float(sin(2 * .pi * 280.0 * t) * env * 0.55)
+            for j in 0..<min(thumN, n - beat) {
+                let t = Double(j) / Double(sr)
+                let s = Float(sin(2 * .pi * 55.0 * t) * exp(-18.0 * t) * 0.60)
                 L[beat + j] += s
                 R[beat + j] += s
             }
@@ -102,91 +120,98 @@ enum MusicSynthesizer {
         }
 
         normalize(&L, &R)
-        fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 0.4))
+        fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 0.6))
         return wavData(L: L, R: R)
     }
 
     // MARK: - victory  (3 s, non-looping)
     //
-    // D-major warm sustain: D4·F#4·A4·D5
-    // Soft 2nd harmonic for warmth. 180 ms attack, 30 % release tail.
+    // A-major chord bloom: A2·E3·A3·C#4 with staggered entry.
+    // Bass enters first; each subsequent voice follows 180 ms later.
+    // 200 ms per-voice attack; global release tail starts at 65%.
 
     nonisolated static func victory() -> Data {
         let n = sampleCount(seconds: 3)
         var L = [Float](repeating: 0, count: n)
         var R = [Float](repeating: 0, count: n)
 
-        let chord: [(fL: Double, fR: Double, amp: Double)] = [
-            (293.66, 294.00, 0.30),
-            (369.99, 370.40, 0.25),
-            (440.00, 440.55, 0.22),
-            (587.33, 587.90, 0.18),
+        // Staggered bloom: bass → fifth → octave → major third
+        let entries: [(fL: Double, fR: Double, amp: Double, startT: Double)] = [
+            (109.989, 110.011, 0.40, 0.00),   // A2 — first
+            (164.797, 164.823, 0.33, 0.18),   // E3 — second
+            (219.978, 220.022, 0.28, 0.36),   // A3 — third
+            (277.167, 277.213, 0.22, 0.55),   // C#4 — fourth
         ]
+        let attackTime = 0.20   // 200 ms per-voice attack
 
         for i in 0..<n {
             let t   = Double(i) / Double(sr)
             let tN  = Double(i) / Double(n)
-            let att = min(1.0, t / 0.18)
-            let rel = tN > 0.70 ? 1.0 - (tN - 0.70) / 0.30 : 1.0
-            let env = att * rel
+            let rel = tN > 0.65 ? max(0.0, 1.0 - (tN - 0.65) / 0.35) : 1.0
             var vL  = 0.0, vR = 0.0
-            for c in chord {
-                vL += (sin(2 * .pi * c.fL * t) + sin(2 * .pi * c.fL * 2 * t) * 0.18) * c.amp
-                vR += (sin(2 * .pi * c.fR * t) + sin(2 * .pi * c.fR * 2 * t) * 0.18) * c.amp
+            for e in entries {
+                guard t >= e.startT else { continue }
+                let elapsed = t - e.startT
+                let att = min(1.0, elapsed / attackTime)
+                // 8' fundamental + gentle 4' upper partial for warmth
+                vL += (sin(2 * .pi * e.fL * t) + sin(2 * .pi * e.fL * 2.0 * t) * 0.18)
+                     * e.amp * att * rel
+                vR += (sin(2 * .pi * e.fR * t) + sin(2 * .pi * e.fR * 2.0 * t) * 0.18)
+                     * e.amp * att * rel
             }
-            L[i] = Float(vL * env)
-            R[i] = Float(vR * env)
+            L[i] = Float(vL)
+            R[i] = Float(vR)
         }
 
         normalize(&L, &R)
-        return wavData(L: L, R: R)   // no loop fade needed — envelope handles it
+        return wavData(L: L, R: R)   // no loop fade — envelope handles it
     }
 
-    // MARK: - story  (12 s stereo loop)
+    // MARK: - story  (16 s stereo loop)
     //
-    // Deep cinematic sub stack: A0·A1·E2·A2
-    // High shimmer (2100 Hz) modulated by a second slow LFO — spacious, no rhythm.
+    // G·D open fifth: G1·G2·D3·G3 — no thirds, maximum openness.
+    // Cinematic and minimal — pure fifths only, vast resonant space feel.
+    // 32 s breath LFO (6% depth). Soft D5 shimmer at 587 Hz.
 
     nonisolated static func story() -> Data {
-        let n = sampleCount(seconds: 12)
+        let n = sampleCount(seconds: 16)
         var L = [Float](repeating: 0, count: n)
         var R = [Float](repeating: 0, count: n)
 
+        // G·D open fifth — pure fifth intervals only, no thirds
         let bass: [(fL: Double, fR: Double, amp: Double)] = [
-            (27.50,  27.52,  0.20),
-            (55.00,  55.04,  0.38),
-            (82.41,  82.47,  0.22),
-            (110.00, 110.07, 0.15),
+            (48.999,  49.008,  0.24),   // G1 sub-bass — deep foundation
+            (97.999,  98.013,  0.42),   // G2 root
+            (146.832, 146.848, 0.28),   // D3 perfect fifth
+            (195.997, 196.020, 0.16),   // G3 upper
         ]
-        let shimmer = 2100.0
-        let lfo1Hz  = 0.040   // ~25 s breath
-        let lfo2Hz  = 0.071   // shimmer flutter
+        let shimmerF = 587.33   // D5 — harmonic echo of the fifth, two octaves up
+        let lfoHz    = 1.0 / 32.0   // 32 s breath — barely perceptible
+        let lfoDepth = 0.06          // 6% AM depth
 
         for i in 0..<n {
             let t   = Double(i) / Double(sr)
-            let lo1 = 0.68 + 0.32 * sin(2 * .pi * lfo1Hz * t)
-            let lo2 = 0.50 + 0.50 * sin(2 * .pi * lfo2Hz * t + 1.1)
+            let lfo = 1.0 - lfoDepth + lfoDepth * (0.5 + 0.5 * sin(2 * .pi * lfoHz * t - .pi / 2))
             var vL  = 0.0, vR = 0.0
             for b in bass {
                 vL += sin(2 * .pi * b.fL * t) * b.amp
                 vR += sin(2 * .pi * b.fR * t) * b.amp
             }
-            let shL = sin(2 * .pi * shimmer       * t) * 0.06 * lo2
-            let shR = sin(2 * .pi * (shimmer + 5) * t) * 0.06 * lo2
-            L[i] = Float(vL * lo1 + shL)
-            R[i] = Float(vR * lo1 + shR)
+            // D5 shimmer — L/R detuned ±2.5 Hz for natural stereo width
+            vL += sin(2 * .pi * (shimmerF - 2.5) * t) * 0.04
+            vR += sin(2 * .pi * (shimmerF + 2.5) * t) * 0.04
+            L[i] = Float(vL * lfo)
+            R[i] = Float(vR * lfo)
         }
 
         normalize(&L, &R)
-        fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 1.6))
+        fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 2.5))
         return wavData(L: L, R: R)
     }
 
-    // MARK: - paywall  (8 s stereo loop)
+    // MARK: - paywall  (8 s stereo loop, currently unused)
     //
-    // B2·C3 minor 2nd creates audible beating tension (~7.3 Hz flutter).
-    // F#2·F#3 tritone underneath deepens the unease.
-    // Slow one-sided LFO pulse (0.17 Hz) — "important decision" feel.
+    // Reserved. paywall state maps to .cooldown (silence) since Fase 11.
 
     nonisolated static func paywall() -> Data {
         let n = sampleCount(seconds: 8)
@@ -194,16 +219,15 @@ enum MusicSynthesizer {
         var R = [Float](repeating: 0, count: n)
 
         let voices: [(fL: Double, fR: Double, amp: Double)] = [
-            (92.50,  92.54,  0.20),   // F#2 — tritone
-            (123.47, 123.52, 0.38),   // B2  — root
-            (130.81, 130.87, 0.30),   // C3  — minor 2nd → beating
-            (185.00, 185.07, 0.18),   // F#3 — upper tritone
+            (92.50,  92.54,  0.20),
+            (123.47, 123.52, 0.38),
+            (130.81, 130.87, 0.30),
+            (185.00, 185.07, 0.18),
         ]
         let lfoHz = 0.17
 
         for i in 0..<n {
             let t   = Double(i) / Double(sr)
-            // One-sided sine pulse: 0.65 … 1.0
             let lfo = 0.65 + 0.35 * (0.5 + 0.5 * sin(2 * .pi * lfoHz * t - .pi / 2))
             var vL  = 0.0, vR = 0.0
             for v in voices {
