@@ -265,12 +265,15 @@ class GameViewModel: ObservableObject {
             // A target just came online — meaningful connection
             HapticsManager.medium()
             SoundManager.play(.targetOnline)
+            AudioManager.shared.notifyConnection()
         } else if activeNodes > prevActive {
             // New relay tile energized
             HapticsManager.selection()
             SoundManager.play(.relayEnergized)
+            AudioManager.shared.notifyConnection()
         } else if status == .playing && movesLeft > 0 {
-            // No improvement — mark as wrong tap for the brief flash feedback
+            // No improvement — brief music dip signals the wrong tap without interrupting flow
+            AudioManager.shared.missEvent()
             wrongTapRow = row
             wrongTapCol = col
             Task { @MainActor in

@@ -9,6 +9,7 @@ struct geometryApp: App {
     @StateObject private var cloudSave   = CloudSaveManager.shared
 
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -18,9 +19,21 @@ struct geometryApp: App {
                 .environmentObject(entitlement)
                 .environmentObject(storeKit)
                 .environmentObject(cloudSave)
+                .onChange(of: scenePhase) { _, phase in
+                    switch phase {
+                    case .active:
+                        AudioManager.shared.handleForeground()
+                    case .background:
+                        AudioManager.shared.handleBackground()
+                    default:
+                        break
+                    }
+                }
                 .task {
                     gcManager.authenticate()
-                    await SoundManager.prepare()
+                    await AudioManager.shared.prepare()
+                    // Subtle sonic logo plays on every cold launch — brand identity moment
+                    SoundManager.play(.sonicLogoSubtle)
                     // Restore premium across reinstalls / new devices
                     await storeKit.checkEntitlements()
                     await storeKit.loadProduct()

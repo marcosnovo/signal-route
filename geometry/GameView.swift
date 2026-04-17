@@ -178,11 +178,50 @@ struct GameView: View {
             circuitErrorFlash = 1.0
             withAnimation(.easeOut(duration: 0.45)) { circuitErrorFlash = 0 }
         }
+        .onChange(of: overlayVisible) { _, visible in
+            if visible && vm.status == .won {
+                AudioManager.shared.transition(to: .victory)
+            } else if !visible {
+                AudioManager.shared.transition(to: .inMission)
+            }
+        }
+        .onChange(of: mechanicStoryQueue.current) { _, beat in
+            // Duck music while an in-game story beat is visible, restore when it closes.
+            if beat != nil { AudioManager.shared.duck() } else { AudioManager.shared.unduck() }
+        }
+        // Reactive audio: intensity ramp as targets connect
+        .onChange(of: vm.targetsOnline) { old, new in
+            guard vm.status == .playing else { return }
+            let total = max(1, vm.targetsTotal)
+            AudioManager.shared.setMissionIntensity(Float(new) / Float(total))
+            // Near-failure: circuit broke — treat disconnection like a miss if we're struggling
+            if new < old, Float(vm.movesLeft) / Float(max(1, vm.movesLeft + vm.movesUsed)) < 0.30 {
+                AudioManager.shared.missEvent()
+            }
+        }
+        // Near-failure: moves running low (≤20% remaining)
+        .onChange(of: vm.movesLeft) { _, left in
+            guard vm.status == .playing else { return }
+            let total = max(1, left + vm.movesUsed)
+            let ratio = Float(left) / Float(total)
+            AudioManager.shared.setNearFailure(left > 0 && ratio <= 0.20)
+        }
+        // Near-failure: timer ticking down (≤6 s)
+        .onChange(of: vm.timeRemaining) { _, remaining in
+            guard vm.status == .playing else { return }
+            if let r = remaining {
+                AudioManager.shared.setNearFailure(r > 0 && r <= 6)
+            }
+        }
         .onChange(of: vm.status) { _, newStatus in
             switch newStatus {
             case .won:
+                AudioManager.shared.setNearFailure(false)
+                AudioManager.shared.setMissionIntensity(0)
                 playWinSequence()
             case .lost:
+                AudioManager.shared.setNearFailure(false)
+                AudioManager.shared.setMissionIntensity(0)
                 // Record attempt if the player actually interacted (≥1 tap)
                 if !isIntro && vm.hasInteracted { onFail?(vm.currentLevel) }
                 // No path to celebrate — show overlay right away
@@ -190,6 +229,8 @@ struct GameView: View {
                     overlayVisible = true
                 }
             case .playing:
+                AudioManager.shared.setNearFailure(false)
+                AudioManager.shared.setMissionIntensity(0)
                 // Reset — brief fade so the board isn't jarring
                 withAnimation(.easeOut(duration: 0.18)) { overlayVisible = false }
                 winPulse = false
@@ -209,6 +250,11 @@ struct GameView: View {
     /// 4. Overlay appears.
     private func playWinSequence() {
         SoundManager.play(.win)
+        // Heavy haptic 100 ms after sound — emotional peak, console-grade win feedback
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            HapticsManager.heavy()
+        }
         withAnimation(.easeOut(duration: 0.20)) { boardSuccessOpacity = 0.75 }
         withAnimation(.easeOut(duration: 0.55).delay(0.28)) { boardSuccessOpacity = 0 }
         // Notify ContentView immediately so it can collect story beats while context is accurate

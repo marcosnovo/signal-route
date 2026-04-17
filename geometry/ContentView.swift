@@ -14,6 +14,9 @@ struct ContentView: View {
     @State private var lastWinEvent: LevelUpEvent?  = nil
     // Armed by onWin when limit is reached; fires automatically when player returns to Home
     @State private var pendingPaywallContext: PaywallContext? = nil
+    // When true, firePendingPaywallIfReady bypasses hasShownFirstHook + FrustrationGuard.
+    // Set when an explicit user tap (Next Mission) arms the paywall after beats play.
+    @State private var pendingPaywallBypassesHook: Bool = false
 
     // ── Multi-step intro flow ──────────────────────────────────────────────
     /// nil = intro complete (player goes to Home as normal).
@@ -36,6 +39,16 @@ struct ContentView: View {
         // Mark narrative as seen so relaunches don't fall back to the panel flow.
         OnboardingStore.markNarrativeSeen()
         return .gameplay
+    }
+
+    // MARK: - Audio state
+
+    private var audioState: AudioState {
+        if showingPaywall              { return .cooldown  }   // silence: only SFX during paywall decision
+        if showingLevelSelect          { return .cooldown  }   // silence: decision moment, no music distraction
+        if storyQueue.current != nil   { return .story     }
+        if activeLevel != nil          { return .inMission }
+        return .homeIdle
     }
 
     var body: some View {
@@ -230,6 +243,22 @@ struct ContentView: View {
             // Fire pending paywall once the emotional beat sequence closes
             firePendingPaywallIfReady()
         }
+        .onAppear {
+            AudioManager.shared.transition(to: audioState)
+        }
+        .onChange(of: audioState) { _, newState in
+            AudioManager.shared.transition(to: newState)
+        }
+        // Sonic logo + silence-as-design when sector-complete beat appears
+        .onChange(of: storyQueue.current) { _, newBeat in
+            guard newBeat?.trigger == .sectorComplete else { return }
+            // Cut music so accessGranted() rings out in silence, then story ambient fades in
+            AudioManager.shared.stopMusic()
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 600_000_000)   // 600 ms — after accessGranted
+                SoundManager.play(.sonicLogoShort)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .devReplayOnboarding)) { _ in
             activeLevel        = nil
             showingLevelSelect = false
@@ -251,16 +280,31 @@ struct ContentView: View {
     /// based on the level being accessed (sector entry vs mid-sector continuation).
     private func tryPlay(_ level: Level, context: PaywallContext? = nil) {
         if EntitlementStore.shared.canPlay(level) {
-            activeLevel            = level
-            pendingPaywallContext  = nil    // successful navigation clears any pending paywall
+            activeLevel                = level
+            pendingPaywallContext      = nil
+            pendingPaywallBypassesHook = false
         } else {
             let ctx = context ?? PaywallMomentSelector.contextWhenBlocked(level)
+            // Immediate "access denied" feedback — fires before paywall animates in.
+            HapticsManager.error()
+            SoundManager.play(.tileLocked)
             // Always dismiss the game before showing the paywall — cleaner transition.
             activeLevel = nil
-            #if DEBUG
-            print("[PAYWALL] Blocked id=\(level.id) → showing paywall ctx=\(ctx)")
-            #endif
-            showPaywall(ctx)
+            // Flush any pending post-win story beats synchronously so they can play
+            // before the upgrade prompt. If beats are now queued, defer the paywall
+            // until the last beat closes (firePendingPaywallIfReady handles this).
+            storyQueue.dispatchPendingBatches()
+            if storyQueue.current != nil {
+                // Beats are queued — paywall waits after them.
+                // Bypass onboarding guards: this is an explicit tap, not an auto-show.
+                pendingPaywallContext      = ctx
+                pendingPaywallBypassesHook = true
+            } else {
+                #if DEBUG
+                print("[PAYWALL] Blocked id=\(level.id) → showing paywall ctx=\(ctx)")
+                #endif
+                showPaywall(ctx)
+            }
         }
     }
 
@@ -286,11 +330,13 @@ struct ContentView: View {
               activeLevel == nil,
               introStep == nil,
               storyQueue.current == nil else { return }
-        // Never auto-show during the onboarding grace period (first 3 missions).
-        // Explicit taps (onNextMission, tryPlay) bypass this check intentionally.
-        guard OnboardingStore.hasShownFirstHook else { return }
-        // Don't auto-interrupt with a paywall when the player is frustrated.
-        guard !FrustrationGuard.shouldDeferAutoPaywall() else { return }
+        if !pendingPaywallBypassesHook {
+            // Auto-show guards — apply only when returning to Home organically,
+            // not when an explicit user tap (Next Mission) deferred the paywall.
+            guard OnboardingStore.hasShownFirstHook else { return }
+            guard !FrustrationGuard.shouldDeferAutoPaywall() else { return }
+        }
+        pendingPaywallBypassesHook = false
         showPaywall(ctx)
     }
 
