@@ -389,6 +389,8 @@ struct GameView: View {
                 }
                 .foregroundStyle(AppTheme.textSecondary)
             }
+            .opacity(isIntro ? 0 : 1)
+            .disabled(isIntro)
 
             Spacer()
 

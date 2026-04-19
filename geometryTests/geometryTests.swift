@@ -19,6 +19,21 @@ struct geometryTests {
 
 }
 
+// MARK: - CustomTestStringConvertible conformances
+// Provide human-readable test case names for parameterized tests.
+
+extension Level: @retroactive CustomTestStringConvertible {
+    public var testDescription: String { "L\(id) \(displayName)" }
+}
+
+extension LevelValidationReport: @retroactive CustomTestStringConvertible {
+    public var testDescription: String { "L\(levelID)" }
+}
+
+extension StoryBeat: @retroactive CustomTestStringConvertible {
+    public var testDescription: String { id }
+}
+
 // MARK: - One-Way Relay Model Tests
 // Verifies that the blockedInboundDirections property is correctly modelled
 // and that it is zero-cost when unused (empty set = identical to baseline).
@@ -108,268 +123,259 @@ struct MechanicSmokeTests {
         LevelValidationRunner.validateAll(useSolver: false)
     private static let levels: [Level] = LevelGenerator.levels
 
+    // ── Precomputed filtered collections for parameterized tests ──────────
+
+    private static let nonEasyLevels: [Level] =
+        levels.filter { $0.difficulty != .easy }
+    private static let timedLevels: [Level] =
+        levels.filter { $0.timeLimit != nil }
+    private static let timedLevelsWithPositiveMoves: [Level] =
+        levels.filter { $0.timeLimit != nil && $0.minimumRequiredMoves > 0 }
+    private static let energySavingLevels: [Level] =
+        levels.filter { $0.objectiveType == .energySaving }
+    private static let maxCoverageLevels: [Level] =
+        levels.filter { $0.objectiveType == .maxCoverage }
+
+    private static let rotationCapReports: [LevelValidationReport] =
+        reports.filter { $0.hasRotationCap }
+    private static let rotationCapLevels: [Level] =
+        levels.filter { level in reports.first(where: { $0.levelID == level.id })?.hasRotationCap == true }
+
+    private static let autoDriftReports: [LevelValidationReport] =
+        reports.filter { $0.hasAutoDrift }
+    private static let autoDriftLevels: [Level] =
+        levels.filter { level in reports.first(where: { $0.levelID == level.id })?.hasAutoDrift == true }
+
+    private static let oneWayRelayReports: [LevelValidationReport] =
+        reports.filter { $0.hasOneWayRelay }
+    private static let oneWayRelayLevels: [Level] =
+        levels.filter { level in reports.first(where: { $0.levelID == level.id })?.hasOneWayRelay == true }
+    private static let earlyReportsForOneWay: [LevelValidationReport] =
+        reports.filter { $0.levelID < 146 }
+
+    private static let fragileTileReports: [LevelValidationReport] =
+        reports.filter { $0.hasFragileTile }
+    private static let fragileTileLevels: [Level] =
+        levels.filter { level in reports.first(where: { $0.levelID == level.id })?.hasFragileTile == true }
+    private static let earlyReportsForFragile: [LevelValidationReport] =
+        reports.filter { $0.levelID < 151 }
+
+    private static let chargeGateReports: [LevelValidationReport] =
+        reports.filter { $0.hasChargeGate }
+    private static let chargeGateLevels: [Level] =
+        levels.filter { level in reports.first(where: { $0.levelID == level.id })?.hasChargeGate == true }
+    private static let earlyReportsForChargeGate: [LevelValidationReport] =
+        reports.filter { $0.levelID < 164 }
+
+    private static let interferenceZoneReports: [LevelValidationReport] =
+        reports.filter { $0.hasInterferenceZone }
+    private static let earlyReportsForInterference: [LevelValidationReport] =
+        reports.filter { $0.levelID < 171 }
+
     // MARK: - Baseline sanity
 
     /// Every level must have at least one source, the right number of targets,
     /// and a path of ≥ 3 tiles — the generator's own invariant.
-    @Test("All levels pass solvability heuristic")
-    func allLevelsPassSolvabilityHeuristic() {
-        for r in Self.reports {
-            #expect(r.isSolvable,
-                    "L\(r.levelID): \(r.warnings.joined(separator: " | "))")
-        }
+    @Test("Level passes solvability heuristic", arguments: Self.reports)
+    func levelPassesSolvabilityHeuristic(_ report: LevelValidationReport) {
+        #expect(report.isSolvable,
+                "L\(report.levelID): \(report.warnings.joined(separator: " | "))")
     }
 
     /// A zero buffer means the player must solve perfectly every time — no slack.
-    @Test("All levels have a positive move buffer")
-    func allLevelsHavePositiveBuffer() {
-        for level in Self.levels {
-            #expect(level.moveBuffer > 0,
-                    "L\(level.id): buffer=\(level.moveBuffer) (min=\(level.minimumRequiredMoves) max=\(level.maxMoves))")
-        }
+    @Test("Level has a positive move buffer", arguments: Self.levels)
+    func levelHasPositiveBuffer(_ level: Level) {
+        #expect(level.moveBuffer > 0,
+                "L\(level.id): buffer=\(level.moveBuffer) (min=\(level.minimumRequiredMoves) max=\(level.maxMoves))")
     }
 
     /// Levels for medium tier and above should require meaningful effort.
-    @Test("No trivial levels (minimumRequiredMoves ≤ 1) in medium tier or above")
-    func noTrivialLevelsInMediumAndAbove() {
-        for level in Self.levels where level.difficulty != .easy {
-            #expect(level.minimumRequiredMoves > 1,
-                    "L\(level.id) [\(level.difficulty.fullLabel)]: minimumRequiredMoves=\(level.minimumRequiredMoves)")
-        }
+    @Test("Non-easy level requires more than 1 move to solve", arguments: Self.nonEasyLevels)
+    func nonEasyLevelHasMeaningfulMoves(_ level: Level) {
+        #expect(level.minimumRequiredMoves > 1,
+                "L\(level.id) [\(level.difficulty.fullLabel)]: minimumRequiredMoves=\(level.minimumRequiredMoves)")
     }
 
     // MARK: - Time limit mechanic
 
     /// A time limit under 30 s combined with any path length is punishing regardless of skill.
-    @Test("Timed levels have at least 30 seconds")
-    func timedLevelsHaveAtLeast30Seconds() {
-        for level in Self.levels {
-            guard let limit = level.timeLimit else { continue }
-            #expect(limit >= 30,
-                    "L\(level.id): time limit \(limit)s is too short for any realistic play")
-        }
+    @Test("Timed level has at least 30 seconds", arguments: Self.timedLevels)
+    func timedLevelHasAtLeast30Seconds(_ level: Level) {
+        guard let limit = level.timeLimit else { return }
+        #expect(limit >= 30,
+                "L\(level.id): time limit \(limit)s is too short for any realistic play")
     }
 
     /// Fewer than 2 s per minimum move makes a level reaction-based rather than puzzle-based.
-    @Test("Timed levels allow at least 2 seconds per minimum move")
-    func timedLevelsAllow2SecondsPerMove() {
-        for level in Self.levels {
-            guard let limit = level.timeLimit, level.minimumRequiredMoves > 0 else { continue }
-            let ratio = Double(limit) / Double(level.minimumRequiredMoves)
-            #expect(ratio >= 2.0,
-                    "L\(level.id): \(ratio)s/move (limit=\(limit)s min=\(level.minimumRequiredMoves))")
-        }
+    @Test("Timed level allows at least 2 seconds per minimum move", arguments: Self.timedLevelsWithPositiveMoves)
+    func timedLevelAllows2SecondsPerMove(_ level: Level) {
+        guard let limit = level.timeLimit, level.minimumRequiredMoves > 0 else { return }
+        let ratio = Double(limit) / Double(level.minimumRequiredMoves)
+        #expect(ratio >= 2.0,
+                "L\(level.id): \(ratio)s/move (limit=\(limit)s min=\(level.minimumRequiredMoves))")
     }
 
     /// A timed level with a very small move buffer is a double-punishment:
     /// the player must be both fast AND perfect.
-    @Test("Timed levels have at least 3 buffer moves")
-    func timedLevelsHaveAtLeast3BufferMoves() {
-        for level in Self.levels where level.timeLimit != nil {
-            #expect(level.moveBuffer >= 3,
-                    "L\(level.id): timed with only \(level.moveBuffer) buffer moves — time + tight buffer is unfair")
-        }
+    @Test("Timed level has at least 3 buffer moves", arguments: Self.timedLevels)
+    func timedLevelHasAtLeast3BufferMoves(_ level: Level) {
+        #expect(level.moveBuffer >= 3,
+                "L\(level.id): timed with only \(level.moveBuffer) buffer moves — time + tight buffer is unfair")
     }
 
     // MARK: - Rotation cap mechanic
 
     /// Capping rotations should add planning depth, not make the level unsolvable.
-    @Test("Rotation-capped levels pass solvability heuristic")
-    func rotationCapLevelsAreSolvable() {
-        for r in Self.reports where r.hasRotationCap {
-            #expect(r.isSolvable,
-                    "L\(r.levelID): rotationCap present but solvability heuristic failed")
-        }
+    @Test("Rotation-capped level passes solvability heuristic", arguments: Self.rotationCapReports)
+    func rotationCapLevelIsSolvable(_ report: LevelValidationReport) {
+        #expect(report.isSolvable,
+                "L\(report.levelID): rotationCap present but solvability heuristic failed")
     }
 
     /// With capped tiles the player can accidentally exhaust a tile's rotations;
     /// they need at least 2 buffer moves to recover or reroute.
-    @Test("Rotation-capped levels have at least 2 buffer moves")
-    func rotationCapLevelsHaveAtLeast2BufferMoves() {
-        for r in Self.reports where r.hasRotationCap {
-            guard let level = Self.levels.first(where: { $0.id == r.levelID }) else { continue }
-            #expect(level.moveBuffer >= 2,
-                    "L\(level.id): rotationCap with only \(level.moveBuffer) buffer moves")
-        }
+    @Test("Rotation-capped level has at least 2 buffer moves", arguments: Self.rotationCapLevels)
+    func rotationCapLevelHasAtLeast2BufferMoves(_ level: Level) {
+        #expect(level.moveBuffer >= 2,
+                "L\(level.id): rotationCap with only \(level.moveBuffer) buffer moves")
     }
 
     // MARK: - Auto-drift mechanic
 
     /// Drift tiles rotate automatically — the level must still be winnable
     /// before or after a drift event.
-    @Test("Auto-drift levels pass solvability heuristic")
-    func autoDriftLevelsAreSolvable() {
-        for r in Self.reports where r.hasAutoDrift {
-            #expect(r.isSolvable,
-                    "L\(r.levelID): autoDrift present but solvability heuristic failed")
-        }
+    @Test("Auto-drift level passes solvability heuristic", arguments: Self.autoDriftReports)
+    func autoDriftLevelIsSolvable(_ report: LevelValidationReport) {
+        #expect(report.isSolvable,
+                "L\(report.levelID): autoDrift present but solvability heuristic failed")
     }
 
     /// When a drift fires the player may need 1–2 corrective taps per drifted tile.
     /// A buffer under 4 makes the level unwinnable after a single bad drift event.
-    @Test("Auto-drift levels have at least 4 buffer moves to absorb drift corrections")
-    func autoDriftLevelsHaveAtLeast4BufferMoves() {
-        for r in Self.reports where r.hasAutoDrift {
-            guard let level = Self.levels.first(where: { $0.id == r.levelID }) else { continue }
-            #expect(level.moveBuffer >= 4,
-                    "L\(level.id): autoDrift with only \(level.moveBuffer) buffer moves — a single drift event may make the level unwinnable")
-        }
+    @Test("Auto-drift level has at least 4 buffer moves", arguments: Self.autoDriftLevels)
+    func autoDriftLevelHasAtLeast4BufferMoves(_ level: Level) {
+        #expect(level.moveBuffer >= 4,
+                "L\(level.id): autoDrift with only \(level.moveBuffer) buffer moves — a single drift event may make the level unwinnable")
     }
 
     // MARK: - energySaving objective
 
     /// If the limit equals or exceeds the total tile count it never applies pressure.
-    @Test("energySaving limit is strictly less than total tile count")
-    func energySavingLimitIsConstraining() {
-        for level in Self.levels where level.objectiveType == .energySaving {
-            let total = level.gridSize * level.gridSize
-            #expect(level.energySavingLimit < total,
-                    "L\(level.id): energySavingLimit=\(level.energySavingLimit) >= totalTiles=\(total) — win condition never activates")
-        }
+    @Test("energySaving limit is strictly less than total tile count", arguments: Self.energySavingLevels)
+    func energySavingLimitIsConstraining(_ level: Level) {
+        let total = level.gridSize * level.gridSize
+        #expect(level.energySavingLimit < total,
+                "L\(level.id): energySavingLimit=\(level.energySavingLimit) >= totalTiles=\(total) — win condition never activates")
     }
 
     /// The limit must be at least as large as the solution path or winning becomes impossible.
-    @Test("energySaving limit is at least as large as the solution path")
-    func energySavingLimitIsAchievable() {
-        for level in Self.levels where level.objectiveType == .energySaving {
-            #expect(level.energySavingLimit >= level.solutionPathLength,
-                    "L\(level.id): energySavingLimit=\(level.energySavingLimit) < solutionPathLength=\(level.solutionPathLength) — level is impossible to win")
-        }
+    @Test("energySaving limit is at least as large as the solution path", arguments: Self.energySavingLevels)
+    func energySavingLimitIsAchievable(_ level: Level) {
+        #expect(level.energySavingLimit >= level.solutionPathLength,
+                "L\(level.id): energySavingLimit=\(level.energySavingLimit) < solutionPathLength=\(level.solutionPathLength) — level is impossible to win")
     }
 
     /// When the limit covers more than 80 % of the grid, virtually any solution satisfies it —
     /// the objective provides no strategic constraint.
-    @Test("energySaving limit covers at most 80% of the grid")
-    func energySavingObjectiveRequiresStrategy() {
-        for level in Self.levels where level.objectiveType == .energySaving {
-            let total = level.gridSize * level.gridSize
-            let threshold = Int((Double(total) * 0.80).rounded(.up))
-            #expect(level.energySavingLimit <= threshold,
-                    "L\(level.id): energySavingLimit=\(level.energySavingLimit) > 80% of grid (\(threshold)) — objective is trivially satisfied by any valid solution")
-        }
+    @Test("energySaving limit covers at most 80% of the grid", arguments: Self.energySavingLevels)
+    func energySavingObjectiveRequiresStrategy(_ level: Level) {
+        let total = level.gridSize * level.gridSize
+        let threshold = Int((Double(total) * 0.80).rounded(.up))
+        #expect(level.energySavingLimit <= threshold,
+                "L\(level.id): energySavingLimit=\(level.energySavingLimit) > 80% of grid (\(threshold)) — objective is trivially satisfied by any valid solution")
     }
 
     // MARK: - One-way relay mechanic
 
     /// Levels without one-way relay must not inadvertently carry the property.
-    @Test("One-way relay is absent from levels below ID 146")
-    func oneWayRelayAbsentBeforeThreshold() {
-        for r in Self.reports where r.levelID < 146 {
-            #expect(!r.hasOneWayRelay,
-                    "L\(r.levelID): oneWayRelay unexpectedly applied before threshold (id < 146)")
-        }
+    @Test("One-way relay is absent before level ID 146", arguments: Self.earlyReportsForOneWay)
+    func oneWayRelayAbsentBeforeThreshold(_ report: LevelValidationReport) {
+        #expect(!report.hasOneWayRelay,
+                "L\(report.levelID): oneWayRelay unexpectedly applied before threshold (id < 146)")
     }
 
-    @Test("One-way relay levels pass solvability heuristic")
-    func oneWayRelayLevelsAreSolvable() {
-        for r in Self.reports where r.hasOneWayRelay {
-            #expect(r.isSolvable,
-                    "L\(r.levelID): oneWayRelay present but solvability heuristic failed")
-        }
+    @Test("One-way relay level passes solvability heuristic", arguments: Self.oneWayRelayReports)
+    func oneWayRelayLevelIsSolvable(_ report: LevelValidationReport) {
+        #expect(report.isSolvable,
+                "L\(report.levelID): oneWayRelay present but solvability heuristic failed")
     }
 
     /// The one-way constraint adds orientation complexity; at least 3 buffer moves
     /// ensures the player can recover from routing the signal in the wrong direction.
-    @Test("One-way relay levels have at least 3 buffer moves")
-    func oneWayRelayLevelsHaveAdequateBuffer() {
-        for level in Self.levels {
-            guard let r = Self.reports.first(where: { $0.levelID == level.id }),
-                  r.hasOneWayRelay else { continue }
-            #expect(level.moveBuffer >= 3,
-                    "L\(level.id): oneWayRelay with only \(level.moveBuffer) buffer moves")
-        }
+    @Test("One-way relay level has at least 3 buffer moves", arguments: Self.oneWayRelayLevels)
+    func oneWayRelayLevelHasAdequateBuffer(_ level: Level) {
+        #expect(level.moveBuffer >= 3,
+                "L\(level.id): oneWayRelay with only \(level.moveBuffer) buffer moves")
     }
 
     // MARK: - maxCoverage objective
 
     /// If the solution path already covers ≥ 85 % of the grid, extending coverage further
     /// requires almost no extra effort — the objective distinction is meaningless.
-    @Test("maxCoverage solution path leaves at least 15% of the grid for bonus coverage")
-    func maxCoverageObjectiveHasMeaningfulRoom() {
-        for level in Self.levels where level.objectiveType == .maxCoverage {
-            let total = level.gridSize * level.gridSize
-            let pathRatio = Float(level.solutionPathLength) / Float(total)
-            #expect(pathRatio <= 0.85,
-                    "L\(level.id): maxCoverage solution path covers \(Int(pathRatio * 100))% of grid — coverage bonus is trivially achieved alongside the base objective")
-        }
+    @Test("maxCoverage solution path leaves at least 15% of the grid for bonus coverage", arguments: Self.maxCoverageLevels)
+    func maxCoverageObjectiveHasMeaningfulRoom(_ level: Level) {
+        let total = level.gridSize * level.gridSize
+        let pathRatio = Float(level.solutionPathLength) / Float(total)
+        #expect(pathRatio <= 0.85,
+                "L\(level.id): maxCoverage solution path covers \(Int(pathRatio * 100))% of grid — coverage bonus is trivially achieved alongside the base objective")
     }
 
     // MARK: - Fragile tile mechanic
 
-    @Test("Fragile tile is absent from levels below ID 151")
-    func fragileTileAbsentBeforeThreshold() {
-        for r in Self.reports where r.levelID < 151 {
-            #expect(!r.hasFragileTile,
-                    "L\(r.levelID): fragileTile unexpectedly present before threshold (id < 151)")
-        }
+    @Test("Fragile tile is absent before level ID 151", arguments: Self.earlyReportsForFragile)
+    func fragileTileAbsentBeforeThreshold(_ report: LevelValidationReport) {
+        #expect(!report.hasFragileTile,
+                "L\(report.levelID): fragileTile unexpectedly present before threshold (id < 151)")
     }
 
-    @Test("Fragile tile levels pass solvability heuristic")
-    func fragileTileLevelsAreSolvable() {
-        for r in Self.reports where r.hasFragileTile {
-            #expect(r.isSolvable,
-                    "L\(r.levelID): fragileTile present but solvability heuristic failed")
-        }
+    @Test("Fragile tile level passes solvability heuristic", arguments: Self.fragileTileReports)
+    func fragileTileLevelIsSolvable(_ report: LevelValidationReport) {
+        #expect(report.isSolvable,
+                "L\(report.levelID): fragileTile present but solvability heuristic failed")
     }
 
     /// Fragile tiles burn after 3 energized turns, so the player needs slack to recover
     /// routing if they accidentally burned a tile. At least 3 buffer moves is the minimum.
-    @Test("Fragile tile levels have at least 3 buffer moves")
-    func fragileTileLevelsHaveAdequateBuffer() {
-        for level in Self.levels {
-            guard let r = Self.reports.first(where: { $0.levelID == level.id }),
-                  r.hasFragileTile else { continue }
-            #expect(level.moveBuffer >= 3,
-                    "L\(level.id): fragileTile with only \(level.moveBuffer) buffer moves — player has no recovery slack after burn-out")
-        }
+    @Test("Fragile tile level has at least 3 buffer moves", arguments: Self.fragileTileLevels)
+    func fragileTileLevelHasAdequateBuffer(_ level: Level) {
+        #expect(level.moveBuffer >= 3,
+                "L\(level.id): fragileTile with only \(level.moveBuffer) buffer moves — player has no recovery slack after burn-out")
     }
 
     // MARK: - Charge gate mechanic
 
-    @Test("Charge gate is absent from levels below ID 164")
-    func chargeGateAbsentBeforeThreshold() {
-        for r in Self.reports where r.levelID < 164 {
-            #expect(!r.hasChargeGate,
-                    "L\(r.levelID): chargeGate unexpectedly present before threshold (id < 164)")
-        }
+    @Test("Charge gate is absent before level ID 164", arguments: Self.earlyReportsForChargeGate)
+    func chargeGateAbsentBeforeThreshold(_ report: LevelValidationReport) {
+        #expect(!report.hasChargeGate,
+                "L\(report.levelID): chargeGate unexpectedly present before threshold (id < 164)")
     }
 
-    @Test("Charge gate levels pass solvability heuristic")
-    func chargeGateLevelsAreSolvable() {
-        for r in Self.reports where r.hasChargeGate {
-            #expect(r.isSolvable,
-                    "L\(r.levelID): chargeGate present but solvability heuristic failed")
-        }
+    @Test("Charge gate level passes solvability heuristic", arguments: Self.chargeGateReports)
+    func chargeGateLevelIsSolvable(_ report: LevelValidationReport) {
+        #expect(report.isSolvable,
+                "L\(report.levelID): chargeGate present but solvability heuristic failed")
     }
 
     /// The gate requires 2 charge cycles (+1 to minMoves). The player also needs
     /// buffer to explore routing paths before the gate opens.
-    @Test("Charge gate levels have at least 3 buffer moves")
-    func chargeGateLevelsHaveAdequateBuffer() {
-        for level in Self.levels {
-            guard let r = Self.reports.first(where: { $0.levelID == level.id }),
-                  r.hasChargeGate else { continue }
-            #expect(level.moveBuffer >= 3,
-                    "L\(level.id): chargeGate with only \(level.moveBuffer) buffer moves — player may run out while waiting for the gate to open")
-        }
+    @Test("Charge gate level has at least 3 buffer moves", arguments: Self.chargeGateLevels)
+    func chargeGateLevelHasAdequateBuffer(_ level: Level) {
+        #expect(level.moveBuffer >= 3,
+                "L\(level.id): chargeGate with only \(level.moveBuffer) buffer moves — player may run out while waiting for the gate to open")
     }
 
     // MARK: - Interference zone mechanic
 
-    @Test("Interference zone is absent from levels below ID 171")
-    func interferenceZoneAbsentBeforeThreshold() {
-        for r in Self.reports where r.levelID < 171 {
-            #expect(!r.hasInterferenceZone,
-                    "L\(r.levelID): interferenceZone unexpectedly present before threshold (id < 171)")
-        }
+    @Test("Interference zone is absent before level ID 171", arguments: Self.earlyReportsForInterference)
+    func interferenceZoneAbsentBeforeThreshold(_ report: LevelValidationReport) {
+        #expect(!report.hasInterferenceZone,
+                "L\(report.levelID): interferenceZone unexpectedly present before threshold (id < 171)")
     }
 
-    @Test("Interference zone levels pass solvability heuristic")
-    func interferenceZoneLevelsAreSolvable() {
-        for r in Self.reports where r.hasInterferenceZone {
-            #expect(r.isSolvable,
-                    "L\(r.levelID): interferenceZone present but solvability heuristic failed")
-        }
+    @Test("Interference zone level passes solvability heuristic", arguments: Self.interferenceZoneReports)
+    func interferenceZoneLevelIsSolvable(_ report: LevelValidationReport) {
+        #expect(report.isSolvable,
+                "L\(report.levelID): interferenceZone present but solvability heuristic failed")
     }
 }
 #endif
@@ -689,17 +695,26 @@ struct StoryBeatLocalizationTests {
         #expect(fr.incomingTransmission != en.incomingTransmission)
     }
 
+    // ── Precomputed filtered collections ──────────────────────────────────
+
+    private static let beatsWithLocalizedTitle: [StoryBeat] =
+        StoryBeatCatalog.beats.filter { $0.localizedTitle != nil }
+    private static let beatsWithLocalizedBody: [StoryBeat] =
+        StoryBeatCatalog.beats.filter { $0.localizedBody != nil }
+    private static let allMechanics: [MechanicType] = [
+        .rotationCap, .overloaded, .timeLimit, .autoDrift,
+        .oneWayRelay, .fragileTile, .chargeGate, .interferenceZone,
+    ]
+
     // ── Trigger labels ─────────────────────────────────────────────────────
 
-    @Test("All StoryTrigger badge labels are localized for ES and FR")
-    func storyTriggerLabelsAreLocalized() {
-        for trigger in StoryTrigger.allCases {
-            let enLabel = en.storyTriggerLabel(trigger)
-            #expect(es.storyTriggerLabel(trigger) != enLabel,
-                    "ES trigger label for .\(trigger) matches EN — translation missing")
-            #expect(fr.storyTriggerLabel(trigger) != enLabel,
-                    "FR trigger label for .\(trigger) matches EN — translation missing")
-        }
+    @Test("StoryTrigger badge label is localized for ES and FR", arguments: StoryTrigger.allCases)
+    func storyTriggerLabelIsLocalized(_ trigger: StoryTrigger) {
+        let enLabel = en.storyTriggerLabel(trigger)
+        #expect(es.storyTriggerLabel(trigger) != enLabel,
+                "ES trigger label for .\(trigger) matches EN — translation missing")
+        #expect(fr.storyTriggerLabel(trigger) != enLabel,
+                "FR trigger label for .\(trigger) matches EN — translation missing")
     }
 
     // ── Footer hints ───────────────────────────────────────────────────────
@@ -720,20 +735,16 @@ struct StoryBeatLocalizationTests {
         "SECTOR 8 — NEPTUNE DEEP",
     ]
 
-    @Test("Known footer hints are translated for ES — not left in English")
-    func footerHintsLocalizedES() {
-        for hint in Self.representativeHints {
-            #expect(es.storyFooterHint(hint) != hint,
-                    "ES footer hint '\(hint)' is still English — add translation to storyFooterHint(_:)")
-        }
+    @Test("Footer hint is translated for ES — not left in English", arguments: Self.representativeHints)
+    func footerHintLocalizedES(_ hint: String) {
+        #expect(es.storyFooterHint(hint) != hint,
+                "ES footer hint '\(hint)' is still English — add translation to storyFooterHint(_:)")
     }
 
-    @Test("Known footer hints are translated for FR — not left in English")
-    func footerHintsLocalizedFR() {
-        for hint in Self.representativeHints {
-            #expect(fr.storyFooterHint(hint) != hint,
-                    "FR footer hint '\(hint)' is still English — add translation to storyFooterHint(_:)")
-        }
+    @Test("Footer hint is translated for FR — not left in English", arguments: Self.representativeHints)
+    func footerHintLocalizedFR(_ hint: String) {
+        #expect(fr.storyFooterHint(hint) != hint,
+                "FR footer hint '\(hint)' is still English — add translation to storyFooterHint(_:)")
     }
 
     @Test("Unknown footer hint falls back to the original string without crashing")
@@ -745,60 +756,42 @@ struct StoryBeatLocalizationTests {
 
     // ── Beat catalog ───────────────────────────────────────────────────────
 
-    @Test("All beats with localizedTitle display a distinct ES title")
-    func beatsWithLocalizedTitleShowESTitle() {
-        for beat in StoryBeatCatalog.beats where beat.localizedTitle != nil {
-            #expect(beat.displayTitle(for: .es) != beat.displayTitle(for: .en),
-                    "Beat '\(beat.id)': ES title matches EN — localizedTitle.es may be missing")
-        }
+    @Test("Beat with localizedTitle displays a distinct ES title", arguments: Self.beatsWithLocalizedTitle)
+    func beatLocalizedTitleShowsESTitle(_ beat: StoryBeat) {
+        #expect(beat.displayTitle(for: .es) != beat.displayTitle(for: .en),
+                "Beat '\(beat.id)': ES title matches EN — localizedTitle.es may be missing")
     }
 
-    @Test("All beats with localizedBody display a distinct ES body")
-    func beatsWithLocalizedBodyShowESBody() {
-        for beat in StoryBeatCatalog.beats where beat.localizedBody != nil {
-            #expect(beat.displayBody(for: .es) != beat.displayBody(for: .en),
-                    "Beat '\(beat.id)': ES body matches EN — localizedBody.es may be missing")
-        }
+    @Test("Beat with localizedBody displays a distinct ES body", arguments: Self.beatsWithLocalizedBody)
+    func beatLocalizedBodyShowsESBody(_ beat: StoryBeat) {
+        #expect(beat.displayBody(for: .es) != beat.displayBody(for: .en),
+                "Beat '\(beat.id)': ES body matches EN — localizedBody.es may be missing")
     }
 
-    @Test("All beats with localizedBody display a distinct FR body")
-    func beatsWithLocalizedBodyShowFRBody() {
-        for beat in StoryBeatCatalog.beats where beat.localizedBody != nil {
-            #expect(beat.displayBody(for: .fr) != beat.displayBody(for: .en),
-                    "Beat '\(beat.id)': FR body matches EN — localizedBody.fr may be missing")
-        }
+    @Test("Beat with localizedBody displays a distinct FR body", arguments: Self.beatsWithLocalizedBody)
+    func beatLocalizedBodyShowsFRBody(_ beat: StoryBeat) {
+        #expect(beat.displayBody(for: .fr) != beat.displayBody(for: .en),
+                "Beat '\(beat.id)': FR body matches EN — localizedBody.fr may be missing")
     }
 
     // ── Mechanic strings ───────────────────────────────────────────────────
 
-    @Test("Mechanic titles are localized for ES and FR")
-    func mechanicTitlesAreLocalized() {
-        let mechanics: [MechanicType] = [
-            .rotationCap, .overloaded, .timeLimit, .autoDrift,
-            .oneWayRelay, .fragileTile, .chargeGate, .interferenceZone,
-        ]
-        for mechanic in mechanics {
-            let enTitle = en.mechanicTitle(mechanic)
-            #expect(es.mechanicTitle(mechanic) != enTitle,
-                    "ES mechanic title for .\(mechanic) matches EN — not localized")
-            #expect(fr.mechanicTitle(mechanic) != enTitle,
-                    "FR mechanic title for .\(mechanic) matches EN — not localized")
-        }
+    @Test("Mechanic title is localized for ES and FR", arguments: Self.allMechanics)
+    func mechanicTitleIsLocalized(_ mechanic: MechanicType) {
+        let enTitle = en.mechanicTitle(mechanic)
+        #expect(es.mechanicTitle(mechanic) != enTitle,
+                "ES mechanic title for .\(mechanic) matches EN — not localized")
+        #expect(fr.mechanicTitle(mechanic) != enTitle,
+                "FR mechanic title for .\(mechanic) matches EN — not localized")
     }
 
-    @Test("Mechanic body messages are localized for ES and FR")
-    func mechanicMessagesAreLocalized() {
-        let mechanics: [MechanicType] = [
-            .rotationCap, .overloaded, .timeLimit, .autoDrift,
-            .oneWayRelay, .fragileTile, .chargeGate, .interferenceZone,
-        ]
-        for mechanic in mechanics {
-            let enMsg = en.mechanicMessage(mechanic)
-            #expect(es.mechanicMessage(mechanic) != enMsg,
-                    "ES mechanic message for .\(mechanic) matches EN — not localized")
-            #expect(fr.mechanicMessage(mechanic) != enMsg,
-                    "FR mechanic message for .\(mechanic) matches EN — not localized")
-        }
+    @Test("Mechanic body message is localized for ES and FR", arguments: Self.allMechanics)
+    func mechanicMessageIsLocalized(_ mechanic: MechanicType) {
+        let enMsg = en.mechanicMessage(mechanic)
+        #expect(es.mechanicMessage(mechanic) != enMsg,
+                "ES mechanic message for .\(mechanic) matches EN — not localized")
+        #expect(fr.mechanicMessage(mechanic) != enMsg,
+                "FR mechanic message for .\(mechanic) matches EN — not localized")
     }
 }
 
@@ -1366,6 +1359,13 @@ struct NarrativeRegressionTests {
         StoryStore.reset()
     }
 
+    // ── Precomputed filtered collections ──────────────────────────────────
+
+    private static let beatsWithLocalizedTitle: [StoryBeat] =
+        StoryBeatCatalog.beats.filter { $0.localizedTitle != nil }
+    private static let beatsWithLocalizedBody: [StoryBeat] =
+        StoryBeatCatalog.beats.filter { $0.localizedBody != nil }
+
     // MARK: 1. Catalog Integrity
 
     @Test("All beat IDs are unique")
@@ -1376,41 +1376,33 @@ struct NarrativeRegressionTests {
                 "Duplicate beat IDs found: \(Set(duplicates).sorted().joined(separator: ", "))")
     }
 
-    @Test("No beat has an empty ID, title, body, or source")
-    func beatsMandatoryFieldsNonEmpty() {
-        for beat in StoryBeatCatalog.beats {
-            #expect(!beat.id.isEmpty,     "Beat has empty id")
-            #expect(!beat.title.isEmpty,  "Beat '\(beat.id)' has empty title")
-            #expect(!beat.body.isEmpty,   "Beat '\(beat.id)' has empty body")
-            #expect(!beat.source.isEmpty, "Beat '\(beat.id)' has empty source")
-        }
+    @Test("Beat has non-empty ID, title, body, and source", arguments: StoryBeatCatalog.beats)
+    func beatMandatoryFieldsNonEmpty(_ beat: StoryBeat) {
+        #expect(!beat.id.isEmpty,     "Beat has empty id")
+        #expect(!beat.title.isEmpty,  "Beat '\(beat.id)' has empty title")
+        #expect(!beat.body.isEmpty,   "Beat '\(beat.id)' has empty body")
+        #expect(!beat.source.isEmpty, "Beat '\(beat.id)' has empty source")
     }
 
-    @Test("All beats have a valid StoryTrigger")
-    func beatsHaveValidTrigger() {
+    @Test("Beat has a valid StoryTrigger", arguments: StoryBeatCatalog.beats)
+    func beatHasValidTrigger(_ beat: StoryBeat) {
         let valid = Set(StoryTrigger.allCases)
-        for beat in StoryBeatCatalog.beats {
-            #expect(valid.contains(beat.trigger),
-                    "Beat '\(beat.id)' has unknown trigger '\(beat.trigger.rawValue)'")
-        }
+        #expect(valid.contains(beat.trigger),
+                "Beat '\(beat.id)' has unknown trigger '\(beat.trigger.rawValue)'")
     }
 
-    @Test("Beats with localizedTitle have non-empty ES and FR strings")
-    func localizedTitleStringsNonEmpty() {
-        for beat in StoryBeatCatalog.beats {
-            guard let lt = beat.localizedTitle else { continue }
-            #expect(!lt.es.isEmpty, "Beat '\(beat.id)' localizedTitle.es is empty")
-            #expect(!lt.fr.isEmpty, "Beat '\(beat.id)' localizedTitle.fr is empty")
-        }
+    @Test("Beat with localizedTitle has non-empty ES and FR strings", arguments: Self.beatsWithLocalizedTitle)
+    func localizedTitleStringsNonEmpty(_ beat: StoryBeat) {
+        let lt = beat.localizedTitle!
+        #expect(!lt.es.isEmpty, "Beat '\(beat.id)' localizedTitle.es is empty")
+        #expect(!lt.fr.isEmpty, "Beat '\(beat.id)' localizedTitle.fr is empty")
     }
 
-    @Test("Beats with localizedBody have non-empty ES and FR strings")
-    func localizedBodyStringsNonEmpty() {
-        for beat in StoryBeatCatalog.beats {
-            guard let lb = beat.localizedBody else { continue }
-            #expect(!lb.es.isEmpty, "Beat '\(beat.id)' localizedBody.es is empty")
-            #expect(!lb.fr.isEmpty, "Beat '\(beat.id)' localizedBody.fr is empty")
-        }
+    @Test("Beat with localizedBody has non-empty ES and FR strings", arguments: Self.beatsWithLocalizedBody)
+    func localizedBodyStringsNonEmpty(_ beat: StoryBeat) {
+        let lb = beat.localizedBody!
+        #expect(!lb.es.isEmpty, "Beat '\(beat.id)' localizedBody.es is empty")
+        #expect(!lb.fr.isEmpty, "Beat '\(beat.id)' localizedBody.fr is empty")
     }
 
     // MARK: 2. Once-Only Behavior
@@ -1455,15 +1447,13 @@ struct NarrativeRegressionTests {
 
     // MARK: 3. Queue Ordering
 
-    @Test("pendingAll() returns beats in priority-ascending order")
-    func pendingAllSortedByPriority() {
-        for trigger in StoryTrigger.allCases {
-            let beats = StoryStore.pendingAll(for: trigger)
-            guard beats.count > 1 else { continue }
-            let priorities = beats.map(\.priority)
-            #expect(priorities == priorities.sorted(),
-                    ".\(trigger.rawValue) beats are not sorted by priority: \(priorities)")
-        }
+    @Test("pendingAll() returns beats in priority-ascending order", arguments: StoryTrigger.allCases)
+    func pendingAllSortedByPriority(_ trigger: StoryTrigger) {
+        let beats = StoryStore.pendingAll(for: trigger)
+        guard beats.count > 1 else { return }
+        let priorities = beats.map(\.priority)
+        #expect(priorities == priorities.sorted(),
+                ".\(trigger.rawValue) beats are not sorted by priority: \(priorities)")
     }
 
     @Test("pendingQueue() does not return the same once-only beat twice when trigger is repeated")
@@ -1486,14 +1476,12 @@ struct NarrativeRegressionTests {
 
     // MARK: 4. Persistence
 
-    @Test("reset() clears all seen beats — isSeen returns false for every catalog beat")
-    func resetClearsAllSeenBeats() {
+    @Test("reset() clears all seen beats — isSeen returns false for every catalog beat", arguments: StoryBeatCatalog.beats)
+    func resetClearsSeenBeat(_ beat: StoryBeat) {
         StoryStore.markAllSeen()
         StoryStore.reset()
-        for beat in StoryBeatCatalog.beats {
-            #expect(!StoryStore.isSeen(beat.id),
-                    "Beat '\(beat.id)' must not be seen after reset()")
-        }
+        #expect(!StoryStore.isSeen(beat.id),
+                "Beat '\(beat.id)' must not be seen after reset()")
     }
 
     @Test("markSeen persists — isSeen returns true immediately after marking")
@@ -1504,64 +1492,52 @@ struct NarrativeRegressionTests {
                 "isSeen must return true immediately after markSeen('\(beat.id)')")
     }
 
-    @Test("markAllSeen marks every catalog beat as seen")
-    func markAllSeenCoversFullCatalog() {
+    @Test("markAllSeen marks every catalog beat as seen", arguments: StoryBeatCatalog.beats)
+    func markAllSeenCoversBeat(_ beat: StoryBeat) {
         StoryStore.markAllSeen()
-        for beat in StoryBeatCatalog.beats {
-            #expect(StoryStore.isSeen(beat.id),
-                    "Beat '\(beat.id)' must be seen after markAllSeen()")
-        }
+        #expect(StoryStore.isSeen(beat.id),
+                "Beat '\(beat.id)' must be seen after markAllSeen()")
     }
 
-    @Test("pendingAll() returns no once-only beats when markAllSeen() has been called")
-    func noPendingOnceOnlyBeatsWhenAllSeen() {
+    @Test("pendingAll() returns no once-only beats when markAllSeen() has been called", arguments: StoryTrigger.allCases)
+    func noPendingOnceOnlyBeatsForTrigger(_ trigger: StoryTrigger) {
         StoryStore.markAllSeen()
-        for trigger in StoryTrigger.allCases {
-            let onceOnly = StoryStore.pendingAll(for: trigger).filter(\.onceOnly)
-            #expect(onceOnly.isEmpty,
-                    ".\(trigger.rawValue): \(onceOnly.count) once-only beat(s) still pending after markAllSeen()")
-        }
+        let onceOnly = StoryStore.pendingAll(for: trigger).filter(\.onceOnly)
+        #expect(onceOnly.isEmpty,
+                ".\(trigger.rawValue): \(onceOnly.count) once-only beat(s) still pending after markAllSeen()")
     }
 
     // MARK: 5. Localization Coverage
 
-    @Test("displayTitle(for:) returns non-empty strings in EN, ES, and FR")
-    func displayTitleNonEmptyAllLanguages() {
-        for beat in StoryBeatCatalog.beats {
-            #expect(!beat.displayTitle(for: .en).isEmpty, "Beat '\(beat.id)' EN title is empty")
-            #expect(!beat.displayTitle(for: .es).isEmpty, "Beat '\(beat.id)' ES title is empty")
-            #expect(!beat.displayTitle(for: .fr).isEmpty, "Beat '\(beat.id)' FR title is empty")
-        }
+    @Test("displayTitle(for:) returns non-empty strings in EN, ES, and FR", arguments: StoryBeatCatalog.beats)
+    func displayTitleNonEmptyAllLanguages(_ beat: StoryBeat) {
+        #expect(!beat.displayTitle(for: .en).isEmpty, "Beat '\(beat.id)' EN title is empty")
+        #expect(!beat.displayTitle(for: .es).isEmpty, "Beat '\(beat.id)' ES title is empty")
+        #expect(!beat.displayTitle(for: .fr).isEmpty, "Beat '\(beat.id)' FR title is empty")
     }
 
-    @Test("displayBody(for:) returns non-empty strings in EN, ES, and FR")
-    func displayBodyNonEmptyAllLanguages() {
-        for beat in StoryBeatCatalog.beats {
-            #expect(!beat.displayBody(for: .en).isEmpty, "Beat '\(beat.id)' EN body is empty")
-            #expect(!beat.displayBody(for: .es).isEmpty, "Beat '\(beat.id)' ES body is empty")
-            #expect(!beat.displayBody(for: .fr).isEmpty, "Beat '\(beat.id)' FR body is empty")
-        }
+    @Test("displayBody(for:) returns non-empty strings in EN, ES, and FR", arguments: StoryBeatCatalog.beats)
+    func displayBodyNonEmptyAllLanguages(_ beat: StoryBeat) {
+        #expect(!beat.displayBody(for: .en).isEmpty, "Beat '\(beat.id)' EN body is empty")
+        #expect(!beat.displayBody(for: .es).isEmpty, "Beat '\(beat.id)' ES body is empty")
+        #expect(!beat.displayBody(for: .fr).isEmpty, "Beat '\(beat.id)' FR body is empty")
     }
 
-    @Test("Beats with localizedTitle display distinct strings in ES and FR vs EN")
-    func localizedTitleDistinctPerLanguage() {
-        for beat in StoryBeatCatalog.beats where beat.localizedTitle != nil {
-            let en = beat.displayTitle(for: .en)
-            #expect(beat.displayTitle(for: .es) != en,
-                    "Beat '\(beat.id)' ES title matches EN — localizedTitle.es may be wrong")
-            #expect(beat.displayTitle(for: .fr) != en,
-                    "Beat '\(beat.id)' FR title matches EN — localizedTitle.fr may be wrong")
-        }
+    @Test("Beat with localizedTitle displays distinct strings in ES and FR vs EN", arguments: Self.beatsWithLocalizedTitle)
+    func localizedTitleDistinctPerLanguage(_ beat: StoryBeat) {
+        let enTitle = beat.displayTitle(for: .en)
+        #expect(beat.displayTitle(for: .es) != enTitle,
+                "Beat '\(beat.id)' ES title matches EN — localizedTitle.es may be wrong")
+        #expect(beat.displayTitle(for: .fr) != enTitle,
+                "Beat '\(beat.id)' FR title matches EN — localizedTitle.fr may be wrong")
     }
 
-    @Test("Beats with localizedBody display distinct strings in ES and FR vs EN")
-    func localizedBodyDistinctPerLanguage() {
-        for beat in StoryBeatCatalog.beats where beat.localizedBody != nil {
-            let en = beat.displayBody(for: .en)
-            #expect(beat.displayBody(for: .es) != en,
-                    "Beat '\(beat.id)' ES body matches EN — localizedBody.es may be wrong")
-            #expect(beat.displayBody(for: .fr) != en,
-                    "Beat '\(beat.id)' FR body matches EN — localizedBody.fr may be wrong")
-        }
+    @Test("Beat with localizedBody displays distinct strings in ES and FR vs EN", arguments: Self.beatsWithLocalizedBody)
+    func localizedBodyDistinctPerLanguage(_ beat: StoryBeat) {
+        let enBody = beat.displayBody(for: .en)
+        #expect(beat.displayBody(for: .es) != enBody,
+                "Beat '\(beat.id)' ES body matches EN — localizedBody.es may be wrong")
+        #expect(beat.displayBody(for: .fr) != enBody,
+                "Beat '\(beat.id)' FR body matches EN — localizedBody.fr may be wrong")
     }
 }
