@@ -13,14 +13,14 @@ import Combine
 //
 // ## Free-user access model
 //   Phase 1 — Intro (lifetime):
-//     The first 3 missions won are always free, regardless of time.
-//     `freeIntroCompleted` tracks this (0–3); once it reaches 3, Phase 2 begins.
-//     During this phase only WON sessions increment the counter; FAILs are free.
+//     The first 8 game sessions are always free, regardless of outcome.
+//     `freeIntroCompleted` tracks this (0–8); once it reaches 8, Phase 2 begins.
+//     Both WON and FAILED sessions (with ≥1 tap) increment the counter.
 //
 //   Phase 2 — 24h rolling gate:
 //     After the intro quota is exhausted a 24-hour cooldown starts immediately.
 //     `nextPlayableDate` tracks when the player may play again.
-//     When the cooldown expires the player gets one more play, which arms a new 24h cooldown.
+//     When the cooldown expires the player gets 3 plays, which arms a new 24h cooldown.
 //     Both WON and FAILED sessions arm the cooldown (if the player made ≥1 tap).
 //
 //   Premium:
@@ -33,8 +33,8 @@ final class EntitlementStore: ObservableObject {
     static let shared = EntitlementStore()
 
     // ── Product constants ──────────────────────────────────────────────────
-    /// Lifetime free missions before the 24h gate begins.
-    static let freeIntroLimit = 3
+    /// Lifetime free game sessions before the 24h gate begins.
+    static let freeIntroLimit = 8
     /// Plays allowed per 24h window in Phase 2.
     static let dailyLimit     = 3
 
@@ -81,7 +81,7 @@ final class EntitlementStore: ObservableObject {
 
     // MARK: - Derived state
 
-    /// True while the player still has intro quota remaining (lifetime < 3).
+    /// True while the player still has intro quota remaining (lifetime < 8).
     var isInIntroPhase: Bool { freeIntroCompleted < Self.freeIntroLimit }
 
     /// True when the cooldown has not yet expired (or was never set).
@@ -170,15 +170,10 @@ final class EntitlementStore: ObservableObject {
             return
         }
         if isInIntroPhase {
-            guard didWin else {
-                #if DEBUG
-                print("[ENTITLEMENT] recordAttempt(id=\(level.id), win=false) → intro phase, failure is free")
-                #endif
-                return
-            }
+            // Both wins and fails consume an intro slot (player had ≥1 tap — caller contract).
             freeIntroCompleted = min(freeIntroCompleted + 1, Self.freeIntroLimit)
             #if DEBUG
-            print("[ENTITLEMENT] recordAttempt(id=\(level.id), win=true) → intro consumed: \(freeIntroCompleted)/\(Self.freeIntroLimit)")
+            print("[ENTITLEMENT] recordAttempt(id=\(level.id), win=\(didWin)) → intro consumed: \(freeIntroCompleted)/\(Self.freeIntroLimit)")
             #endif
             if freeIntroCompleted >= Self.freeIntroLimit {
                 // Intro exhausted — arm the first 24h gate immediately

@@ -11,8 +11,8 @@ struct HomeView: View {
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var entitlement: EntitlementStore
     private var S: AppStrings { AppStrings(lang: settings.language) }
-    @State private var secretTaps          = 0
-    @State private var lastTapTime         = Date.distantPast
+    @State private var devSecretStep = 0
+    @State private var devLastTap    = Date.distantPast
     @State private var showingPlanetTicket = false
     @State private var showingSettings     = false
     @State private var showingDevMenu      = false
@@ -253,7 +253,7 @@ struct HomeView: View {
                 .minimumScaleFactor(0.72)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-                .onTapGesture { handleSecretTap() }
+                .onTapGesture { advanceDev(zone: 1) }
 
             // Objective line
             Text(S.objectiveText(type: level.objectiveType, targets: level.numTargets))
@@ -790,21 +790,6 @@ struct HomeView: View {
             Spacer()
 
             HStack(spacing: 5) {
-                #if DEBUG
-                Button(action: { showingDevMenu = true }) {
-                    Text("DEV")
-                        .font(AppTheme.mono(7, weight: .black))
-                        .foregroundStyle(AppTheme.danger.opacity(0.80))
-                        .frame(width: 34, height: 34)
-                        .background(AppTheme.danger.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                                .strokeBorder(AppTheme.danger.opacity(0.22), lineWidth: 0.5)
-                        )
-                }
-                #endif
-
                 Button(action: { showingSettings = true }) {
                     Image(systemName: "slider.horizontal.3")
                         .font(.system(size: 13, weight: .semibold))
@@ -833,13 +818,15 @@ struct HomeView: View {
         VStack(spacing: 0) {
             TechDivider()
             HStack(spacing: 0) {
-                // Signal: always hot
+                // Signal: always hot  [secret zone 2]
                 HStack(spacing: 5) {
                     Circle().fill(AppTheme.success).frame(width: 4, height: 4)
                         .pulsingGlow(color: AppTheme.success, duration: 1.8)
                     TechLabel(text: S.signalActive, color: AppTheme.sage.opacity(0.82))
                 }
                 .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture { advanceDev(zone: 2) }
 
                 Rectangle().fill(AppTheme.sage.opacity(0.14)).frame(width: 0.5, height: 18)
 
@@ -852,9 +839,11 @@ struct HomeView: View {
 
                 Rectangle().fill(AppTheme.sage.opacity(0.14)).frame(width: 0.5, height: 18)
 
-                // System version
+                // System version  [secret zone 0]
                 TechLabel(text: "SYS  ·  v1.0", color: AppTheme.sage.opacity(0.78))
                     .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture { advanceDev(zone: 0) }
             }
             .padding(.vertical, 14)
         }
@@ -898,15 +887,23 @@ struct HomeView: View {
         TicketCache.shared.cache(image, for: p)
     }
 
-    // MARK: Secret trigger
-    private func handleSecretTap() {
+    // MARK: Secret DEV menu trigger
+    // Sequence: v1.0 (zone 0) → next mission (zone 1) → v1.0 (zone 0) → signal (zone 2)
+    private static let devSequence = [0, 1, 0, 2]
+
+    private func advanceDev(zone: Int) {
         let now = Date()
-        if now.timeIntervalSince(lastTapTime) > 2.0 { secretTaps = 0 }
-        lastTapTime = now
-        secretTaps += 1
-        if secretTaps >= 5 {
-            secretTaps = 0
-            showingDevMenu = true
+        if now.timeIntervalSince(devLastTap) > 4.0 { devSecretStep = 0 }
+        devLastTap = now
+        if Self.devSequence[devSecretStep] == zone {
+            devSecretStep += 1
+            if devSecretStep >= Self.devSequence.count {
+                devSecretStep = 0
+                showingDevMenu = true
+            }
+        } else {
+            // Wrong zone — restart; check if this tap could begin the sequence
+            devSecretStep = Self.devSequence[0] == zone ? 1 : 0
         }
     }
 }

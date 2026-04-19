@@ -25,48 +25,45 @@ enum MusicSynthesizer {
         ]
     }
 
-    // MARK: - home_idle  (20 s stereo loop)
+    // MARK: - home_idle  (30 s stereo loop)
     //
-    // A-major drawbar organ: A1·A2·E3·A3·C#4
-    // Contemplative, spacious, warm — balanced warm/cold equilibrium.
-    // 22 s breath LFO (8% depth) simulates a large resonant space.
+    // Interstellar-inspired cosmic void pad — F major open (no thirds, only fifths).
+    // Pure sine waves only: no drawbar harmonics, no aliasing, no harshness.
+    // L/R frequencies detuned ±0.003–0.008 Hz — extremely subtle stereo breath.
+    // Ultra-slow 48 s LFO at 3 % depth — movement is felt, never heard.
+    // Normalize target 0.72 (softer headroom) — music sits far behind gameplay SFX.
 
     nonisolated static func homeIdle() -> Data {
-        let n = sampleCount(seconds: 20)
+        let n = sampleCount(seconds: 30)
         var L = [Float](repeating: 0, count: n)
         var R = [Float](repeating: 0, count: n)
 
-        // Drawbar organ voices — each has 8' (main), 16' (sub-octave), 4' (upper) depths.
-        // L/R frequencies detuned ±0.01–0.015% — stereo width, beating period >50 s.
-        let voices: [(fL: Double, fR: Double, amp: Double, d16: Double, d4: Double)] = [
-            (55.000,  55.006,  0.26, 0.55, 0.06),   // A1 sub — deep foundation
-            (109.989, 110.011, 0.46, 0.44, 0.12),   // A2 root — core warmth
-            (164.797, 164.823, 0.36, 0.30, 0.10),   // E3 fifth — open space
-            (219.978, 220.022, 0.28, 0.20, 0.08),   // A3 octave — brightness
-            (277.167, 277.213, 0.16, 0.14, 0.05),   // C#4 third — warmth color
+        // F major open — pure sine voices, no overtone harmonics.
+        // Interval structure: root · fifth · octave · fifth-above — open, unresolved.
+        let voices: [(fL: Double, fR: Double, amp: Double)] = [
+            (43.654, 43.658, 0.10),   // F1 — deep sub-bass foundation (felt, not heard)
+            (87.307, 87.313, 0.40),   // F2 — main body, core warmth
+            (130.813, 130.820, 0.28), // C3 — perfect fifth, vast open space
+            (174.614, 174.622, 0.18), // F3 — upper octave, gentle presence
+            (261.626, 261.634, 0.08), // C4 — distant fifth shimmer
         ]
-        let lfoHz    = 1.0 / 22.0   // 22 s breath cycle
-        let lfoDepth = 0.08          // 8% AM depth
+        let lfoHz    = 1.0 / 48.0   // 48 s breath — imperceptibly slow tide
+        let lfoDepth = 0.03          // 3 % AM — warmth variation without movement
 
         for i in 0..<n {
             let t   = Double(i) / Double(sr)
             let lfo = 1.0 - lfoDepth + lfoDepth * (0.5 + 0.5 * sin(2 * .pi * lfoHz * t - .pi / 2))
             var vL  = 0.0, vR = 0.0
             for v in voices {
-                // Additive drawbar: 8' fundamental + soft 16' sub + gentle 4' upper
-                vL += (sin(2 * .pi * v.fL * t)
-                     + sin(2 * .pi * v.fL * 0.5 * t) * v.d16
-                     + sin(2 * .pi * v.fL * 2.0 * t) * v.d4) * v.amp
-                vR += (sin(2 * .pi * v.fR * t)
-                     + sin(2 * .pi * v.fR * 0.5 * t) * v.d16
-                     + sin(2 * .pi * v.fR * 2.0 * t) * v.d4) * v.amp
+                vL += sin(2 * .pi * v.fL * t) * v.amp
+                vR += sin(2 * .pi * v.fR * t) * v.amp
             }
             L[i] = Float(vL * lfo)
             R[i] = Float(vR * lfo)
         }
 
-        normalize(&L, &R)
-        fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 2.5))
+        normalize(&L, &R, target: 0.72)
+        fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 4.0))
         return wavData(L: L, R: R)
     }
 
