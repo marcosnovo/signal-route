@@ -76,8 +76,16 @@ struct GameView: View {
                 hint
             }
 
-            if isIntro && overlayVisible {
+            if isIntro && overlayVisible && vm.status == .won {
                 IntroWinOverlay(onComplete: onIntroComplete ?? onDismiss)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.90)).combined(with: .offset(y: 24)),
+                            removal:   .opacity
+                        )
+                    )
+            } else if isIntro && overlayVisible && vm.status == .lost {
+                IntroFailOverlay(onRetry: { vm.setupLevel() })
                     .transition(
                         .asymmetric(
                             insertion: .opacity.combined(with: .scale(scale: 0.90)).combined(with: .offset(y: 24)),
@@ -1015,6 +1023,91 @@ struct IntroWinOverlay: View {
         }
         .onAppear {
             HapticsManager.success()
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.82).delay(0.20)) {
+                bodyRevealed = true
+            }
+        }
+    }
+}
+
+// MARK: - IntroFailOverlay
+/// Shown when the intro mission runs out of moves without completing the circuit.
+/// Explains the objective and offers a retry button.
+struct IntroFailOverlay: View {
+    let onRetry: () -> Void
+
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+    @State private var bodyRevealed = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.82).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // ── Header ──────────────────────────────────────────────
+                VStack(spacing: 6) {
+                    TechLabel(text: S.statusFailure, color: AppTheme.danger)
+                        .pulsingGlow(color: AppTheme.danger, duration: 1.6)
+                    Text(S.routingFailed)
+                        .font(AppTheme.mono(24, weight: .black))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .kerning(1)
+                    TechLabel(text: S.networkDisconnected, color: AppTheme.danger.opacity(0.80))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(24)
+                .background(AppTheme.surface)
+
+                TechDivider()
+
+                // ── Body (staggered reveal) ──────────────────────────────
+                VStack(spacing: 8) {
+                    TechLabel(text: S.signalLost, color: AppTheme.danger)
+                    Text(S.introFailInstruction)
+                        .font(AppTheme.mono(11, weight: .regular))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .kerning(0.5)
+                        .padding(.horizontal, 8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+                .background(AppTheme.backgroundSecondary)
+                .opacity(bodyRevealed ? 1 : 0)
+                .offset(y: bodyRevealed ? 0 : 8)
+
+                TechDivider()
+
+                // ── CTA ──────────────────────────────────────────────────
+                Button(action: onRetry) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(S.retryMission)
+                            .font(AppTheme.mono(12, weight: .bold))
+                            .kerning(2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(AppTheme.danger)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                }
+                .breathingCTA()
+                .padding(20)
+                .background(AppTheme.surface)
+            }
+            .background(AppTheme.backgroundPrimary)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                    .strokeBorder(AppTheme.danger.opacity(0.50), lineWidth: 1.0)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+            .padding(.horizontal, 28)
+        }
+        .onAppear {
+            HapticsManager.error()
             withAnimation(.spring(response: 0.38, dampingFraction: 0.82).delay(0.20)) {
                 bodyRevealed = true
             }

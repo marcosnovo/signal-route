@@ -218,6 +218,12 @@ struct AppStrings {
     var systemCalibrationComplete: String { t("SYSTEM CALIBRATION COMPLETE", "CALIBRACIÓN DEL SISTEMA COMPLETA","CALIBRATION DU SYSTÈME TERMINÉE") }
     var clearedForDeployment:      String { t("CLEARED FOR DEPLOYMENT",      "AUTORIZADO PARA EL DESPLIEGUE",  "AUTORISÉ POUR LE DÉPLOIEMENT") }
     var accessGranted:             String { t("ACCESS GRANTED",              "ACCESO CONCEDIDO",               "ACCÈS ACCORDÉ") }
+
+    // MARK: - Intro fail overlay
+    var routingFailed:             String { t("ROUTING FAILED",              "ENRUTAMIENTO FALLIDO",           "ROUTAGE ÉCHOUÉ") }
+    var networkDisconnected:       String { t("NETWORK DISCONNECTED",        "RED DESCONECTADA",               "RÉSEAU DÉCONNECTÉ") }
+    var introFailInstruction:      String { t("ROTATE THE TILES TO CONNECT THE SOURCE NODE TO THE TARGET NODE", "ROTA LAS PIEZAS PARA CONECTAR EL NODO ORIGEN CON EL NODO DESTINO", "FAITES PIVOTER LES TUILES POUR CONNECTER LE NŒUD SOURCE AU NŒUD CIBLE") }
+    var retryMission:              String { t("RETRY MISSION",               "REINTENTAR MISIÓN",              "RÉESSAYER LA MISSION") }
     var signalEstablished:         String { t("SIGNAL ESTABLISHED",          "SEÑAL ESTABLECIDA",              "SIGNAL ÉTABLI") }
     func missionProgress(_ n: Int, _ total: Int) -> String {
         t("\(n) / \(total) MISSIONS", "\(n) / \(total) MISIONES", "\(n) / \(total) MISSIONS")
