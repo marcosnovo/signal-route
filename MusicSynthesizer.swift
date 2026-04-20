@@ -15,56 +15,14 @@ enum MusicSynthesizer {
 
     // MARK: - Build all tracks
 
+    /// Builds synthesized tracks for states that don't have bundled audio.
+    /// homeIdle is loaded from `home_ambient.m4a` by AudioManager — no need to synthesize it.
     static func buildAll() -> [AudioState: Data] {
         [
-            .homeIdle:  homeIdle(),
             .inMission: missionActive(),
             .victory:   victory(),
             .story:     story(),
-            // .paywall removed — state maps to .cooldown (silence) since Fase 11
         ]
-    }
-
-    // MARK: - home_idle  (30 s stereo loop)
-    //
-    // Interstellar-inspired cosmic void pad — F major open (no thirds, only fifths).
-    // Pure sine waves only: no drawbar harmonics, no aliasing, no harshness.
-    // L/R frequencies detuned ±0.003–0.008 Hz — extremely subtle stereo breath.
-    // Ultra-slow 48 s LFO at 3 % depth — movement is felt, never heard.
-    // Normalize target 0.72 (softer headroom) — music sits far behind gameplay SFX.
-
-    nonisolated static func homeIdle() -> Data {
-        let n = sampleCount(seconds: 30)
-        var L = [Float](repeating: 0, count: n)
-        var R = [Float](repeating: 0, count: n)
-
-        // F major open — pure sine voices, no overtone harmonics.
-        // Interval structure: root · fifth · octave · fifth-above — open, unresolved.
-        let voices: [(fL: Double, fR: Double, amp: Double)] = [
-            (43.654, 43.658, 0.10),   // F1 — deep sub-bass foundation (felt, not heard)
-            (87.307, 87.313, 0.40),   // F2 — main body, core warmth
-            (130.813, 130.820, 0.28), // C3 — perfect fifth, vast open space
-            (174.614, 174.622, 0.18), // F3 — upper octave, gentle presence
-            (261.626, 261.634, 0.08), // C4 — distant fifth shimmer
-        ]
-        let lfoHz    = 1.0 / 48.0   // 48 s breath — imperceptibly slow tide
-        let lfoDepth = 0.03          // 3 % AM — warmth variation without movement
-
-        for i in 0..<n {
-            let t   = Double(i) / Double(sr)
-            let lfo = 1.0 - lfoDepth + lfoDepth * (0.5 + 0.5 * sin(2 * .pi * lfoHz * t - .pi / 2))
-            var vL  = 0.0, vR = 0.0
-            for v in voices {
-                vL += sin(2 * .pi * v.fL * t) * v.amp
-                vR += sin(2 * .pi * v.fR * t) * v.amp
-            }
-            L[i] = Float(vL * lfo)
-            R[i] = Float(vR * lfo)
-        }
-
-        normalize(&L, &R, target: 0.72)
-        fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 4.0))
-        return wavData(L: L, R: R)
     }
 
     // MARK: - mission_active  (10 s stereo loop)
@@ -203,40 +161,6 @@ enum MusicSynthesizer {
 
         normalize(&L, &R)
         fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 2.5))
-        return wavData(L: L, R: R)
-    }
-
-    // MARK: - paywall  (8 s stereo loop, currently unused)
-    //
-    // Reserved. paywall state maps to .cooldown (silence) since Fase 11.
-
-    nonisolated static func paywall() -> Data {
-        let n = sampleCount(seconds: 8)
-        var L = [Float](repeating: 0, count: n)
-        var R = [Float](repeating: 0, count: n)
-
-        let voices: [(fL: Double, fR: Double, amp: Double)] = [
-            (92.50,  92.54,  0.20),
-            (123.47, 123.52, 0.38),
-            (130.81, 130.87, 0.30),
-            (185.00, 185.07, 0.18),
-        ]
-        let lfoHz = 0.17
-
-        for i in 0..<n {
-            let t   = Double(i) / Double(sr)
-            let lfo = 0.65 + 0.35 * (0.5 + 0.5 * sin(2 * .pi * lfoHz * t - .pi / 2))
-            var vL  = 0.0, vR = 0.0
-            for v in voices {
-                vL += sin(2 * .pi * v.fL * t) * v.amp
-                vR += sin(2 * .pi * v.fR * t) * v.amp
-            }
-            L[i] = Float(vL * lfo)
-            R[i] = Float(vR * lfo)
-        }
-
-        normalize(&L, &R)
-        fadeBothEnds(&L, &R, fadeSamples: sampleCount(seconds: 0.6))
         return wavData(L: L, R: R)
     }
 

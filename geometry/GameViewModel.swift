@@ -163,7 +163,7 @@ class GameViewModel: ObservableObject {
         } else {
             timeRemaining = nil
         }
-        updateConnections()
+        updateConnections(animated: false)
 
         // Start countdown if this level has a time limit
         if let tr = timeRemaining {
@@ -595,20 +595,22 @@ class GameViewModel: ObservableObject {
 
     // MARK: - Private: Energy propagation
 
-    private func updateConnections(processMechanics: Bool = false) {
-        propagateEnergy()
+    private func updateConnections(processMechanics: Bool = false, animated: Bool = true) {
+        propagateEnergy(animated: animated)
 
         // After propagation, process fragile decay and charge gate logic.
         // If any tile state changes (burn-out or gate opening), re-propagate.
         if processMechanics {
             if applyFragileDecay() || applyGateCharges() {
-                propagateEnergy()
+                propagateEnergy(animated: animated)
             }
         }
     }
 
     /// BFS from all source tiles. Only tiles reachable via matched connections are energized.
-    private func propagateEnergy() {
+    /// `animated: false` skips the withAnimation wrapper — used during initial board setup
+    /// so the view renders instantly without a 150 ms animation transaction blocking input.
+    private func propagateEnergy(animated: Bool = true) {
         var local = tiles
         for r in 0..<gridSize { for c in 0..<gridSize { local[r][c].isEnergized = false } }
 
@@ -662,7 +664,11 @@ class GameViewModel: ObservableObject {
         targetsOnline = onlineTargets
         activeNodes   = onlineNodes
 
-        withAnimation(.easeOut(duration: 0.15)) {
+        if animated {
+            withAnimation(.easeOut(duration: 0.15)) {
+                tiles = local
+            }
+        } else {
             tiles = local
         }
     }
