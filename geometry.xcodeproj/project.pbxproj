@@ -468,7 +468,7 @@
 				DEVELOPMENT_TEAM = R2NTD25VWF;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Signal route\n## OBJETIVO\nAñadir ranking global usando Game Center.\n\n---\n\n## TIPOS DE LEADERBOARD\n\n1. Global Efficiency Score\n→ acumulado de eficiencia de todas las misiones\n\n2. Daily Run (opcional)\n→ score del día → loop diario\n\n---\n\n## GAME CENTER SETUP\n\nCrear leaderboard en App Store Connect:\n\nID:\n\"signal_route_efficiency\"\n\n---\n\n## ENVIAR SCORE\n\nAl completar misión:\n\nscore = calcular eficiencia (ej: 0–1000)\n\nGKLeaderboard.submitScore(\n    score,\n    context: 0,\n    player: GKLocalPlayer.local,\n    leaderboardIDs: [\"signal_route_efficiency\"]\n)\n\n---\n\n## CÁLCULO DE SCORE\n\nEjemplo:\n\nscore = base\n        - (movimientos usados * penalty)\n        - (retries * penalty)\n\nNormalizar a rango 0–1000\n\n---\n\n## UI — ENTRY POINT\n\nHome:\n\n- botón pequeño: \"CLASIFICACIÓN\"\n\n---\n\n## UI — MODAL\n\nUsar:\n\nGKGameCenterViewController(\n    state: .leaderboards\n)\n\n---\n\n## UX IMPORTANTE\n\nAl completar misión:\n\n→ mostrar mini feedback:\n\n\"TOP 25% GLOBAL\"\no\n\"NUEVO RÉCORD\"\n\n---\n\n## FALLBACK\n\nSi no autenticado:\n\n→ mostrar CTA:\n\"Conéctate para competir\"\n\n---\n\n## RESULTADO\n\n- añade replayability\n- añade motivación\n- prepara terreno para eventos";
+				INFOPLIST_KEY_CFBundleDisplayName = "Signal Route";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.arcade-games";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -504,7 +504,7 @@
 				DEVELOPMENT_TEAM = R2NTD25VWF;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Signal route\n## OBJETIVO\nAñadir ranking global usando Game Center.\n\n---\n\n## TIPOS DE LEADERBOARD\n\n1. Global Efficiency Score\n→ acumulado de eficiencia de todas las misiones\n\n2. Daily Run (opcional)\n→ score del día → loop diario\n\n---\n\n## GAME CENTER SETUP\n\nCrear leaderboard en App Store Connect:\n\nID:\n\"signal_route_efficiency\"\n\n---\n\n## ENVIAR SCORE\n\nAl completar misión:\n\nscore = calcular eficiencia (ej: 0–1000)\n\nGKLeaderboard.submitScore(\n    score,\n    context: 0,\n    player: GKLocalPlayer.local,\n    leaderboardIDs: [\"signal_route_efficiency\"]\n)\n\n---\n\n## CÁLCULO DE SCORE\n\nEjemplo:\n\nscore = base\n        - (movimientos usados * penalty)\n        - (retries * penalty)\n\nNormalizar a rango 0–1000\n\n---\n\n## UI — ENTRY POINT\n\nHome:\n\n- botón pequeño: \"CLASIFICACIÓN\"\n\n---\n\n## UI — MODAL\n\nUsar:\n\nGKGameCenterViewController(\n    state: .leaderboards\n)\n\n---\n\n## UX IMPORTANTE\n\nAl completar misión:\n\n→ mostrar mini feedback:\n\n\"TOP 25% GLOBAL\"\no\n\"NUEVO RÉCORD\"\n\n---\n\n## FALLBACK\n\nSi no autenticado:\n\n→ mostrar CTA:\n\"Conéctate para competir\"\n\n---\n\n## RESULTADO\n\n- añade replayability\n- añade motivación\n- prepara terreno para eventos";
+				INFOPLIST_KEY_CFBundleDisplayName = "Signal Route";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.arcade-games";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
