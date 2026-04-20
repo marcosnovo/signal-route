@@ -117,18 +117,31 @@ final class AudioManager {
 
     // MARK: - Public API
 
-    /// Call once at app launch. Synthesises SFX + all music tracks on a background thread.
+    /// Call once at app launch. Loads bundled audio assets and synthesises remaining
+    /// music tracks on a background thread.
     /// Immediately starts the track for the current state once tracks are built —
     /// ContentView.onAppear fires before this completes, so the initial transition()
     /// call is a no-op (state already matches). This call ensures music starts.
     func prepare() async {
         await SoundManager.prepare()
 
+        // 1. Try loading the bundled home ambient track (Lyria-generated m4a).
+        if let url = Bundle.main.url(forResource: "home_ambient", withExtension: "m4a"),
+           let homePlayer = try? AVAudioPlayer(contentsOf: url) {
+            homePlayer.numberOfLoops = -1
+            homePlayer.volume = 0
+            homePlayer.prepareToPlay()
+            musicPlayers[.homeIdle] = homePlayer
+        }
+
+        // 2. Synthesise remaining tracks (mission, victory, story) on a background thread.
         let trackData: [AudioState: Data] = await Task.detached(priority: .utility) {
             MusicSynthesizer.buildAll()
         }.value
 
         for (state, data) in trackData {
+            // Skip homeIdle if the bundled track was loaded above.
+            if state == .homeIdle, musicPlayers[.homeIdle] != nil { continue }
             guard let player = try? AVAudioPlayer(data: data, fileTypeHint: nil) else { continue }
             player.numberOfLoops = (state == .victory) ? 0 : -1   // victory plays once
             player.volume = 0
