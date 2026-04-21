@@ -97,6 +97,18 @@ enum StoryStore {
         return results
     }
 
+    // MARK: - Cloud sync
+
+    /// Apply a merged set of story seen IDs from the cloud.
+    /// Only adds — never removes an already-seen beat.
+    static func applyCloudState(_ ids: [String]) {
+        var current = seenIDs
+        let before  = current.count
+        for id in ids { current.insert(id) }
+        guard current.count > before else { return }   // no-op if nothing new
+        UserDefaults.standard.set(Array(current), forKey: key)
+    }
+
     // MARK: - Debug / testing
 
     /// Removes all seen-beat records. Use from DevMenuView / tests only.

@@ -23,7 +23,6 @@ struct LocalizedText: Codable, Equatable {
 /// The in-game moment that causes a story beat to surface.
 enum StoryTrigger: String, Codable, Equatable, CaseIterable {
     case firstLaunch            // app opened for the very first time
-    case postOnboarding         // intro mission completed
     case firstMissionReady      // player is cleared to begin their first real mission
     case firstMissionComplete   // first regular mission won
     case onboardingComplete     // 8th mission won — free-intro quota exhausted, 24h gate begins
@@ -236,7 +235,7 @@ enum StoryBeatCatalog {
         ),
 
         // ══════════════════════════════════════════════════════════════
-        // FIRST MISSION READY (postOnboarding merged here)
+        // FIRST MISSION READY
         // ══════════════════════════════════════════════════════════════
 
         StoryBeat(

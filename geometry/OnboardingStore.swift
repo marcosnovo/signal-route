@@ -50,6 +50,25 @@ enum OnboardingStore {
         UserDefaults.standard.set(true, forKey: firstHookKey)
     }
 
+    // ── Cloud sync ──────────────────────────────────────────────────────
+
+    /// Current onboarding state as a Codable snapshot for cloud save.
+    static var currentSnapshot: OnboardingSnapshot {
+        OnboardingSnapshot(
+            hasCompletedIntro:     hasCompletedIntro,
+            hasSeenNarrativeIntro: hasSeenNarrativeIntro,
+            hasShownFirstHook:     hasShownFirstHook
+        )
+    }
+
+    /// Apply a merged onboarding snapshot from the cloud.
+    /// Only sets flags to true — never reverts a true flag to false.
+    static func applyCloudState(_ snapshot: OnboardingSnapshot) {
+        if snapshot.hasCompletedIntro    && !hasCompletedIntro    { markIntroCompleted() }
+        if snapshot.hasSeenNarrativeIntro && !hasSeenNarrativeIntro { markNarrativeSeen() }
+        if snapshot.hasShownFirstHook    && !hasShownFirstHook    { markFirstHookShown() }
+    }
+
     // ── Dev / testing ─────────────────────────────────────────────────────
 
     /// Resets all flags — next launch shows narrative intro + gameplay onboarding.

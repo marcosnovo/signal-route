@@ -1,6 +1,47 @@
 import Foundation
 import Combine
 
+// MARK: - CodeEnvironment
+
+/// Where an unlock code is valid. Evaluated at runtime.
+enum CodeEnvironment: String, Codable, CaseIterable {
+    /// DEBUG builds only.
+    case debug
+    /// DEBUG and TestFlight (sandbox receipt) — not App Store production.
+    case preRelease
+    /// All environments including App Store.
+    case production
+
+    /// True when the code is allowed to be used in the current runtime environment.
+    var isAllowed: Bool {
+        switch self {
+        case .production:
+            return true
+        case .preRelease:
+            #if DEBUG
+            return true
+            #else
+            // TestFlight uses a sandbox receipt; App Store uses a production receipt.
+            return Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+            #endif
+        case .debug:
+            #if DEBUG
+            return true
+            #else
+            return false
+            #endif
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .debug:      return "DEBUG"
+        case .preRelease: return "PRE-RELEASE"
+        case .production: return "PRODUCTION"
+        }
+    }
+}
+
 // MARK: - UnlockCodeType
 
 /// The effect applied when a code is successfully redeemed.
@@ -24,6 +65,8 @@ struct UnlockCode: Codable, Identifiable, Equatable {
     let code: String
     var type: UnlockCodeType
     var isActive: Bool
+    /// Runtime environment where this code is valid. Defaults to `.production` (all).
+    var environment: CodeEnvironment = .production
 
     /// Optional hard expiry. nil = no expiry.
     var expiresAt: Date?
@@ -82,7 +125,9 @@ final class UnlockCodeStore: ObservableObject {
     /// The dev menu is useful for testing locally; once confirmed, move the code here.
     static let builtInCodes: [UnlockCode] = [
         UnlockCode(code: "SIGNALRM", type: .fullUnlock, isActive: true,
-                   maxUses: nil, usesCount: 0, note: "Full unlock — all players"),
+                   environment: .preRelease,
+                   maxUses: nil, usesCount: 0,
+                   note: "Full unlock — TestFlight/DEBUG only"),
     ]
 
     // MARK: - Persistence
@@ -101,9 +146,10 @@ final class UnlockCodeStore: ObservableObject {
         guard let code = codes.first(where: { $0.code == normalized }) else {
             return .invalid
         }
-        if !code.isActive   { return .inactive }
-        if code.isExpired   { return .expired }
-        if code.isExhausted { return .exhausted }
+        if !code.isActive              { return .inactive }
+        if !code.environment.isAllowed { return .inactive }
+        if code.isExpired              { return .expired }
+        if code.isExhausted            { return .exhausted }
         return .valid(code)
     }
 
@@ -136,15 +182,15 @@ final class UnlockCodeStore: ObservableObject {
     /// Add a new code. Silently ignored if a code with the same text already exists.
     func add(_ code: UnlockCode) {
         guard !codes.contains(where: { $0.code == code.code.uppercased() }) else { return }
-        var c = code
-        c = UnlockCode(
-            code:      code.code.trimmingCharacters(in: .whitespaces).uppercased(),
-            type:      code.type,
-            isActive:  code.isActive,
-            expiresAt: code.expiresAt,
-            maxUses:   code.maxUses,
-            usesCount: code.usesCount,
-            note:      code.note
+        let c = UnlockCode(
+            code:        code.code.trimmingCharacters(in: .whitespaces).uppercased(),
+            type:        code.type,
+            isActive:    code.isActive,
+            environment: code.environment,
+            expiresAt:   code.expiresAt,
+            maxUses:     code.maxUses,
+            usesCount:   code.usesCount,
+            note:        code.note
         )
         codes.append(c)
         save()
@@ -194,10 +240,19 @@ final class UnlockCodeStore: ObservableObject {
             local = decoded
         }
 
+        // Index persisted codes by key for fast lookup
+        let persistedByCode = Dictionary(local.map { ($0.code, $0) }, uniquingKeysWith: { a, _ in a })
+
         // Merge: built-in codes always present; local codes kept alongside.
-        // If a built-in code has the same key as a local one, the built-in
-        // definition wins (so you can deactivate a code by shipping a new build).
-        var merged: [UnlockCode] = Self.builtInCodes
+        // Shipped definition wins for config fields (type, isActive, environment,
+        // expiresAt, maxUses, note). Persisted state wins for runtime-mutable
+        // fields (usesCount) — so usage history survives app launches.
+        var merged: [UnlockCode] = Self.builtInCodes.map { builtIn in
+            guard let persisted = persistedByCode[builtIn.code] else { return builtIn }
+            var code = builtIn
+            code.usesCount = persisted.usesCount
+            return code
+        }
         let builtInKeys = Set(Self.builtInCodes.map(\.code))
         for c in local where !builtInKeys.contains(c.code) {
             merged.append(c)

@@ -7,6 +7,7 @@ struct geometryApp: App {
     @StateObject private var entitlement = EntitlementStore.shared
     @StateObject private var storeKit    = StoreKitManager.shared
     @StateObject private var cloudSave   = CloudSaveManager.shared
+    @StateObject private var versusManager = VersusMatchmakingManager.shared
 
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
@@ -25,6 +26,7 @@ struct geometryApp: App {
                     .environmentObject(entitlement)
                     .environmentObject(storeKit)
                     .environmentObject(cloudSave)
+                    .environmentObject(versusManager)
 
                 // Splash overlay — removed once coordinator signals done.
                 if !splash.isDone {

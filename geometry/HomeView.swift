@@ -6,6 +6,7 @@ struct HomeView: View {
     let onPlay: (Level) -> Void
     let onMissions: () -> Void
     var onUpgrade: (() -> Void)? = nil
+    var onVersus:  (() -> Void)? = nil
 
     @EnvironmentObject private var gcManager: GameCenterManager
     @EnvironmentObject private var settings: SettingsStore
@@ -303,6 +304,26 @@ struct HomeView: View {
                 }
             }
             leaderboardSecondaryButton
+
+            // Versus CTA — only visible when feature flag is active + GC authenticated
+            if VersusFeatureFlag.isEnabled, gcManager.isAuthenticated {
+                Button(action: { onVersus?() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("VERSUS 1v1")
+                            .font(AppTheme.mono(10, weight: .bold))
+                            .kerning(1.0)
+                    }
+                    .foregroundStyle(AppTheme.accentPrimary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(AppTheme.accentPrimary.opacity(0.45), lineWidth: 0.75)
+                    )
+                }
+            }
         }
     }
 
@@ -1616,12 +1637,14 @@ struct PlanetTicketView: View {
         guard let windowScene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive }),
-              let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
+              var presenter = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
         else {
             isExporting = false
             return
         }
-        let presenter = rootVC.presentedViewController ?? rootVC
+        while let next = presenter.presentedViewController, !next.isBeingDismissed {
+            presenter = next
+        }
         vc.popoverPresentationController?.sourceView = presenter.view
         vc.popoverPresentationController?.sourceRect = CGRect(
             x: presenter.view.bounds.midX,

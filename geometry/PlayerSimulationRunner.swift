@@ -193,24 +193,16 @@ final class PlayerSimulationRunner: ObservableObject {
               "hasCompletedIntro=\(OnboardingStore.hasCompletedIntro)",
               OnboardingStore.hasCompletedIntro)
 
-        // postOnboarding story beat fires
-        let postBeat = StoryStore.pending(for: .postOnboarding)
-        check(.intro, "postOnboarding beat fires",
-              postBeat.map { $0.id } ?? "nil — beat missing",
-              postBeat != nil)
-        if let b = postBeat { StoryStore.markSeen(b) }
-
-        // firstMissionReady fires next
+        // firstMissionReady fires after onboarding
         let readyBeat = StoryStore.pending(for: .firstMissionReady)
         check(.intro, "firstMissionReady beat fires",
               readyBeat.map { $0.id } ?? "nil — beat missing",
               readyBeat != nil)
         if let b = readyBeat { StoryStore.markSeen(b) }
 
-        check(.intro, "Both intro overlays dismissed (no UI block)",
+        check(.intro, "Intro overlay dismissed (no UI block)",
               "seen=\(StoryStore.seenIDs.count) total",
-              StoryStore.pending(for: .postOnboarding) == nil
-                  && StoryStore.pending(for: .firstMissionReady) == nil)
+              StoryStore.pending(for: .firstMissionReady) == nil)
     }
 
     // MARK: - Phase 3: First Missions

@@ -47,11 +47,14 @@ final class EntitlementStore: ObservableObject {
         static let dailyWindowStart   = "entitlement.dailyWindowStart"
         static let premiumByCode      = "entitlement.premiumByCode"
         static let activeCodeID       = "entitlement.activeCodeID"
+        static let cooldownArmedUptime = "entitlement.cooldownArmedUptime"
+        static let dailyWindowStartUptime = "entitlement.dailyWindowStartUptime"
     }
 
     // ── Published state ───────────────────────────────────────────────────
     @Published private(set) var isPremium:          Bool
-    /// Lifetime missions won during the intro grace period (caps at freeIntroLimit).
+    /// Lifetime game sessions played during the intro grace period (caps at freeIntroLimit).
+    /// Both wins and fails with ≥1 tap increment this counter.
     @Published private(set) var freeIntroCompleted: Int
     /// When set, the player must wait until this date to play again.
     @Published private(set) var nextPlayableDate:   Date?
@@ -64,6 +67,14 @@ final class EntitlementStore: ObservableObject {
     /// The code string that activated premium, if applicable.
     @Published private(set) var activeCodeID:  String?
 
+    // ── Clock-manipulation resistance ────────────────────────────────────
+    /// System uptime (monotonic, user-uncontrollable) when the 24h cooldown was armed.
+    /// Used to cross-check wall-clock expiry and detect clock-forward manipulation.
+    /// Resets to nil when the cooldown is cleared. Stored as 0 when nil.
+    private var cooldownArmedUptime: TimeInterval?
+    /// System uptime when the current daily window started (partial-window protection).
+    private var dailyWindowStartUptime: TimeInterval?
+
     // ── Init ──────────────────────────────────────────────────────────────
 
     private init() {
@@ -75,6 +86,10 @@ final class EntitlementStore: ObservableObject {
         dailyWindowStart   = d.object(forKey: Key.dailyWindowStart) as? Date
         premiumByCode      = d.bool(forKey: Key.premiumByCode)
         activeCodeID       = d.string(forKey: Key.activeCodeID)
+        let rawCooldownUptime = d.double(forKey: Key.cooldownArmedUptime)
+        cooldownArmedUptime = rawCooldownUptime > 0 ? rawCooldownUptime : nil
+        let rawWindowUptime = d.double(forKey: Key.dailyWindowStartUptime)
+        dailyWindowStartUptime = rawWindowUptime > 0 ? rawWindowUptime : nil
         // Schedule automatic unlock if a cooldown was persisted from a previous session
         if nextPlayableDate != nil { scheduleUnlock() }
     }
@@ -84,16 +99,85 @@ final class EntitlementStore: ObservableObject {
     /// True while the player still has intro quota remaining (lifetime < 8).
     var isInIntroPhase: Bool { freeIntroCompleted < Self.freeIntroLimit }
 
-    /// True when the cooldown has not yet expired (or was never set).
+    /// True when the cooldown has legitimately expired (or was never set).
+    /// Uses monotonic uptime to cross-check wall-clock, preventing clock-forward bypass.
     var canPlayNow: Bool {
-        guard let date = nextPlayableDate else { return true }
-        return Date() >= date
+        Self.isCooldownExpired(
+            nextPlayableDate: nextPlayableDate,
+            cooldownArmedUptime: cooldownArmedUptime,
+            now: Date(),
+            systemUptime: ProcessInfo.processInfo.systemUptime
+        )
     }
 
     /// Seconds remaining until the 24h cooldown expires (0 when can play).
+    /// Returns uptime-based remaining time when clock manipulation is detected.
     var remainingCooldown: TimeInterval {
-        guard let date = nextPlayableDate else { return 0 }
-        return max(0, date.timeIntervalSinceNow)
+        Self.cooldownRemaining(
+            nextPlayableDate: nextPlayableDate,
+            cooldownArmedUptime: cooldownArmedUptime,
+            now: Date(),
+            systemUptime: ProcessInfo.processInfo.systemUptime
+        )
+    }
+
+    // ── Clock-hardened pure decision functions (testable) ─────────────────
+
+    /// Returns true if the cooldown has legitimately expired.
+    ///
+    /// Cross-checks wall-clock (`Date()`) against monotonic system uptime to detect
+    /// clock-forward manipulation. If the wall clock says "expired" but insufficient
+    /// real uptime has elapsed since the cooldown was armed, the cooldown stays active.
+    ///
+    /// Falls back to wall-clock only when:
+    ///   - No uptime was recorded (legacy data from before this hardening)
+    ///   - Device was rebooted (uptime < armedUptime — uptime counter reset)
+    ///
+    /// This is a pure function with no side effects — safe for unit testing.
+    nonisolated static func isCooldownExpired(
+        nextPlayableDate: Date?,
+        cooldownArmedUptime: TimeInterval?,
+        now: Date,
+        systemUptime: TimeInterval
+    ) -> Bool {
+        guard let target = nextPlayableDate else { return true }
+        guard now >= target else { return false }
+        // Wall clock says expired — verify with monotonic uptime
+        if let armedUptime = cooldownArmedUptime {
+            if systemUptime >= armedUptime {
+                // Same boot session: require real elapsed time
+                return (systemUptime - armedUptime) >= 86_400
+            }
+            // Device rebooted (uptime < armedUptime): fall back to wall clock
+        }
+        // Legacy (no uptime recorded) or reboot: trust wall clock
+        return true
+    }
+
+    /// Returns seconds until cooldown legitimately expires (0 when can play).
+    /// Uses uptime-based calculation when clock manipulation is detected.
+    ///
+    /// This is a pure function with no side effects — safe for unit testing.
+    nonisolated static func cooldownRemaining(
+        nextPlayableDate: Date?,
+        cooldownArmedUptime: TimeInterval?,
+        now: Date,
+        systemUptime: TimeInterval
+    ) -> TimeInterval {
+        guard let target = nextPlayableDate else { return 0 }
+        if isCooldownExpired(
+            nextPlayableDate: target,
+            cooldownArmedUptime: cooldownArmedUptime,
+            now: now,
+            systemUptime: systemUptime
+        ) { return 0 }
+        // Cooldown still active — calculate remaining
+        if let armedUptime = cooldownArmedUptime, systemUptime >= armedUptime {
+            // Same boot session: use uptime for accurate remaining
+            return max(0, 86_400 - (systemUptime - armedUptime))
+        }
+        // Fallback to wall-clock remaining
+        return max(0, target.timeIntervalSince(now))
     }
 
     // ── Backward-compat derived state (kept for existing call sites) ───────
@@ -159,9 +243,10 @@ final class EntitlementStore: ObservableObject {
 
     /// Call when a game session ends (WON or FAILED) and the player made ≥1 tap.
     ///
-    /// - During intro phase: only `didWin == true` increments `freeIntroCompleted`.
-    ///   When the last intro mission is won the 24h cooldown is armed immediately.
-    /// - After intro phase: both WON and FAILED arm a new 24h cooldown.
+    /// - During intro phase: both WON and FAILED increment `freeIntroCompleted`.
+    ///   When the last intro session is played the 24h cooldown is armed immediately.
+    /// - After intro phase: both WON and FAILED consume a daily play.
+    ///   When `dailyLimit` plays are consumed a 24h cooldown is armed.
     func recordAttempt(_ level: Level, didWin: Bool) {
         guard !isPremium else {
             #if DEBUG
@@ -188,7 +273,10 @@ final class EntitlementStore: ObservableObject {
             checkExpiry()
             if canPlayNow {
                 // Start the daily window on the first play
-                if dailyWindowStart == nil { dailyWindowStart = Date() }
+                if dailyWindowStart == nil {
+                    dailyWindowStart       = Date()
+                    dailyWindowStartUptime = ProcessInfo.processInfo.systemUptime
+                }
                 dailyPlaysUsed = min(dailyPlaysUsed + 1, Self.dailyLimit)
                 #if DEBUG
                 print("[ENTITLEMENT] recordAttempt(id=\(level.id), win=\(didWin)) → daily play \(dailyPlaysUsed)/\(Self.dailyLimit)")
@@ -208,6 +296,51 @@ final class EntitlementStore: ObservableObject {
                 #endif
             }
         }
+    }
+
+    // MARK: - Cloud sync
+
+    /// Snapshot of the current entitlement state for cloud save.
+    var currentSnapshot: EntitlementSnapshot {
+        EntitlementSnapshot(
+            isPremium:          isPremium,
+            premiumByCode:      premiumByCode,
+            activeCodeID:       activeCodeID,
+            freeIntroCompleted: freeIntroCompleted,
+            dailyPlaysUsed:     dailyPlaysUsed,
+            nextPlayableDate:   nextPlayableDate,
+            dailyWindowStart:   dailyWindowStart
+        )
+    }
+
+    /// Apply a merged entitlement snapshot from the cloud.
+    ///
+    /// The caller (`CloudSaveManager`) has already merged local and cloud snapshots
+    /// using `mergeEntitlements(local:cloud:)`, so this method simply applies the result.
+    ///
+    /// Device-specific uptime fields are cleared since the cloud values would be
+    /// from a different device's monotonic clock.
+    func applyCloudState(_ snapshot: EntitlementSnapshot) {
+        isPremium          = snapshot.isPremium
+        premiumByCode      = snapshot.premiumByCode
+        activeCodeID       = snapshot.activeCodeID
+        freeIntroCompleted = snapshot.freeIntroCompleted
+        dailyPlaysUsed     = snapshot.dailyPlaysUsed
+        nextPlayableDate   = snapshot.nextPlayableDate
+        dailyWindowStart   = snapshot.dailyWindowStart
+
+        // Uptime fields are device-specific — clear them so we fall back to wall-clock
+        cooldownArmedUptime    = nil
+        dailyWindowStartUptime = nil
+
+        save()
+
+        // Re-schedule automatic unlock if a cooldown is now active
+        if nextPlayableDate != nil { scheduleUnlock() }
+
+        #if DEBUG
+        print("[ENTITLEMENT] applyCloudState → premium=\(isPremium) intro=\(freeIntroCompleted) plays=\(dailyPlaysUsed) cooldown=\(nextPlayableDate?.description ?? "nil")")
+        #endif
     }
 
     // MARK: - Unlock code activation
@@ -245,17 +378,25 @@ final class EntitlementStore: ObservableObject {
 
     // MARK: - Dev helpers
 
-    /// Toggle premium state.
+    /// Set premium state from a StoreKit purchase (or dev toggle).
+    ///
+    /// When granting premium (`true`):
+    ///   - Clears code-premium flags (purchase supersedes code-granted premium)
+    ///   - Clears any active cooldown (premium removes all gates)
+    ///   - Cancels pending cooldown notification
+    ///
+    /// When revoking premium (`false`):
+    ///   - Clears code-premium flags (avoids stale state)
+    ///
+    /// This ensures the premium source is always unambiguous:
+    ///   `isPremium && !premiumByCode` = StoreKit purchase
+    ///   `isPremium && premiumByCode`  = unlock code
     func setPremium(_ value: Bool) {
-        isPremium = value
-        if !value {
-            // Clear code-premium source when disabling premium
-            premiumByCode = false
-            activeCodeID  = nil
-        }
+        isPremium     = value
+        premiumByCode = false
+        activeCodeID  = nil
         save()
-        // Premium removes all gates — cancel any pending "playable again" notification
-        if value { NotificationManager.shared.cancelCooldown() }
+        if value { clearCooldown() }
     }
 
     /// Clear any active cooldown (equivalent to old resetDailyCount).
@@ -265,8 +406,9 @@ final class EntitlementStore: ObservableObject {
 
     /// Reset the lifetime intro counter to 0 (returns player to Phase 1).
     func resetIntroCount() {
-        freeIntroCompleted = 0
-        nextPlayableDate   = nil
+        freeIntroCompleted  = 0
+        nextPlayableDate    = nil
+        cooldownArmedUptime = nil
         save()
     }
 
@@ -275,7 +417,8 @@ final class EntitlementStore: ObservableObject {
     func setFreeIntroCompleted(_ value: Int) {
         freeIntroCompleted = max(0, min(value, Self.freeIntroLimit))
         if freeIntroCompleted < Self.freeIntroLimit {
-            nextPlayableDate = nil  // back in intro — no cooldown
+            nextPlayableDate    = nil  // back in intro — no cooldown
+            cooldownArmedUptime = nil
         }
         save()
     }
@@ -294,6 +437,8 @@ final class EntitlementStore: ObservableObject {
             freeIntroCompleted = Self.freeIntroLimit
         }
         if clamped >= Self.dailyLimit {
+            dailyPlaysUsed   = Self.dailyLimit
+            dailyWindowStart = dailyWindowStart ?? Date()
             armCooldown()
         } else if clamped == 0 {
             clearCooldown()
@@ -314,39 +459,72 @@ final class EntitlementStore: ObservableObject {
 
     /// Clear any active cooldown and reset the daily counter so the player can play immediately.
     func clearCooldown() {
-        nextPlayableDate = nil
-        dailyPlaysUsed   = 0
-        dailyWindowStart = nil
+        nextPlayableDate       = nil
+        cooldownArmedUptime    = nil
+        dailyPlaysUsed         = 0
+        dailyWindowStart       = nil
+        dailyWindowStartUptime = nil
         save()
         NotificationManager.shared.cancelCooldown()
     }
 
-    /// If the stored cooldown date has passed, clear it so `canPlayNow` returns true.
-    /// Also resets the daily counter if the 24h window (partial or full) has expired.
+    /// If the stored cooldown date has legitimately passed, clear it so `canPlayNow` returns true.
+    /// Also resets the daily counter if the 24h window (partial or full) has legitimately expired.
+    /// Uses monotonic uptime to prevent clock-forward bypass.
     /// Call this on app foreground / view appear to handle offline expiry.
     func checkExpiry() {
-        let now = Date()
+        let now    = Date()
+        let uptime = ProcessInfo.processInfo.systemUptime
+
         // Full cooldown expired (player hit the daily limit)
-        if let date = nextPlayableDate, now >= date {
-            nextPlayableDate = nil
-            dailyPlaysUsed   = 0
-            dailyWindowStart = nil
-            save()
+        if nextPlayableDate != nil {
+            if Self.isCooldownExpired(
+                nextPlayableDate: nextPlayableDate,
+                cooldownArmedUptime: cooldownArmedUptime,
+                now: now,
+                systemUptime: uptime
+            ) {
+                nextPlayableDate       = nil
+                cooldownArmedUptime    = nil
+                dailyPlaysUsed         = 0
+                dailyWindowStart       = nil
+                dailyWindowStartUptime = nil
+                save()
+                #if DEBUG
+                print("[ENTITLEMENT] checkExpiry → cooldown legitimately expired, cleared")
+                #endif
+            } else {
+                #if DEBUG
+                print("[ENTITLEMENT] checkExpiry → wall clock says expired but uptime disagrees — cooldown kept")
+                #endif
+            }
             return
         }
         // Partial window expired (player used 1–2 plays but never hit the limit)
-        if let windowStart = dailyWindowStart,
-           now >= windowStart.addingTimeInterval(86_400) {
-            dailyPlaysUsed   = 0
-            dailyWindowStart = nil
-            save()
+        if let windowStart = dailyWindowStart {
+            let windowExpired: Bool
+            if let windowUptime = dailyWindowStartUptime, uptime >= windowUptime {
+                // Same boot: check both wall clock and uptime
+                windowExpired = now >= windowStart.addingTimeInterval(86_400)
+                    && (uptime - windowUptime) >= 86_400
+            } else {
+                // Rebooted or legacy: trust wall clock
+                windowExpired = now >= windowStart.addingTimeInterval(86_400)
+            }
+            if windowExpired {
+                dailyPlaysUsed         = 0
+                dailyWindowStart       = nil
+                dailyWindowStartUptime = nil
+                save()
+            }
         }
     }
 
     // MARK: - Private
 
     private func armCooldown() {
-        nextPlayableDate = Date().addingTimeInterval(86_400)   // 24 hours
+        nextPlayableDate    = Date().addingTimeInterval(86_400)   // 24 hours
+        cooldownArmedUptime = ProcessInfo.processInfo.systemUptime
         save()
         scheduleUnlock()
         // Schedule local notification for when the cooldown lifts
@@ -376,5 +554,56 @@ final class EntitlementStore: ObservableObject {
         d.set(dailyWindowStart,   forKey: Key.dailyWindowStart)
         d.set(premiumByCode,      forKey: Key.premiumByCode)
         d.set(activeCodeID,       forKey: Key.activeCodeID)
+        d.set(cooldownArmedUptime ?? 0,    forKey: Key.cooldownArmedUptime)
+        d.set(dailyWindowStartUptime ?? 0, forKey: Key.dailyWindowStartUptime)
     }
+
+    // MARK: - Dev diagnostics (DEBUG only)
+
+    #if DEBUG
+    /// Diagnostic snapshot for DevMenuView — shows clock-hardening state.
+    struct ClockDiagnostics {
+        let wallClockNow: Date
+        let systemUptime: TimeInterval
+        let cooldownTarget: Date?
+        let armedUptime: TimeInterval?
+        let uptimeElapsed: TimeInterval?
+        let wallClockSaysExpired: Bool
+        let uptimeSaysExpired: Bool
+        let effectiveDecision: Bool
+        let clockManipulationSuspected: Bool
+    }
+
+    var clockDiagnostics: ClockDiagnostics {
+        let now    = Date()
+        let uptime = ProcessInfo.processInfo.systemUptime
+        let wallExpired = nextPlayableDate.map { now >= $0 } ?? true
+        let uptimeExpired: Bool
+        let manipulation: Bool
+        if let armed = cooldownArmedUptime, let _ = nextPlayableDate {
+            if uptime >= armed {
+                uptimeExpired = (uptime - armed) >= 86_400
+                manipulation = wallExpired && !uptimeExpired
+            } else {
+                // Rebooted — can't verify
+                uptimeExpired = wallExpired
+                manipulation = false
+            }
+        } else {
+            uptimeExpired = wallExpired
+            manipulation = false
+        }
+        return ClockDiagnostics(
+            wallClockNow: now,
+            systemUptime: uptime,
+            cooldownTarget: nextPlayableDate,
+            armedUptime: cooldownArmedUptime,
+            uptimeElapsed: cooldownArmedUptime.map { uptime >= $0 ? uptime - $0 : nil } ?? nil,
+            wallClockSaysExpired: wallExpired,
+            uptimeSaysExpired: uptimeExpired,
+            effectiveDecision: canPlayNow,
+            clockManipulationSuspected: manipulation
+        )
+    }
+    #endif
 }

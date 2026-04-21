@@ -1,5 +1,6 @@
 import SwiftUI
 import StoreKit
+import GameKit
 
 // MARK: - DevMenuView
 /// Hidden QA / testing console. Accessible via 5-tap logo on the Home screen.
@@ -19,7 +20,7 @@ struct DevMenuView: View {
     @EnvironmentObject private var cloudSave:  CloudSaveManager
 
     // ── Tab ───────────────────────────────────────────────────────────────
-    enum DevTab { case overview, missions, story, tools, money, reset, qa, sim }
+    enum DevTab { case overview, missions, story, tools, money, reset, qa, sim, versus }
     @State private var activeTab: DevTab = .overview
 
     // ── QA tab ────────────────────────────────────────────────────────────
@@ -257,6 +258,8 @@ struct DevMenuView: View {
             })
         case .sim:
             return AnyView(PlayerSimulationView(runner: simRunner))
+        case .versus:
+            return AnyView(versusPanel)
         }
     }
 
@@ -576,6 +579,8 @@ struct DevMenuView: View {
             tabButton("MONEY",    icon: "infinity",                 tab: .money)
             tabSeparator()
             tabButton("RESET",    icon: "exclamationmark.triangle", tab: .reset)
+            tabSeparator()
+            tabButton("VERSUS",   icon: "person.2",                 tab: .versus)
         }
         .frame(height: 42)
         .background(AppTheme.backgroundSecondary)
@@ -1109,6 +1114,35 @@ struct DevMenuView: View {
                         .font(AppTheme.mono(7))
                         .foregroundStyle(AppTheme.danger.opacity(0.80))
                     Spacer()
+                }
+                .padding(.horizontal, 16).padding(.bottom, 6)
+            }
+
+            // Clock-hardening diagnostics
+            if store.nextPlayableDate != nil {
+                let diag = store.clockDiagnostics
+                VStack(spacing: 2) {
+                    if diag.clockManipulationSuspected {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.yellow)
+                            Text("CLOCK MANIPULATION SUSPECTED")
+                                .font(AppTheme.mono(7))
+                                .foregroundStyle(.yellow)
+                            Spacer()
+                        }
+                    }
+                    HStack(spacing: 6) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        let uptimeH = diag.uptimeElapsed.map { String(format: "%.0fs (%.1fh)", $0, $0 / 3600) } ?? "—"
+                        Text("UPTIME ELAPSED: \(uptimeH)  WALL:\(diag.wallClockSaysExpired ? "EXP" : "ACT")  UP:\(diag.uptimeSaysExpired ? "EXP" : "ACT")")
+                            .font(AppTheme.mono(7))
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.70))
+                        Spacer()
+                    }
                 }
                 .padding(.horizontal, 16).padding(.bottom, 6)
             }
@@ -5447,7 +5481,6 @@ struct DevMenuView: View {
     private func storyTriggerLabel(_ trigger: StoryTrigger) -> String {
         switch trigger {
         case .firstLaunch:           return "LAUNCH"
-        case .postOnboarding:        return "POST-INTRO"
         case .firstMissionReady:     return "READY"
         case .firstMissionComplete:  return "FIRST WIN"
         case .onboardingComplete:    return "GATE"
@@ -5587,6 +5620,141 @@ struct DevMenuView: View {
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
             }
+        }
+    }
+
+    // MARK: - Versus panel
+
+    private var versusPanel: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                sectionHeader("FEATURE FLAG")
+
+                VStack(spacing: 8) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("VERSUS MODE")
+                                .font(AppTheme.mono(11, weight: .bold))
+                                .foregroundStyle(AppTheme.textPrimary)
+                            Text("Toggle to show Versus CTA on Home")
+                                .font(AppTheme.mono(8))
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { VersusFeatureFlag.isEnabled },
+                            set: { VersusFeatureFlag.setEnabled($0) }
+                        ))
+                        .labelsHidden()
+                        .tint(AppTheme.accentPrimary)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+
+                TechDivider()
+                sectionHeader("GAME CENTER")
+
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("GC AUTH")
+                            .font(AppTheme.mono(9, weight: .bold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(gcManager.isAuthenticated ? AppTheme.success : AppTheme.danger)
+                                .frame(width: 6, height: 6)
+                            Text(gcManager.isAuthenticated ? gcManager.displayName : "NOT CONNECTED")
+                                .font(AppTheme.mono(9, weight: .bold))
+                                .foregroundStyle(gcManager.isAuthenticated ? AppTheme.success : AppTheme.danger)
+                        }
+                    }
+
+                    HStack {
+                        Text("LOCAL PLAYER ID")
+                            .font(AppTheme.mono(9, weight: .bold))
+                            .foregroundStyle(AppTheme.textSecondary)
+                        Spacer()
+                        Text(GKLocalPlayer.local.isAuthenticated ? GKLocalPlayer.local.gamePlayerID.prefix(12) + "…" : "—")
+                            .font(AppTheme.mono(8))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+
+                TechDivider()
+                sectionHeader("MATCH STATE")
+
+                VStack(spacing: 8) {
+                    let state = VersusMatchmakingManager.shared.matchState
+                    devRow("PHASE", "\(state.phase)")
+                    devRow("IS HOST", state.isHost ? "YES" : "NO")
+                    devRow("SEED", state.sharedSeed == 0 ? "—" : "\(state.sharedSeed)")
+                    devRow("OPPONENT", state.opponentDisplayName)
+                    devRow("LOCAL STATUS", state.localSnapshot.status.uppercased())
+                    devRow("REMOTE STATUS", state.remoteSnapshot.status.uppercased())
+                    devRow("LOCAL OUTCOME", state.localOutcome?.rawValue.uppercased() ?? "—")
+                    devRow("REMOTE OUTCOME", state.remoteOutcome?.rawValue.uppercased() ?? "—")
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+
+                TechDivider()
+                sectionHeader("ACTIONS")
+
+                VStack(spacing: 8) {
+                    Button(action: { VersusMatchmakingManager.shared.findMatch() }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("FIND MATCH")
+                                .font(AppTheme.mono(10, weight: .bold))
+                                .kerning(0.8)
+                        }
+                        .foregroundStyle(gcManager.isAuthenticated ? AppTheme.accentPrimary : AppTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(AppTheme.accentPrimary.opacity(gcManager.isAuthenticated ? 0.12 : 0.04))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(AppTheme.accentPrimary.opacity(gcManager.isAuthenticated ? 0.4 : 0.15), lineWidth: 0.6)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
+                    .disabled(!gcManager.isAuthenticated)
+
+                    Button(action: { VersusMatchmakingManager.shared.disconnect() }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("DISCONNECT")
+                                .font(AppTheme.mono(10, weight: .bold))
+                                .kerning(0.8)
+                        }
+                        .foregroundStyle(AppTheme.danger)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(AppTheme.danger.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(AppTheme.danger.opacity(0.35), lineWidth: 0.6)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+        }
+    }
+
+    private func devRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(AppTheme.mono(9, weight: .bold))
+                .foregroundStyle(AppTheme.textSecondary)
+            Spacer()
+            Text(value)
+                .font(AppTheme.mono(9, weight: .bold))
+                .foregroundStyle(AppTheme.textPrimary)
         }
     }
 

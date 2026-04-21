@@ -666,17 +666,20 @@ struct VictoryTelemetryView: View {
             guard let windowScene = UIApplication.shared.connectedScenes
                 .compactMap({ $0 as? UIWindowScene })
                 .first(where: { $0.activationState == .foregroundActive }),
-                  let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
+                  var presenter = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
             else { return }
+            while let next = presenter.presentedViewController, !next.isBeingDismissed {
+                presenter = next
+            }
 
-            vc.popoverPresentationController?.sourceView = rootVC.view
+            vc.popoverPresentationController?.sourceView = presenter.view
             vc.popoverPresentationController?.sourceRect = CGRect(
-                x: rootVC.view.bounds.midX,
-                y: rootVC.view.bounds.maxY - 80,
+                x: presenter.view.bounds.midX,
+                y: presenter.view.bounds.maxY - 80,
                 width: 0, height: 0
             )
 
-            rootVC.present(vc, animated: true)
+            presenter.present(vc, animated: true)
         }
     }
 }

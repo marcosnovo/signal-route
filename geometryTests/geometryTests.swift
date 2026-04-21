@@ -471,6 +471,7 @@ struct StartsSolvedRegressionTests {
 
 // MARK: - EntitlementStore Access Tests
 // Validates the monetisation gate logic: free intro quota, daily cap, and premium bypass.
+// All tests reference EntitlementStore.freeIntroLimit and .dailyLimit — never hardcoded values.
 // Runs serially to prevent state pollution across the shared singleton.
 #if DEBUG
 @Suite("EntitlementStore — Access Rules", .serialized)
@@ -484,82 +485,160 @@ struct EntitlementAccessTests {
     }
 
     private var anyLevel: Level { LevelGenerator.levels[0] }
+    private var introLimit: Int { EntitlementStore.freeIntroLimit }
+    private var dailyLimit: Int { EntitlementStore.dailyLimit }
 
-    // ── Business-logic constants ───────────────────────────────────────────
+    // ── Product constants ─────────────────────────────────────────────────
 
-    @Test("freeIntroLimit == 3 and dailyLimit == 1")
+    @Test("freeIntroLimit == 8 and dailyLimit == 3")
     func entitlementLimitsAreCorrect() {
-        #expect(EntitlementStore.freeIntroLimit == 3)
-        #expect(EntitlementStore.dailyLimit      == 1)
+        #expect(introLimit == 8)
+        #expect(dailyLimit == 3)
     }
 
-    // ── Free-user intro phase ──────────────────────────────────────────────
-
-    @Test("Free user — 0 intro missions used — can play")
-    func freeUserIntro0CanPlay() {
-        EntitlementStore.shared.setFreeIntroCompleted(0)
-        #expect(EntitlementStore.shared.canPlay(anyLevel))
+    @Test("Product limits are positive and intro > daily (design invariant)")
+    func productLimitsAreValid() {
+        #expect(introLimit > 0, "freeIntroLimit must be positive")
+        #expect(dailyLimit > 0, "dailyLimit must be positive")
+        #expect(introLimit > dailyLimit,
+                "Intro phase must be more generous than daily window")
     }
 
-    @Test("Free user — 2 of 3 intro missions used — can play")
-    func freeUserIntro2CanPlay() {
-        EntitlementStore.shared.setFreeIntroCompleted(2)
-        #expect(EntitlementStore.shared.canPlay(anyLevel))
+    // ── Intro phase boundaries ────────────────────────────────────────────
+
+    @Test("Intro: at 0 sessions — canPlay, isInIntroPhase, remainingToday == freeIntroLimit")
+    func introAt0() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(0)
+        #expect(s.canPlay(anyLevel))
+        #expect(s.isInIntroPhase)
+        #expect(s.remainingToday == introLimit)
+        #expect(!s.dailyLimitReached)
+        #expect(s.reasonBlocked == nil)
     }
 
-    // ── Free-user Phase 2 (24h cooldown) ──────────────────────────────────
-
-    @Test("Free user — intro exhausted + no cooldown — can play")
-    func freeUserIntroExhaustedNoCooldownCanPlay() {
-        EntitlementStore.shared.setFreeIntroCompleted(3)
-        EntitlementStore.shared.setDailyAttemptsUsed(0)   // clear cooldown
-        #expect(EntitlementStore.shared.canPlay(anyLevel))
+    @Test("Intro: mid-phase — canPlay, isInIntroPhase, remainingToday decremented")
+    func introMidPhase() {
+        let s = EntitlementStore.shared
+        let mid = introLimit / 2
+        s.setFreeIntroCompleted(mid)
+        #expect(s.canPlay(anyLevel))
+        #expect(s.isInIntroPhase)
+        #expect(s.remainingToday == introLimit - mid)
     }
 
-    @Test("Free user — intro exhausted + cooldown active — blocked and paywall eligible")
-    func freeUserCooldownActiveIsBlocked() {
-        EntitlementStore.shared.setFreeIntroCompleted(3)
-        EntitlementStore.shared.setDailyAttemptsUsed(1)   // arm cooldown
-        #expect(!EntitlementStore.shared.canPlay(anyLevel),
-                "canPlay must return false when 24h cooldown is active")
-        #expect(EntitlementStore.shared.dailyLimitReached,
-                "dailyLimitReached must be true during cooldown")
-        #expect(EntitlementStore.shared.reasonBlocked != nil,
-                "reasonBlocked must describe the block reason")
+    @Test("Intro: just before limit (freeIntroLimit - 1) — canPlay, isInIntroPhase, remainingToday == 1")
+    func introJustBeforeLimit() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit - 1)
+        #expect(s.canPlay(anyLevel))
+        #expect(s.isInIntroPhase)
+        #expect(s.remainingToday == 1)
     }
 
-    // ── Premium bypass ─────────────────────────────────────────────────────
+    @Test("Intro → Phase 2 transition: exactly at freeIntroLimit flips isInIntroPhase to false")
+    func introExactlyAtLimit() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit - 1)
+        #expect(s.isInIntroPhase, "One below must still be intro")
 
-    @Test("Premium user — always allowed regardless of counters")
-    func premiumUserAlwaysAllowed() {
-        EntitlementStore.shared.setPremium(true)
-        EntitlementStore.shared.setFreeIntroCompleted(3)
-        EntitlementStore.shared.setDailyAttemptsUsed(1)   // arm cooldown
-        defer { EntitlementStore.shared.setPremium(false) }
-        #expect(EntitlementStore.shared.canPlay(anyLevel),
-                "Premium user must always be allowed to play")
-        #expect(!EntitlementStore.shared.dailyLimitReached,
-                "dailyLimitReached must be false for premium")
-        #expect(EntitlementStore.shared.reasonBlocked == nil,
-                "reasonBlocked must be nil for premium")
+        s.setFreeIntroCompleted(introLimit)
+        #expect(!s.isInIntroPhase, "At freeIntroLimit must not be intro")
     }
 
-    // ── Phase boundary ─────────────────────────────────────────────────────
+    // ── Phase 2 boundaries ────────────────────────────────────────────────
 
-    @Test("isInIntroPhase transitions to false exactly at freeIntroLimit")
-    func isInIntroPhaseTransitionsAtLimit() {
-        EntitlementStore.shared.setFreeIntroCompleted(EntitlementStore.freeIntroLimit - 1)
-        #expect(EntitlementStore.shared.isInIntroPhase,
-                "One below limit must still be in intro phase")
+    @Test("Phase 2: fresh window (0 daily used) — canPlay, remainingToday == dailyLimit")
+    func phase2FreshWindow() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(0)
+        #expect(s.canPlay(anyLevel))
+        #expect(s.remainingToday == dailyLimit)
+        #expect(!s.dailyLimitReached)
+        #expect(s.reasonBlocked == nil)
+    }
 
-        EntitlementStore.shared.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
-        #expect(!EntitlementStore.shared.isInIntroPhase,
-                "At freeIntroLimit must no longer be in intro phase")
+    @Test("Phase 2: 1 daily play used — canPlay, remainingToday == dailyLimit - 1")
+    func phase2OneDailyUsed() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(1)
+        #expect(s.canPlay(anyLevel))
+        #expect(s.remainingToday == dailyLimit - 1)
+        #expect(!s.dailyLimitReached)
+    }
+
+    @Test("Phase 2: just before daily limit — canPlay, remainingToday == 1")
+    func phase2JustBeforeDailyLimit() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit - 1)
+        #expect(s.canPlay(anyLevel))
+        #expect(s.remainingToday == 1)
+        #expect(!s.dailyLimitReached)
+    }
+
+    @Test("Phase 2: exactly at daily limit — blocked, cooldown armed, remainingToday == 0")
+    func phase2ExactlyAtDailyLimit() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit)   // arms cooldown
+        #expect(!s.canPlay(anyLevel), "Must be blocked")
+        #expect(s.dailyLimitReached, "dailyLimitReached must be true")
+        #expect(s.reasonBlocked != nil, "Must have a block reason")
+        #expect(s.remainingToday == 0, "No plays remaining")
+    }
+
+    // ── Premium bypass ────────────────────────────────────────────────────
+
+    @Test("Premium: always allowed even with worst-case free state")
+    func premiumAlwaysAllowed() {
+        let s = EntitlementStore.shared
+        s.setPremium(true)
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit)   // arm cooldown
+        defer { s.setPremium(false) }
+
+        #expect(s.canPlay(anyLevel), "Premium must always play")
+        #expect(!s.dailyLimitReached, "dailyLimitReached must be false for premium")
+        #expect(s.reasonBlocked == nil, "reasonBlocked must be nil for premium")
+        #expect(s.remainingToday == Int.max, "remainingToday must be Int.max for premium")
+    }
+
+    // ── dailyAttemptsUsed derived property ────────────────────────────────
+
+    @Test("dailyAttemptsUsed returns 0 during intro phase (regardless of raw counter)")
+    func dailyAttemptsUsedZeroDuringIntro() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(0)
+        #expect(s.dailyAttemptsUsed == 0,
+                "During intro phase dailyAttemptsUsed must report 0")
+    }
+
+    @Test("dailyAttemptsUsed returns 0 for premium (regardless of raw counter)")
+    func dailyAttemptsUsedZeroForPremium() {
+        let s = EntitlementStore.shared
+        s.setPremium(true)
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit - 1)
+        defer { s.setPremium(false) }
+        #expect(s.dailyAttemptsUsed == 0,
+                "Premium dailyAttemptsUsed must report 0")
+    }
+
+    @Test("dailyAttemptsUsed returns actual count in Phase 2")
+    func dailyAttemptsUsedReflectsPhase2Counter() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit - 1)
+        #expect(s.dailyAttemptsUsed == dailyLimit - 1)
     }
 }
 
 // MARK: - EntitlementStore Consumption Tests
-// Validates when each counter is incremented and when it must stay unchanged.
+// Validates when each counter is incremented, and when it must stay unchanged.
+// Covers: win, fail, retry sequence, no-interaction, premium no-op, cooldown no-op.
 @Suite("EntitlementStore — Counter Consumption", .serialized)
 @MainActor
 struct EntitlementConsumptionTests {
@@ -571,98 +650,216 @@ struct EntitlementConsumptionTests {
     }
 
     private var anyLevel: Level { LevelGenerator.levels[0] }
+    private var introLimit: Int { EntitlementStore.freeIntroLimit }
+    private var dailyLimit: Int { EntitlementStore.dailyLimit }
 
-    // ── canPlay does not consume ───────────────────────────────────────────
+    // ── canPlay is read-only ──────────────────────────────────────────────
 
-    @Test("canPlay does not increment any counter")
-    func canPlayDoesNotConsumeCounter() {
-        EntitlementStore.shared.setFreeIntroCompleted(2)  // mid-intro, no cooldown
-        let introBefore = EntitlementStore.shared.freeIntroCompleted
-        let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed
-        _ = EntitlementStore.shared.canPlay(anyLevel)
-        #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
-                "Intro counter must not change on canPlay")
-        #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
-                "Daily indicator must not change on canPlay")
+    @Test("canPlay does not increment any counter (intro phase)")
+    func canPlayDoesNotConsumeIntro() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(2)
+        let before = s.freeIntroCompleted
+        _ = s.canPlay(anyLevel)
+        #expect(s.freeIntroCompleted == before, "canPlay must never mutate intro counter")
     }
 
-    // ── Intro phase — WON increments, FAILED is free ──────────────────────
-
-    @Test("recordAttempt(didWin: true) mid-intro increments only freeIntroCompleted")
-    func winMidIntroIncrementsIntroCounter() {
-        EntitlementStore.shared.setFreeIntroCompleted(1)  // 1/3 — NOT the last win
-        let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed  // 0
-        EntitlementStore.shared.recordAttempt(anyLevel, didWin: true)
-        #expect(EntitlementStore.shared.freeIntroCompleted == 2,
-                "Intro counter must increment from 1 to 2 on win")
-        #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
-                "Daily indicator must not change during mid-intro win")
+    @Test("canPlay does not increment any counter (Phase 2)")
+    func canPlayDoesNotConsumePhase2() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(1)
+        let before = s.dailyAttemptsUsed
+        _ = s.canPlay(anyLevel)
+        #expect(s.dailyAttemptsUsed == before, "canPlay must never mutate daily counter")
     }
 
-    @Test("recordAttempt(didWin: true) on last intro win exhausts phase and arms cooldown")
+    // ── Intro phase: both WON and FAILED consume a slot ──────────────────
+
+    @Test("Win mid-intro increments freeIntroCompleted by 1")
+    func winMidIntroIncrements() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(1)
+        s.recordAttempt(anyLevel, didWin: true)
+        #expect(s.freeIntroCompleted == 2)
+        #expect(s.dailyAttemptsUsed == 0, "Daily must not change during intro")
+    }
+
+    @Test("Fail mid-intro also increments freeIntroCompleted by 1")
+    func failMidIntroIncrements() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(1)
+        s.recordAttempt(anyLevel, didWin: false)
+        #expect(s.freeIntroCompleted == 2,
+                "Both wins and fails consume an intro slot")
+        #expect(s.dailyAttemptsUsed == 0, "Daily must not change during intro")
+    }
+
+    @Test("Last intro session via WIN exhausts phase and arms cooldown")
     func lastIntroWinArmsCooldown() {
-        EntitlementStore.shared.setFreeIntroCompleted(2)  // 2/3 — about to exhaust
-        EntitlementStore.shared.recordAttempt(anyLevel, didWin: true)
-        #expect(EntitlementStore.shared.freeIntroCompleted == 3,
-                "Intro counter must reach freeIntroLimit")
-        #expect(!EntitlementStore.shared.isInIntroPhase,
-                "Must have exited intro phase")
-        #expect(EntitlementStore.shared.dailyLimitReached,
-                "24h cooldown must be armed immediately after intro exhaustion")
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit - 1)
+        s.recordAttempt(anyLevel, didWin: true)
+        #expect(s.freeIntroCompleted == introLimit)
+        #expect(!s.isInIntroPhase)
+        #expect(s.dailyLimitReached, "Cooldown must arm after intro exhaustion")
     }
 
-    @Test("recordAttempt(didWin: false) during intro does NOT increment any counter")
-    func failDuringIntroIsFreePasses() {
-        EntitlementStore.shared.setFreeIntroCompleted(1)
-        let introBefore = EntitlementStore.shared.freeIntroCompleted
-        let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed
-        EntitlementStore.shared.recordAttempt(anyLevel, didWin: false)
-        #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
-                "Intro counter must NOT increment on failure during intro phase")
-        #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
-                "Daily indicator must NOT change on failure during intro phase")
+    @Test("Last intro session via FAIL also exhausts phase and arms cooldown")
+    func lastIntroFailArmsCooldown() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit - 1)
+        s.recordAttempt(anyLevel, didWin: false)
+        #expect(s.freeIntroCompleted == introLimit)
+        #expect(!s.isInIntroPhase)
+        #expect(s.dailyLimitReached, "Cooldown must arm on fail too")
     }
 
-    // ── Phase 2 — play arms 24h cooldown ─────────────────────────────────
-
-    @Test("recordAttempt(didWin: true) in Phase 2 arms cooldown")
-    func winInPhase2ArmsCooldown() {
-        EntitlementStore.shared.setFreeIntroCompleted(3)
-        let introBefore = EntitlementStore.shared.freeIntroCompleted
-        EntitlementStore.shared.setDailyAttemptsUsed(0)   // clear cooldown
-        EntitlementStore.shared.recordAttempt(anyLevel, didWin: true)
-        #expect(EntitlementStore.shared.dailyAttemptsUsed == 1,
-                "Daily indicator must show 1 (cooldown active) after Phase 2 play")
-        #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
-                "Intro counter must not change in Phase 2")
+    @Test("Intro counter is clamped at freeIntroLimit (overflow protection)")
+    func introCounterClampedAtLimit() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        // Already at limit — recordAttempt should take the Phase 2 path,
+        // which means intro counter stays at freeIntroLimit.
+        s.setDailyAttemptsUsed(0)   // ensure we can play in Phase 2
+        s.recordAttempt(anyLevel, didWin: true)
+        #expect(s.freeIntroCompleted == introLimit,
+                "Intro counter must never exceed freeIntroLimit")
     }
 
-    @Test("recordAttempt(didWin: false) in Phase 2 also arms cooldown")
-    func failInPhase2ArmsCooldown() {
-        EntitlementStore.shared.setFreeIntroCompleted(3)
-        let introBefore = EntitlementStore.shared.freeIntroCompleted
-        EntitlementStore.shared.setDailyAttemptsUsed(0)
-        EntitlementStore.shared.recordAttempt(anyLevel, didWin: false)
-        #expect(EntitlementStore.shared.dailyAttemptsUsed == 1,
-                "Daily indicator must show 1 (cooldown active) after Phase 2 fail")
-        #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
-                "Intro counter must not change on Phase 2 failure")
+    // ── Phase 2: daily plays ──────────────────────────────────────────────
+
+    @Test("Phase 2: win increments daily counter")
+    func phase2WinIncrements() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(0)
+        s.recordAttempt(anyLevel, didWin: true)
+        #expect(s.dailyAttemptsUsed == 1)
+        #expect(s.freeIntroCompleted == introLimit, "Intro must not change in Phase 2")
     }
 
-    // ── Premium no-op ──────────────────────────────────────────────────────
+    @Test("Phase 2: fail increments daily counter")
+    func phase2FailIncrements() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(0)
+        s.recordAttempt(anyLevel, didWin: false)
+        #expect(s.dailyAttemptsUsed == 1)
+        #expect(s.freeIntroCompleted == introLimit, "Intro must not change in Phase 2")
+    }
 
-    @Test("recordAttempt for a premium user is a complete no-op on all counters")
-    func premiumAttemptDoesNotConsumeAnyCounter() {
-        EntitlementStore.shared.setPremium(true)
-        EntitlementStore.shared.setFreeIntroCompleted(2)
-        let introBefore = EntitlementStore.shared.freeIntroCompleted
-        let dailyBefore = EntitlementStore.shared.dailyAttemptsUsed
-        defer { EntitlementStore.shared.setPremium(false) }
-        EntitlementStore.shared.recordAttempt(anyLevel, didWin: true)
-        #expect(EntitlementStore.shared.freeIntroCompleted == introBefore,
-                "Intro counter must not change for premium user")
-        #expect(EntitlementStore.shared.dailyAttemptsUsed == dailyBefore,
-                "Daily indicator must not change for premium user")
+    @Test("Phase 2: arms cooldown exactly at dailyLimit plays")
+    func phase2ArmsCooldownAtLimit() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(0)
+        for i in 0..<dailyLimit {
+            #expect(s.canPlay(anyLevel), "Play \(i+1)/\(dailyLimit) should be allowed")
+            s.recordAttempt(anyLevel, didWin: i % 2 == 0)
+        }
+        #expect(s.dailyAttemptsUsed == dailyLimit)
+        #expect(s.dailyLimitReached, "Cooldown must arm after all daily plays consumed")
+        #expect(!s.canPlay(anyLevel), "Must be blocked after dailyLimit plays")
+    }
+
+    @Test("Phase 2: just before daily limit — still allowed")
+    func phase2JustBeforeDailyLimit() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(0)
+        for _ in 0..<(dailyLimit - 1) {
+            s.recordAttempt(anyLevel, didWin: false)
+        }
+        #expect(s.canPlay(anyLevel),
+                "Player must still be able to play with 1 daily slot remaining")
+        #expect(s.remainingToday == 1)
+    }
+
+    @Test("Phase 2: recordAttempt during active cooldown is a no-op")
+    func phase2RecordAttemptDuringCooldownIsNoOp() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit)   // arm cooldown
+        let dailyBefore = s.dailyPlaysUsed
+        s.recordAttempt(anyLevel, didWin: true)
+        #expect(s.dailyPlaysUsed == dailyBefore,
+                "recordAttempt during active cooldown must not increment the counter")
+    }
+
+    // ── Retry sequence ────────────────────────────────────────────────────
+
+    @Test("Phase 2 full retry sequence: fail → retry → fail → retry → win → blocked")
+    func phase2RetrySequence() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(0)
+
+        // Play 1: fail
+        s.recordAttempt(anyLevel, didWin: false)
+        #expect(s.canPlay(anyLevel), "After 1/\(dailyLimit) fails — must still be allowed")
+
+        // Play 2: fail again
+        s.recordAttempt(anyLevel, didWin: false)
+        if dailyLimit > 2 {
+            #expect(s.canPlay(anyLevel), "After 2/\(dailyLimit) fails — must still be allowed")
+        }
+
+        // Play 3 (dailyLimit): win
+        s.recordAttempt(anyLevel, didWin: true)
+        #expect(!s.canPlay(anyLevel),
+                "After \(dailyLimit)/\(dailyLimit) plays — must be blocked regardless of outcome")
+    }
+
+    // ── No-interaction contract ───────────────────────────────────────────
+    // GameView only calls recordAttempt if the player made ≥1 tap (hasInteracted).
+    // If the player opens a mission but abandons without tapping, nothing is consumed.
+
+    @Test("No-interaction during intro: counters unchanged if recordAttempt is never called")
+    func noInteractionIntroPhase() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(3)
+        let introBefore = s.freeIntroCompleted
+        // Simulate: player opens mission, views board, taps BACK without interacting
+        // — GameView does NOT call recordAttempt
+        #expect(s.freeIntroCompleted == introBefore)
+        #expect(s.canPlay(anyLevel), "Player must be able to immediately re-enter")
+    }
+
+    @Test("No-interaction during Phase 2: counters unchanged if recordAttempt is never called")
+    func noInteractionPhase2() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(0)
+        let dailyBefore = s.dailyAttemptsUsed
+        // — GameView does NOT call recordAttempt
+        #expect(s.dailyAttemptsUsed == dailyBefore)
+        #expect(s.canPlay(anyLevel), "Player must be able to immediately re-enter")
+    }
+
+    // ── Premium no-op ─────────────────────────────────────────────────────
+
+    @Test("Premium: recordAttempt is a no-op in intro phase")
+    func premiumNoOpIntro() {
+        let s = EntitlementStore.shared
+        s.setPremium(true)
+        s.setFreeIntroCompleted(2)
+        let before = s.freeIntroCompleted
+        defer { s.setPremium(false) }
+        s.recordAttempt(anyLevel, didWin: true)
+        #expect(s.freeIntroCompleted == before)
+    }
+
+    @Test("Premium: recordAttempt is a no-op in Phase 2")
+    func premiumNoOpPhase2() {
+        let s = EntitlementStore.shared
+        s.setPremium(true)
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(0)
+        let dailyBefore = s.dailyAttemptsUsed
+        defer { s.setPremium(false) }
+        s.recordAttempt(anyLevel, didWin: false)
+        #expect(s.dailyAttemptsUsed == dailyBefore)
     }
 }
 #endif
@@ -1040,7 +1237,7 @@ struct DiscountStoreTests {
 #endif
 
 // MARK: - EntitlementStore Cooldown State Tests
-// Supplements the existing Access/Consumption suites with cooldown-specific derived state.
+// Tests cooldown timing, reset paths, daily counter reset, and canPlayNextMission.
 #if DEBUG
 @Suite("EntitlementStore — Cooldown State", .serialized)
 @MainActor
@@ -1053,89 +1250,140 @@ struct EntitlementCooldownStateTests {
     }
 
     private var anyLevel: Level { LevelGenerator.levels[0] }
+    private var introLimit: Int { EntitlementStore.freeIntroLimit }
+    private var dailyLimit: Int { EntitlementStore.dailyLimit }
 
     // MARK: remainingCooldown
 
     @Test("remainingCooldown is 0 when no cooldown is active")
     func remainingCooldownZeroWhenFree() {
-        EntitlementStore.shared.setFreeIntroCompleted(3)
-        EntitlementStore.shared.setDailyAttemptsUsed(0)
-        #expect(EntitlementStore.shared.remainingCooldown == 0)
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(0)
+        #expect(s.remainingCooldown == 0)
+    }
+
+    @Test("remainingCooldown is 0 during intro phase (cooldown is irrelevant)")
+    func remainingCooldownZeroDuringIntro() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(0)
+        #expect(s.remainingCooldown == 0)
     }
 
     @Test("remainingCooldown is > 0 immediately after cooldown is armed")
     func remainingCooldownPositiveWhenArmed() {
-        EntitlementStore.shared.setFreeIntroCompleted(3)
-        EntitlementStore.shared.setDailyAttemptsUsed(1)   // arms cooldown
-        #expect(EntitlementStore.shared.remainingCooldown > 0,
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit)
+        #expect(s.remainingCooldown > 0,
                 "remainingCooldown must be positive while the 24h gate is active")
     }
 
     @Test("remainingCooldown approaches 24h (86400s) right after arming")
     func remainingCooldownNear24h() {
-        EntitlementStore.shared.setFreeIntroCompleted(3)
-        EntitlementStore.shared.setDailyAttemptsUsed(1)
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit)
+        let remaining = s.remainingCooldown
         // Allow ±5 s tolerance for clock jitter in CI
-        let remaining = EntitlementStore.shared.remainingCooldown
         #expect(remaining > 86_390 && remaining <= 86_400,
                 "Immediately after arming, remaining cooldown must be ~86400s, got \(remaining)s")
     }
 
     // MARK: canPlayNextMission
 
+    @Test("canPlayNextMission returns true when no cooldown and next level exists")
+    func canPlayNextMissionTrueWhenAllowed() {
+        let levels = LevelGenerator.levels
+        guard levels.count >= 2 else { return }
+        let first = levels[0]
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(0)   // intro phase — always allowed
+        #expect(s.canPlayNextMission(after: first),
+                "canPlayNextMission must return true when player can play")
+    }
+
     @Test("canPlayNextMission returns false during cooldown")
     func canPlayNextMissionFalseWhenBlocked() {
         let levels = LevelGenerator.levels
         guard levels.count >= 2 else { return }
         let first = levels[0]
-        EntitlementStore.shared.setFreeIntroCompleted(3)
-        EntitlementStore.shared.setDailyAttemptsUsed(1)
-        #expect(!EntitlementStore.shared.canPlayNextMission(after: first),
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit)
+        #expect(!s.canPlayNextMission(after: first),
                 "canPlayNextMission must return false when the 24h gate is active")
     }
 
     @Test("canPlayNextMission returns false for the last level (no next exists)")
     func canPlayNextMissionFalseForLastLevel() {
         let last = LevelGenerator.levels.last!
-        // Even premium should get false here because there is no next level
-        EntitlementStore.shared.setPremium(true)
-        defer { EntitlementStore.shared.setPremium(false) }
-        #expect(!EntitlementStore.shared.canPlayNextMission(after: last),
+        let s = EntitlementStore.shared
+        s.setPremium(true)
+        defer { s.setPremium(false) }
+        #expect(!s.canPlayNextMission(after: last),
                 "canPlayNextMission must return false when no subsequent level exists")
     }
 
     // MARK: forceCooldown / clearCooldown
 
-    @Test("forceCooldown arms cooldown and blocks canPlay")
+    @Test("forceCooldown promotes to Phase 2 and blocks canPlay")
     func forceCooldownBlocksPlay() {
-        EntitlementStore.shared.forceCooldown()
-        #expect(!EntitlementStore.shared.canPlay(anyLevel),
-                "canPlay must return false immediately after forceCooldown()")
-        #expect(EntitlementStore.shared.dailyLimitReached,
-                "dailyLimitReached must be true after forceCooldown()")
+        let s = EntitlementStore.shared
+        s.forceCooldown()
+        #expect(!s.isInIntroPhase, "forceCooldown must promote to Phase 2")
+        #expect(!s.canPlay(anyLevel))
+        #expect(s.dailyLimitReached)
     }
 
-    @Test("clearCooldown unblocks play for a free user")
-    func clearCooldownUnblocksPlay() {
-        EntitlementStore.shared.setFreeIntroCompleted(3)
-        EntitlementStore.shared.setDailyAttemptsUsed(1)   // arm
-        EntitlementStore.shared.clearCooldown()            // clear
-        #expect(EntitlementStore.shared.canPlay(anyLevel),
-                "canPlay must return true immediately after clearCooldown()")
-        #expect(!EntitlementStore.shared.dailyLimitReached,
-                "dailyLimitReached must be false after clearCooldown()")
-        #expect(EntitlementStore.shared.remainingCooldown == 0,
-                "remainingCooldown must be 0 after clearCooldown()")
+    @Test("clearCooldown unblocks play and resets daily counter to 0")
+    func clearCooldownUnblocksAndResets() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit)
+        s.clearCooldown()
+        #expect(s.canPlay(anyLevel), "Must be playable after clearCooldown")
+        #expect(!s.dailyLimitReached)
+        #expect(s.remainingCooldown == 0)
+        #expect(s.dailyAttemptsUsed == 0, "Daily counter must reset to 0 after clearCooldown")
+        #expect(s.remainingToday == dailyLimit, "Full daily quota must be restored")
     }
 
-    @Test("setFreeIntroCompleted below freeIntroLimit clears any active cooldown")
+    @Test("setFreeIntroCompleted below freeIntroLimit returns to intro and clears cooldown")
     func setIntroCompletedBelowLimitClearsCooldown() {
-        EntitlementStore.shared.forceCooldown()            // Phase 2 + cooldown armed
-        EntitlementStore.shared.setFreeIntroCompleted(1)   // return to Phase 1
-        #expect(EntitlementStore.shared.isInIntroPhase,
-                "Must be back in intro phase after setFreeIntroCompleted(1)")
-        #expect(EntitlementStore.shared.canPlay(anyLevel),
-                "canPlay must return true after returning to intro phase")
+        let s = EntitlementStore.shared
+        s.forceCooldown()
+        s.setFreeIntroCompleted(1)
+        #expect(s.isInIntroPhase, "Must be back in intro phase")
+        #expect(s.canPlay(anyLevel), "Must be playable")
+        #expect(s.remainingToday == introLimit - 1, "remainingToday must reflect intro quota")
+    }
+
+    @Test("resetIntroCount returns to Phase 1 at 0 and clears cooldown")
+    func resetIntroCountFullReset() {
+        let s = EntitlementStore.shared
+        s.forceCooldown()
+        s.resetIntroCount()
+        #expect(s.freeIntroCompleted == 0)
+        #expect(s.isInIntroPhase)
+        #expect(s.canPlay(anyLevel))
+        #expect(s.remainingToday == introLimit)
+    }
+
+    @Test("clearCooldown after intro exhaustion allows a fresh daily window")
+    func clearCooldownAfterIntroExhaustionAllowsFreshWindow() {
+        let s = EntitlementStore.shared
+        s.setFreeIntroCompleted(introLimit)
+        s.setDailyAttemptsUsed(dailyLimit)   // arm
+        #expect(!s.canPlay(anyLevel))
+
+        s.clearCooldown()
+        #expect(s.canPlay(anyLevel))
+
+        // Can now consume a full daily window
+        s.recordAttempt(anyLevel, didWin: true)
+        #expect(s.dailyAttemptsUsed == 1)
+        #expect(s.canPlay(anyLevel), "Only 1/\(dailyLimit) used — still allowed")
     }
 }
 #endif
@@ -1539,5 +1787,942 @@ struct NarrativeRegressionTests {
                 "Beat '\(beat.id)' ES body matches EN — localizedBody.es may be wrong")
         #expect(beat.displayBody(for: .fr) != enBody,
                 "Beat '\(beat.id)' FR body matches EN — localizedBody.fr may be wrong")
+    }
+}
+
+// MARK: - CloudSaveManager Merge Tests
+// Verifies that mergeProfiles is monotonic — a merge never downgrades progress.
+
+@Suite("CloudSave Merge — Per-Level Efficiency")
+struct CloudSaveMergeEfficiencyTests {
+
+    // MARK: bestEfficiencyByLevel
+
+    @Test("Better local best-efficiency wins over worse cloud")
+    func betterLocalBestEfficiency() {
+        var cloud = AstronautProfile()
+        cloud.bestEfficiencyByLevel = ["1": 0.5, "2": 0.8]
+        var local = AstronautProfile()
+        local.bestEfficiencyByLevel = ["1": 0.9, "2": 0.3]
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.bestEfficiencyByLevel["1"] == 0.9, "Local 0.9 should beat cloud 0.5")
+        #expect(cloud.bestEfficiencyByLevel["2"] == 0.8, "Cloud 0.8 should beat local 0.3")
+    }
+
+    @Test("Better cloud best-efficiency is retained")
+    func betterCloudBestEfficiency() {
+        var cloud = AstronautProfile()
+        cloud.bestEfficiencyByLevel = ["1": 0.95]
+        var local = AstronautProfile()
+        local.bestEfficiencyByLevel = ["1": 0.60]
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.bestEfficiencyByLevel["1"] == 0.95, "Cloud 0.95 should remain")
+    }
+
+    @Test("Missing local levels are kept from cloud")
+    func missingLocalBestEfficiency() {
+        var cloud = AstronautProfile()
+        cloud.bestEfficiencyByLevel = ["5": 0.7]
+        let local = AstronautProfile() // no entries
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.bestEfficiencyByLevel["5"] == 0.7, "Cloud-only level preserved")
+    }
+
+    @Test("Missing cloud levels are added from local")
+    func missingCloudBestEfficiency() {
+        var cloud = AstronautProfile() // no entries
+        var local = AstronautProfile()
+        local.bestEfficiencyByLevel = ["10": 0.85]
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.bestEfficiencyByLevel["10"] == 0.85, "Local-only level added to cloud")
+    }
+
+    // MARK: lastEfficiencyByLevel
+
+    @Test("Better local last-efficiency wins over worse cloud")
+    func betterLocalLastEfficiency() {
+        var cloud = AstronautProfile()
+        cloud.lastEfficiencyByLevel = ["1": 0.4, "2": 0.9]
+        var local = AstronautProfile()
+        local.lastEfficiencyByLevel = ["1": 0.8, "2": 0.3]
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.lastEfficiencyByLevel["1"] == 0.8, "Local 0.8 should beat cloud 0.4")
+        #expect(cloud.lastEfficiencyByLevel["2"] == 0.9, "Cloud 0.9 should beat local 0.3")
+    }
+
+    @Test("Missing cloud last-efficiency levels are added from local")
+    func missingCloudLastEfficiency() {
+        var cloud = AstronautProfile()
+        cloud.lastEfficiencyByLevel = ["1": 0.5]
+        var local = AstronautProfile()
+        local.lastEfficiencyByLevel = ["1": 0.3, "7": 0.75]
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.lastEfficiencyByLevel["1"] == 0.5, "Cloud 0.5 should beat local 0.3")
+        #expect(cloud.lastEfficiencyByLevel["7"] == 0.75, "Local-only level 7 added")
+    }
+
+    @Test("Mixed partial progress: each side has unique levels, merge is superset")
+    func mixedPartialProgress() {
+        var cloud = AstronautProfile()
+        cloud.bestEfficiencyByLevel = ["1": 0.6, "3": 0.9]
+        cloud.lastEfficiencyByLevel = ["1": 0.6, "3": 0.9]
+        var local = AstronautProfile()
+        local.bestEfficiencyByLevel = ["2": 0.8, "3": 0.5]
+        local.lastEfficiencyByLevel = ["2": 0.8, "3": 0.5]
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        // best
+        #expect(cloud.bestEfficiencyByLevel["1"] == 0.6, "Cloud-only level 1 kept")
+        #expect(cloud.bestEfficiencyByLevel["2"] == 0.8, "Local-only level 2 added")
+        #expect(cloud.bestEfficiencyByLevel["3"] == 0.9, "Cloud 0.9 beats local 0.5")
+        // last
+        #expect(cloud.lastEfficiencyByLevel["1"] == 0.6, "Cloud-only level 1 kept")
+        #expect(cloud.lastEfficiencyByLevel["2"] == 0.8, "Local-only level 2 added")
+        #expect(cloud.lastEfficiencyByLevel["3"] == 0.9, "Cloud 0.9 beats local 0.5")
+    }
+
+    @Test("Tied scores remain unchanged")
+    func tiedScores() {
+        var cloud = AstronautProfile()
+        cloud.bestEfficiencyByLevel = ["1": 0.75]
+        cloud.lastEfficiencyByLevel = ["1": 0.75]
+        var local = AstronautProfile()
+        local.bestEfficiencyByLevel = ["1": 0.75]
+        local.lastEfficiencyByLevel = ["1": 0.75]
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.bestEfficiencyByLevel["1"] == 0.75)
+        #expect(cloud.lastEfficiencyByLevel["1"] == 0.75)
+    }
+}
+
+@Suite("CloudSave Merge — Scalars")
+struct CloudSaveMergeScalarTests {
+
+    @Test("totalScore takes the higher value — local wins")
+    func totalScoreLocalHigher() {
+        var cloud = AstronautProfile()
+        cloud.totalScore = 500
+        var local = AstronautProfile()
+        local.totalScore = 1200
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.totalScore == 1200)
+    }
+
+    @Test("totalScore takes the higher value — cloud wins")
+    func totalScoreCloudHigher() {
+        var cloud = AstronautProfile()
+        cloud.totalScore = 3000
+        var local = AstronautProfile()
+        local.totalScore = 800
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.totalScore == 3000)
+    }
+
+    @Test("totalScore tie remains unchanged")
+    func totalScoreTied() {
+        var cloud = AstronautProfile()
+        cloud.totalScore = 999
+        var local = AstronautProfile()
+        local.totalScore = 999
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.totalScore == 999)
+    }
+
+    @Test("level takes max of local vs cascaded cloud level — local higher")
+    func levelLocalHigher() {
+        var cloud = AstronautProfile()
+        cloud.level = 2
+        var local = AstronautProfile()
+        local.level = 5
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.level >= 5, "Merged level must be at least local level")
+    }
+
+    @Test("level takes max of local vs cascaded cloud level — cloud higher")
+    func levelCloudHigher() {
+        var cloud = AstronautProfile()
+        cloud.level = 8
+        var local = AstronautProfile()
+        local.level = 3
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.level >= 8, "Merged level must be at least cloud level")
+    }
+
+    @Test("level is never downgraded by merge")
+    func levelNeverDowngraded() {
+        var cloud = AstronautProfile()
+        cloud.level = 6
+        let originalCloudLevel = cloud.level
+        var local = AstronautProfile()
+        local.level = 2
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.level >= originalCloudLevel, "Merge must never decrease level")
+    }
+}
+
+@Suite("CloudSave Merge — Idempotency & Edge Cases")
+struct CloudSaveMergeEdgeCaseTests {
+
+    @Test("Merging two empty profiles produces empty profile")
+    func mergeEmptyProfiles() {
+        var cloud = AstronautProfile()
+        let local = AstronautProfile()
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.bestEfficiencyByLevel.isEmpty)
+        #expect(cloud.lastEfficiencyByLevel.isEmpty)
+        #expect(cloud.totalScore == 0)
+        #expect(cloud.level == 1)
+    }
+
+    @Test("Merge is idempotent — merging same data twice gives same result")
+    func mergeIdempotent() {
+        var cloud = AstronautProfile()
+        cloud.bestEfficiencyByLevel = ["1": 0.8, "2": 0.6]
+        cloud.lastEfficiencyByLevel = ["1": 0.7, "2": 0.5]
+        cloud.totalScore = 500
+        cloud.level = 3
+
+        var local = AstronautProfile()
+        local.bestEfficiencyByLevel = ["1": 0.5, "3": 0.9]
+        local.lastEfficiencyByLevel = ["1": 0.4, "3": 0.85]
+        local.totalScore = 300
+        local.level = 4
+
+        // First merge
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+        let afterFirst = cloud
+
+        // Second merge with same local data
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.bestEfficiencyByLevel == afterFirst.bestEfficiencyByLevel)
+        #expect(cloud.lastEfficiencyByLevel == afterFirst.lastEfficiencyByLevel)
+        #expect(cloud.totalScore == afterFirst.totalScore)
+        #expect(cloud.level == afterFirst.level)
+    }
+
+    @Test("Merging local-only data into empty cloud copies everything")
+    func mergeIntoEmptyCloud() {
+        var cloud = AstronautProfile()
+        var local = AstronautProfile()
+        local.bestEfficiencyByLevel = ["1": 0.9, "2": 0.7, "3": 0.5]
+        local.lastEfficiencyByLevel = ["1": 0.85, "2": 0.65, "3": 0.45]
+        local.totalScore = 2000
+        local.level = 4
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.bestEfficiencyByLevel == local.bestEfficiencyByLevel)
+        #expect(cloud.lastEfficiencyByLevel == local.lastEfficiencyByLevel)
+        #expect(cloud.totalScore == 2000)
+        #expect(cloud.level >= 4)
+    }
+
+    @Test("Merging empty local into populated cloud leaves cloud unchanged")
+    func mergeEmptyLocalIntoPopulatedCloud() {
+        var cloud = AstronautProfile()
+        cloud.bestEfficiencyByLevel = ["1": 0.9, "2": 0.7]
+        cloud.lastEfficiencyByLevel = ["1": 0.85, "2": 0.65]
+        cloud.totalScore = 1500
+        cloud.level = 5
+        let original = cloud
+        let local = AstronautProfile()
+
+        CloudSaveManager.mergeProfiles(local: local, into: &cloud)
+
+        #expect(cloud.bestEfficiencyByLevel == original.bestEfficiencyByLevel)
+        #expect(cloud.lastEfficiencyByLevel == original.lastEfficiencyByLevel)
+        #expect(cloud.totalScore == original.totalScore)
+        #expect(cloud.level >= original.level, "Level must not decrease")
+    }
+}
+
+// MARK: - PassStore Merge Tests
+// Verifies that mergePasses is monotonic — a merge never loses a legitimately earned pass.
+
+@Suite("PassStore Merge")
+struct PassStoreMergeTests {
+
+    // Helper to create a PlanetPass with minimal boilerplate
+    private static func makePass(
+        planetIndex: Int,
+        planetName: String = "TEST",
+        levelReached: Int = 1,
+        efficiency: Float = 0.5,
+        missions: Int = 1,
+        timestamp: Date = Date()
+    ) -> PlanetPass {
+        PlanetPass(
+            id: UUID(),
+            planetName: planetName,
+            planetIndex: planetIndex,
+            levelReached: levelReached,
+            efficiencyScore: efficiency,
+            missionCount: missions,
+            timestamp: timestamp
+        )
+    }
+
+    @Test("Local-only pass is preserved when cloud has nothing")
+    func localOnlyPassPreserved() {
+        let local = [Self.makePass(planetIndex: 0, planetName: "MERCURY")]
+        let incoming: [PlanetPass] = []
+
+        let result = PassStore.mergePasses(local: local, incoming: incoming)
+
+        #expect(result.count == 1)
+        #expect(result[0].planetIndex == 0)
+        #expect(result[0].planetName == "MERCURY")
+    }
+
+    @Test("Cloud-only pass is added when local has nothing")
+    func cloudOnlyPassAdded() {
+        let local: [PlanetPass] = []
+        let incoming = [Self.makePass(planetIndex: 3, planetName: "MARS")]
+
+        let result = PassStore.mergePasses(local: local, incoming: incoming)
+
+        #expect(result.count == 1)
+        #expect(result[0].planetIndex == 3)
+        #expect(result[0].planetName == "MARS")
+    }
+
+    @Test("Same planet in both — earlier timestamp wins")
+    func samePlanetEarlierTimestampWins() {
+        let earlier = Date(timeIntervalSince1970: 1000)
+        let later   = Date(timeIntervalSince1970: 2000)
+
+        let local    = [Self.makePass(planetIndex: 1, planetName: "VENUS-LOCAL", timestamp: later)]
+        let incoming = [Self.makePass(planetIndex: 1, planetName: "VENUS-CLOUD", timestamp: earlier)]
+
+        let result = PassStore.mergePasses(local: local, incoming: incoming)
+
+        #expect(result.count == 1, "Duplicate planet should be deduplicated")
+        #expect(result[0].planetName == "VENUS-CLOUD", "Earlier timestamp (cloud) should win")
+    }
+
+    @Test("Same planet in both — local earlier timestamp wins")
+    func samePlanetLocalEarlierWins() {
+        let earlier = Date(timeIntervalSince1970: 1000)
+        let later   = Date(timeIntervalSince1970: 2000)
+
+        let local    = [Self.makePass(planetIndex: 2, planetName: "EARTH-LOCAL", timestamp: earlier)]
+        let incoming = [Self.makePass(planetIndex: 2, planetName: "EARTH-CLOUD", timestamp: later)]
+
+        let result = PassStore.mergePasses(local: local, incoming: incoming)
+
+        #expect(result.count == 1)
+        #expect(result[0].planetName == "EARTH-LOCAL", "Earlier timestamp (local) should win")
+    }
+
+    @Test("Mixed set: local has planets 0,1 — cloud has planets 1,2 — result is superset {0,1,2}")
+    func mixedSetUnionMerge() {
+        let t0 = Date(timeIntervalSince1970: 100)
+        let t1 = Date(timeIntervalSince1970: 200)
+        let t2 = Date(timeIntervalSince1970: 300)
+
+        let local = [
+            Self.makePass(planetIndex: 0, planetName: "P0", timestamp: t0),
+            Self.makePass(planetIndex: 1, planetName: "P1-LOCAL", timestamp: t1)
+        ]
+        let incoming = [
+            Self.makePass(planetIndex: 1, planetName: "P1-CLOUD", timestamp: t2),
+            Self.makePass(planetIndex: 2, planetName: "P2", timestamp: t2)
+        ]
+
+        let result = PassStore.mergePasses(local: local, incoming: incoming)
+
+        #expect(result.count == 3, "Union of {0,1} and {1,2} should be {0,1,2}")
+        let indices = Set(result.map(\.planetIndex))
+        #expect(indices == [0, 1, 2])
+        // Planet 1: local t1 < cloud t2, so local wins
+        let p1 = result.first { $0.planetIndex == 1 }!
+        #expect(p1.planetName == "P1-LOCAL", "Earlier timestamp (local) should win for planet 1")
+    }
+
+    @Test("Result is sorted by timestamp ascending")
+    func resultSortedByTimestamp() {
+        let t1 = Date(timeIntervalSince1970: 300)
+        let t2 = Date(timeIntervalSince1970: 100)
+        let t3 = Date(timeIntervalSince1970: 200)
+
+        let local    = [Self.makePass(planetIndex: 0, timestamp: t1)]
+        let incoming = [
+            Self.makePass(planetIndex: 1, timestamp: t2),
+            Self.makePass(planetIndex: 2, timestamp: t3)
+        ]
+
+        let result = PassStore.mergePasses(local: local, incoming: incoming)
+
+        #expect(result.count == 3)
+        #expect(result[0].planetIndex == 1, "t=100 should be first")
+        #expect(result[1].planetIndex == 2, "t=200 should be second")
+        #expect(result[2].planetIndex == 0, "t=300 should be third")
+    }
+
+    @Test("Both empty returns empty")
+    func bothEmptyReturnsEmpty() {
+        let result = PassStore.mergePasses(local: [], incoming: [])
+        #expect(result.isEmpty)
+    }
+
+    @Test("Merge is idempotent — merging same data twice gives same result")
+    func mergeIdempotent() {
+        let passes = [
+            Self.makePass(planetIndex: 0, timestamp: Date(timeIntervalSince1970: 100)),
+            Self.makePass(planetIndex: 1, timestamp: Date(timeIntervalSince1970: 200))
+        ]
+
+        let first  = PassStore.mergePasses(local: passes, incoming: passes)
+        let second = PassStore.mergePasses(local: first, incoming: passes)
+
+        #expect(first.count == second.count)
+        for i in 0..<first.count {
+            #expect(first[i].planetIndex == second[i].planetIndex)
+            #expect(first[i].timestamp == second[i].timestamp)
+        }
+    }
+
+    @Test("Same planet same timestamp — local is kept (stable tie-breaking)")
+    func samePlanetSameTimestamp() {
+        let t = Date(timeIntervalSince1970: 500)
+        let local    = [Self.makePass(planetIndex: 0, planetName: "LOCAL", timestamp: t)]
+        let incoming = [Self.makePass(planetIndex: 0, planetName: "CLOUD", timestamp: t)]
+
+        let result = PassStore.mergePasses(local: local, incoming: incoming)
+
+        #expect(result.count == 1)
+        #expect(result[0].planetName == "LOCAL", "On tie, local should be kept (no overwrite)")
+    }
+}
+
+// MARK: - Clock Manipulation Resistance Tests
+// Verifies that isCooldownExpired and cooldownRemaining detect device clock manipulation.
+
+@Suite("Cooldown Clock Hardening — isCooldownExpired")
+struct CooldownClockExpiryTests {
+
+    // Shared test constants
+    private static let armDate = Date(timeIntervalSince1970: 1_000_000)
+    private static let target  = armDate.addingTimeInterval(86_400) // armDate + 24h
+    private static let armUptime: TimeInterval = 5_000 // system uptime when armed
+
+    @Test("No cooldown armed → expired (can play)")
+    func noCooldownIsExpired() {
+        let result = EntitlementStore.isCooldownExpired(
+            nextPlayableDate: nil,
+            cooldownArmedUptime: nil,
+            now: Date(),
+            systemUptime: 1000
+        )
+        #expect(result == true)
+    }
+
+    @Test("Wall clock before target → NOT expired")
+    func wallClockBeforeTarget() {
+        let now = Self.armDate.addingTimeInterval(3600) // only 1h later
+        let result = EntitlementStore.isCooldownExpired(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: Self.armUptime,
+            now: now,
+            systemUptime: Self.armUptime + 3600
+        )
+        #expect(result == false, "Only 1h passed — should still be blocked")
+    }
+
+    @Test("Normal expiry: wall clock + uptime both confirm 24h passed → expired")
+    func normalExpiry() {
+        let now = Self.armDate.addingTimeInterval(86_401) // 24h + 1s
+        let result = EntitlementStore.isCooldownExpired(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: Self.armUptime,
+            now: now,
+            systemUptime: Self.armUptime + 86_401
+        )
+        #expect(result == true, "24h legitimately passed — should be expired")
+    }
+
+    @Test("Clock moved forward: wall says expired, uptime says only 100s → NOT expired")
+    func clockMovedForward() {
+        let now = Self.armDate.addingTimeInterval(86_401) // wall: 24h+ after arm
+        let result = EntitlementStore.isCooldownExpired(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: Self.armUptime,
+            now: now,
+            systemUptime: Self.armUptime + 100 // only 100s of real time
+        )
+        #expect(result == false, "Clock manipulation detected — should stay blocked")
+    }
+
+    @Test("Clock moved forward by exactly 24h but only 1h uptime → NOT expired")
+    func clockForwardExact24hButLowUptime() {
+        let now = Self.target // wall: exactly at target
+        let result = EntitlementStore.isCooldownExpired(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: Self.armUptime,
+            now: now,
+            systemUptime: Self.armUptime + 3600 // only 1h of real time
+        )
+        #expect(result == false, "Uptime only 1h — clock was manipulated")
+    }
+
+    @Test("Device rebooted, wall clock honest (24h+ passed) → expired (trust wall clock)")
+    func rebootedHonestClock() {
+        let now = Self.armDate.addingTimeInterval(90_000) // ~25h
+        let result = EntitlementStore.isCooldownExpired(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: Self.armUptime,
+            now: now,
+            systemUptime: 500 // < armUptime → reboot detected
+        )
+        #expect(result == true, "Rebooted — fall back to wall clock, which says expired")
+    }
+
+    @Test("Device rebooted, wall clock manipulated forward → expired (accepted limitation)")
+    func rebootedManipulatedClock() {
+        // This is the known weakness: reboot + clock forward bypasses.
+        // Documenting it explicitly as an accepted tradeoff.
+        let now = Self.armDate.addingTimeInterval(86_401)
+        let result = EntitlementStore.isCooldownExpired(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: Self.armUptime,
+            now: now,
+            systemUptime: 30 // tiny uptime (just rebooted) < armUptime → reboot
+        )
+        #expect(result == true, "After reboot, can only trust wall clock — accepted tradeoff")
+    }
+
+    @Test("Legacy data (no uptime recorded): wall says expired → expired")
+    func legacyNoUptimeRecorded() {
+        let now = Self.armDate.addingTimeInterval(86_401)
+        let result = EntitlementStore.isCooldownExpired(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: nil, // pre-update data
+            now: now,
+            systemUptime: 1000
+        )
+        #expect(result == true, "Legacy data — trust wall clock for backward compatibility")
+    }
+
+    @Test("Legacy data (no uptime recorded): wall says NOT expired → NOT expired")
+    func legacyNotExpired() {
+        let now = Self.armDate.addingTimeInterval(3600)
+        let result = EntitlementStore.isCooldownExpired(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: nil,
+            now: now,
+            systemUptime: 1000
+        )
+        #expect(result == false, "Wall clock says not expired — blocked")
+    }
+
+    @Test("Clock moved backward: wall now before arm date → NOT expired")
+    func clockMovedBackward() {
+        let now = Self.armDate.addingTimeInterval(-7200) // 2h before arm
+        let result = EntitlementStore.isCooldownExpired(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: Self.armUptime,
+            now: now,
+            systemUptime: Self.armUptime + 7200
+        )
+        #expect(result == false, "Wall clock before target — blocked regardless of uptime")
+    }
+}
+
+@Suite("Cooldown Clock Hardening — cooldownRemaining")
+struct CooldownClockRemainingTests {
+
+    private static let armDate = Date(timeIntervalSince1970: 1_000_000)
+    private static let target  = armDate.addingTimeInterval(86_400)
+    private static let armUptime: TimeInterval = 5_000
+
+    @Test("No cooldown → remaining is 0")
+    func noCooldownRemainingZero() {
+        let result = EntitlementStore.cooldownRemaining(
+            nextPlayableDate: nil,
+            cooldownArmedUptime: nil,
+            now: Date(),
+            systemUptime: 1000
+        )
+        #expect(result == 0)
+    }
+
+    @Test("Normal: 1h elapsed → remaining ≈ 23h")
+    func normalRemainingAfter1h() {
+        let now = Self.armDate.addingTimeInterval(3600)
+        let result = EntitlementStore.cooldownRemaining(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: Self.armUptime,
+            now: now,
+            systemUptime: Self.armUptime + 3600
+        )
+        // 86400 - 3600 = 82800
+        #expect(result >= 82_799 && result <= 82_801, "Should be ~82800s remaining")
+    }
+
+    @Test("Clock forward manipulation: wall says expired, uptime says 100s → remaining ≈ 86300s")
+    func clockForwardShowsUptimeRemaining() {
+        let now = Self.armDate.addingTimeInterval(86_401) // wall: past target
+        let result = EntitlementStore.cooldownRemaining(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: Self.armUptime,
+            now: now,
+            systemUptime: Self.armUptime + 100 // only 100s real time
+        )
+        // 86400 - 100 = 86300
+        #expect(result >= 86_299 && result <= 86_301,
+                "Should show uptime-based remaining (~86300s), not wall-clock 0")
+    }
+
+    @Test("Legitimately expired → remaining is 0")
+    func legitimatelyExpiredRemainingZero() {
+        let now = Self.armDate.addingTimeInterval(86_401)
+        let result = EntitlementStore.cooldownRemaining(
+            nextPlayableDate: Self.target,
+            cooldownArmedUptime: Self.armUptime,
+            now: now,
+            systemUptime: Self.armUptime + 86_401
+        )
+        #expect(result == 0)
+    }
+}
+
+// MARK: - EntitlementMergeTests
+
+@Suite("Entitlement cloud-sync merge")
+struct EntitlementMergeTests {
+
+    // ── Helpers ──────────────────────────────────────────────────────────
+
+    /// A "clean" snapshot with no premium, no intro, no cooldown.
+    static func blank() -> EntitlementSnapshot {
+        EntitlementSnapshot(
+            isPremium:          false,
+            premiumByCode:      false,
+            activeCodeID:       nil,
+            freeIntroCompleted: 0,
+            dailyPlaysUsed:     0,
+            nextPlayableDate:   nil,
+            dailyWindowStart:   nil
+        )
+    }
+
+    static let now = Date()
+
+    // ── Premium merge (OR) ──────────────────────────────────────────────
+
+    @Test("Premium: local true + cloud false → true")
+    func premiumLocalTrue() {
+        var local = Self.blank()
+        local.isPremium = true
+        let cloud = Self.blank()
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.isPremium == true)
+    }
+
+    @Test("Premium: local false + cloud true → true")
+    func premiumCloudTrue() {
+        let local = Self.blank()
+        var cloud = Self.blank()
+        cloud.isPremium = true
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.isPremium == true)
+    }
+
+    @Test("Premium: both false → false")
+    func premiumBothFalse() {
+        let result = CloudSaveManager.mergeEntitlements(local: Self.blank(), cloud: Self.blank())
+        #expect(result.isPremium == false)
+    }
+
+    // ── Code premium merge ──────────────────────────────────────────────
+
+    @Test("Code premium: local has code, cloud doesn't → code preserved")
+    func codePremiumLocalOnly() {
+        var local = Self.blank()
+        local.isPremium     = true
+        local.premiumByCode = true
+        local.activeCodeID  = "SIGNALRM"
+        let cloud = Self.blank()
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.premiumByCode == true)
+        #expect(result.activeCodeID == "SIGNALRM")
+    }
+
+    @Test("Code premium: cloud has code, local doesn't → code adopted")
+    func codePremiumCloudOnly() {
+        let local = Self.blank()
+        var cloud = Self.blank()
+        cloud.isPremium     = true
+        cloud.premiumByCode = true
+        cloud.activeCodeID  = "TESTCODE"
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.premiumByCode == true)
+        #expect(result.activeCodeID == "TESTCODE")
+    }
+
+    // ── Intro merge (max) ───────────────────────────────────────────────
+
+    @Test("Intro: local 5 + cloud 3 → 5")
+    func introLocalHigher() {
+        var local = Self.blank()
+        local.freeIntroCompleted = 5
+        var cloud = Self.blank()
+        cloud.freeIntroCompleted = 3
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.freeIntroCompleted == 5)
+    }
+
+    @Test("Intro: local 2 + cloud 8 → 8")
+    func introCloudHigher() {
+        var local = Self.blank()
+        local.freeIntroCompleted = 2
+        var cloud = Self.blank()
+        cloud.freeIntroCompleted = 8
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.freeIntroCompleted == 8)
+    }
+
+    // ── Cooldown merge (most restrictive) ───────────────────────────────
+
+    @Test("Cooldown: only local has cooldown → kept")
+    func cooldownLocalOnly() {
+        var local = Self.blank()
+        local.nextPlayableDate = Self.now.addingTimeInterval(86_400)
+        local.dailyPlaysUsed   = 3
+        let cloud = Self.blank()
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.nextPlayableDate != nil)
+        #expect(result.dailyPlaysUsed == 3)
+    }
+
+    @Test("Cooldown: only cloud has cooldown → adopted")
+    func cooldownCloudOnly() {
+        let local = Self.blank()
+        var cloud = Self.blank()
+        cloud.nextPlayableDate = Self.now.addingTimeInterval(86_400)
+        cloud.dailyPlaysUsed   = 3
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.nextPlayableDate != nil)
+        #expect(result.dailyPlaysUsed == 3)
+    }
+
+    @Test("Cooldown: both have cooldown → later expiry wins")
+    func cooldownBothLaterWins() {
+        let earlyExpiry = Self.now.addingTimeInterval(3_600)
+        let lateExpiry  = Self.now.addingTimeInterval(86_400)
+        var local = Self.blank()
+        local.nextPlayableDate = earlyExpiry
+        local.dailyPlaysUsed   = 3
+        var cloud = Self.blank()
+        cloud.nextPlayableDate = lateExpiry
+        cloud.dailyPlaysUsed   = 3
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.nextPlayableDate == lateExpiry, "Should keep the later (more restrictive) expiry")
+    }
+
+    @Test("Cooldown: neither has cooldown, max daily plays wins")
+    func noCooldownMaxPlays() {
+        var local = Self.blank()
+        local.dailyPlaysUsed = 1
+        local.dailyWindowStart = Self.now
+        var cloud = Self.blank()
+        cloud.dailyPlaysUsed = 2
+        cloud.dailyWindowStart = Self.now.addingTimeInterval(-3600)
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.dailyPlaysUsed == 2, "Should take max daily plays")
+        #expect(result.nextPlayableDate == nil, "No cooldown should be set")
+    }
+
+    @Test("Cooldown: neither has cooldown, later window start wins")
+    func noCooldownLaterWindow() {
+        let earlyWindow = Self.now.addingTimeInterval(-7200)
+        let lateWindow  = Self.now.addingTimeInterval(-3600)
+        var local = Self.blank()
+        local.dailyPlaysUsed   = 1
+        local.dailyWindowStart = lateWindow
+        var cloud = Self.blank()
+        cloud.dailyPlaysUsed   = 1
+        cloud.dailyWindowStart = earlyWindow
+        let result = CloudSaveManager.mergeEntitlements(local: local, cloud: cloud)
+        #expect(result.dailyWindowStart == lateWindow)
+    }
+
+    // ── v1 backward compatibility ───────────────────────────────────────
+
+    @Test("v1 payload decodes with entitlement == nil")
+    func v1BackwardCompat() throws {
+        // Simulate a v1 payload (no entitlement field)
+        let v1JSON = """
+        {
+            "profile": {"level": 1, "totalScore": 0, "currentPlanetIndex": 0,
+                        "bestEfficiencyByLevel": {}, "lastEfficiencyByLevel": {}},
+            "passes": [],
+            "lastUpdated": 0,
+            "schemaVersion": 1
+        }
+        """
+        let data = Data(v1JSON.utf8)
+        let payload = try JSONDecoder().decode(CloudSavePayload.self, from: data)
+        #expect(payload.entitlement == nil, "v1 payload must decode without entitlement")
+        #expect(payload.schemaVersion == 1)
+    }
+
+    @Test("v2 payload decodes with entitlement present")
+    func v2WithEntitlement() throws {
+        let v2JSON = """
+        {
+            "profile": {"level": 3, "totalScore": 500, "currentPlanetIndex": 1,
+                        "bestEfficiencyByLevel": {"1": 0.8}, "lastEfficiencyByLevel": {"1": 0.7}},
+            "passes": [],
+            "lastUpdated": 0,
+            "schemaVersion": 2,
+            "entitlement": {
+                "isPremium": true,
+                "premiumByCode": false,
+                "freeIntroCompleted": 8,
+                "dailyPlaysUsed": 0,
+                "nextPlayableDate": null,
+                "dailyWindowStart": null
+            }
+        }
+        """
+        let data = Data(v2JSON.utf8)
+        let payload = try JSONDecoder().decode(CloudSavePayload.self, from: data)
+        #expect(payload.entitlement != nil, "v2 payload must decode with entitlement")
+        #expect(payload.entitlement?.isPremium == true)
+        #expect(payload.entitlement?.freeIntroCompleted == 8)
+    }
+
+    // ── Device-hop cooldown bypass prevention ───────────────────────────
+
+    @Test("Device hop: device A armed cooldown, device B clean → cooldown applied")
+    func deviceHopCooldownPrevented() {
+        // Device A used all plays and has a 24h cooldown
+        var deviceA = Self.blank()
+        deviceA.freeIntroCompleted = 8  // Phase 2
+        deviceA.dailyPlaysUsed     = 3
+        deviceA.nextPlayableDate   = Self.now.addingTimeInterval(86_400)
+        deviceA.dailyWindowStart   = Self.now
+        // Device B is clean (no plays, no cooldown)
+        var deviceB = Self.blank()
+        deviceB.freeIntroCompleted = 8  // Phase 2
+        let result = CloudSaveManager.mergeEntitlements(local: deviceB, cloud: deviceA)
+        #expect(result.nextPlayableDate != nil, "Cooldown from device A must be applied to device B")
+        #expect(result.dailyPlaysUsed == 3)
+        #expect(result.freeIntroCompleted == 8)
+    }
+}
+
+// MARK: - PremiumStateTransitionTests
+
+@Suite("Premium state transitions", .serialized)
+struct PremiumStateTransitionTests {
+
+    @Test("Purchase after code: clears code flags")
+    @MainActor func purchaseAfterCode() {
+        let s = EntitlementStore.shared
+        // Start clean
+        s.setPremium(false)
+        // Activate via code
+        s.activateByCode("SIGNALRM")
+        #expect(s.isPremium == true)
+        #expect(s.premiumByCode == true)
+        #expect(s.activeCodeID == "SIGNALRM")
+        // StoreKit purchase supersedes code
+        s.setPremium(true)
+        #expect(s.isPremium == true)
+        #expect(s.premiumByCode == false, "Purchase must clear premiumByCode")
+        #expect(s.activeCodeID == nil, "Purchase must clear activeCodeID")
+        // Cleanup
+        s.setPremium(false)
+    }
+
+    @Test("Code after purchase: no-op (purchase takes precedence)")
+    @MainActor func codeAfterPurchase() {
+        let s = EntitlementStore.shared
+        s.setPremium(false)
+        // StoreKit purchase first
+        s.setPremium(true)
+        #expect(s.isPremium == true)
+        #expect(s.premiumByCode == false)
+        // Attempt code activation — should be no-op (guard !isPremium)
+        s.activateByCode("SIGNALRM")
+        #expect(s.premiumByCode == false, "Code must not override purchase")
+        #expect(s.activeCodeID == nil, "Code ID must not be set over purchase")
+        // Cleanup
+        s.setPremium(false)
+    }
+
+    @Test("Revoke code: does not affect purchase premium")
+    @MainActor func revokeCodeWithPurchase() {
+        let s = EntitlementStore.shared
+        s.setPremium(false)
+        // Activate via code, then purchase supersedes
+        s.activateByCode("SIGNALRM")
+        s.setPremium(true)
+        // revokeCodePremium should be no-op since premiumByCode is now false
+        s.revokeCodePremium()
+        #expect(s.isPremium == true, "Purchase premium must survive code revocation")
+        // Cleanup
+        s.setPremium(false)
+    }
+
+    @Test("setPremium(true) clears cooldown state")
+    @MainActor func purchaseClearsCooldown() {
+        let s = EntitlementStore.shared
+        s.setPremium(false)
+        s.setFreeIntroCompleted(EntitlementStore.freeIntroLimit)
+        s.setDailyAttemptsUsed(EntitlementStore.dailyLimit) // arms cooldown
+        #expect(s.dailyLimitReached == true, "Cooldown should be active before purchase")
+        // Purchase clears everything
+        s.setPremium(true)
+        #expect(s.dailyLimitReached == false, "Purchase must clear cooldown")
+        #expect(s.remainingCooldown == 0, "No remaining cooldown after purchase")
+        // Cleanup
+        s.setPremium(false)
+    }
+
+    @Test("setPremium(false) clears code flags")
+    @MainActor func disableClearsCodeFlags() {
+        let s = EntitlementStore.shared
+        s.setPremium(false)
+        s.activateByCode("TESTCODE")
+        #expect(s.premiumByCode == true)
+        #expect(s.activeCodeID == "TESTCODE")
+        // Disable premium
+        s.setPremium(false)
+        #expect(s.isPremium == false)
+        #expect(s.premiumByCode == false, "Disable must clear premiumByCode")
+        #expect(s.activeCodeID == nil, "Disable must clear activeCodeID")
     }
 }

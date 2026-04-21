@@ -2,14 +2,47 @@ import Combine
 import Foundation
 import GameKit
 
+// MARK: - EntitlementSnapshot
+/// A Codable snapshot of the player's entitlement state for cloud sync.
+///
+/// Does NOT include device-specific monotonic uptime fields (`cooldownArmedUptime`,
+/// `dailyWindowStartUptime`) — those are meaningless on a different device.
+/// The receiving device clears them and falls back to wall-clock-only verification.
+struct EntitlementSnapshot: Codable {
+    var isPremium:          Bool
+    var premiumByCode:      Bool
+    var activeCodeID:       String?
+    var freeIntroCompleted: Int
+    var dailyPlaysUsed:     Int
+    var nextPlayableDate:   Date?
+    var dailyWindowStart:   Date?
+}
+
+// MARK: - OnboardingSnapshot
+/// A Codable snapshot of the player's onboarding flags for cloud sync.
+/// All fields are monotonic — once true, they must never revert.
+struct OnboardingSnapshot: Codable {
+    var hasCompletedIntro:    Bool
+    var hasSeenNarrativeIntro: Bool
+    var hasShownFirstHook:    Bool
+}
+
 // MARK: - CloudSavePayload
 /// Everything needed to reconstruct the player's state on a fresh device.
-/// Wraps AstronautProfile + PlanetPasses with a conflict-resolution timestamp.
+/// Wraps AstronautProfile + PlanetPasses + EntitlementSnapshot with a conflict-resolution timestamp.
 struct CloudSavePayload: Codable {
     var profile:       AstronautProfile
     var passes:        [PlanetPass]
     var lastUpdated:   Date
-    var schemaVersion: Int = 1
+    var schemaVersion: Int = 4
+    /// Entitlement state — nil when decoding a v1 payload (backward compatible).
+    var entitlement:       EntitlementSnapshot?
+    /// Onboarding flags — nil when decoding a v1/v2 payload.
+    var onboarding:        OnboardingSnapshot?
+    /// Announced mechanic rawValues — nil when decoding a v1/v2 payload.
+    var mechanicUnlocks:   [String]?
+    /// Story beat IDs the player has dismissed — nil when decoding a v1/v2/v3 payload.
+    var storySeenIDs:      [String]?
 }
 
 // MARK: - CloudSaveManager
@@ -52,9 +85,13 @@ final class CloudSaveManager: ObservableObject {
 
         let now = Date()
         let payload = CloudSavePayload(
-            profile:     ProgressionStore.profile,
-            passes:      PassStore.all,
-            lastUpdated: now
+            profile:         ProgressionStore.profile,
+            passes:          PassStore.all,
+            lastUpdated:     now,
+            entitlement:     EntitlementStore.shared.currentSnapshot,
+            onboarding:      OnboardingStore.currentSnapshot,
+            mechanicUnlocks: MechanicUnlockStore.announcedRawValues,
+            storySeenIDs:    Array(StoryStore.seenIDs).sorted()
         )
         guard let data = try? JSONEncoder().encode(payload) else { return }
 
@@ -153,14 +190,30 @@ final class CloudSaveManager: ObservableObject {
         candidates.sort { $0.1.lastUpdated > $1.1.lastUpdated }
         var (_, winner) = candidates[0]
 
-        // Union-merge completions from every conflicting save into the winner
+        // Union-merge completions, entitlement, onboarding, and mechanics from every conflicting save
         for (_, other) in candidates.dropFirst() {
-            for (k, v) in other.profile.bestEfficiencyByLevel {
-                let best = winner.profile.bestEfficiencyByLevel[k] ?? 0
-                winner.profile.bestEfficiencyByLevel[k] = max(v, best)
+            Self.mergeProfiles(local: other.profile, into: &winner.profile)
+            if let otherEnt = other.entitlement, let winnerEnt = winner.entitlement {
+                winner.entitlement = Self.mergeEntitlements(local: winnerEnt, cloud: otherEnt)
+            } else if let otherEnt = other.entitlement {
+                winner.entitlement = otherEnt
+            }
+            if let otherOnb = other.onboarding, let winnerOnb = winner.onboarding {
+                winner.onboarding = Self.mergeOnboarding(local: winnerOnb, cloud: otherOnb)
+            } else if let otherOnb = other.onboarding {
+                winner.onboarding = otherOnb
+            }
+            if let otherMech = other.mechanicUnlocks, let winnerMech = winner.mechanicUnlocks {
+                winner.mechanicUnlocks = Self.mergeMechanicUnlocks(local: winnerMech, cloud: otherMech)
+            } else if let otherMech = other.mechanicUnlocks {
+                winner.mechanicUnlocks = otherMech
+            }
+            if let otherSeen = other.storySeenIDs, let winnerSeen = winner.storySeenIDs {
+                winner.storySeenIDs = Self.mergeStorySeenIDs(local: winnerSeen, cloud: otherSeen)
+            } else if let otherSeen = other.storySeenIDs {
+                winner.storySeenIDs = otherSeen
             }
         }
-        while winner.profile.canLevelUp { winner.profile.level += 1 }
 
         guard let mergedData = try? JSONEncoder().encode(winner) else { return }
 
@@ -183,25 +236,192 @@ final class CloudSaveManager: ObservableObject {
         }
     }
 
+    // MARK: - Monotonic entitlement merge (pure, testable)
+
+    /// Monotonically merge two entitlement snapshots so that the result is always
+    /// the "most restrictive" state — premium never downgrades, cooldowns never shorten,
+    /// intro counter never regresses.
+    ///
+    /// **Cooldown merge — "most restrictive wins":**
+    ///   - If either side has `nextPlayableDate != nil`, keep the one expiring LATER.
+    ///   - If both nil: take `max(dailyPlaysUsed)` + the later `dailyWindowStart`.
+    ///
+    /// This is a pure function with no side effects — safe for unit testing.
+    nonisolated static func mergeEntitlements(
+        local: EntitlementSnapshot,
+        cloud: EntitlementSnapshot
+    ) -> EntitlementSnapshot {
+        // Premium: OR — never lose premium (StoreKit listener re-verifies/revokes independently)
+        let premium = local.isPremium || cloud.isPremium
+        let byCode  = local.premiumByCode || cloud.premiumByCode
+        let code    = local.activeCodeID ?? cloud.activeCodeID
+
+        // Intro: max — you can't un-play intro sessions
+        let intro = max(local.freeIntroCompleted, cloud.freeIntroCompleted)
+
+        // Cooldown group: most restrictive wins
+        let plays:       Int
+        let playDate:    Date?
+        let windowStart: Date?
+
+        switch (local.nextPlayableDate, cloud.nextPlayableDate) {
+        case let (l?, c?):
+            // Both have an active cooldown — keep the one expiring later
+            if l >= c {
+                plays       = local.dailyPlaysUsed
+                playDate    = l
+                windowStart = local.dailyWindowStart
+            } else {
+                plays       = cloud.dailyPlaysUsed
+                playDate    = c
+                windowStart = cloud.dailyWindowStart
+            }
+        case let (l?, nil):
+            // Only local has cooldown — keep it
+            plays       = local.dailyPlaysUsed
+            playDate    = l
+            windowStart = local.dailyWindowStart
+        case let (nil, c?):
+            // Only cloud has cooldown — adopt it
+            plays       = cloud.dailyPlaysUsed
+            playDate    = c
+            windowStart = cloud.dailyWindowStart
+        case (nil, nil):
+            // Neither has cooldown — take max plays + later window
+            plays = max(local.dailyPlaysUsed, cloud.dailyPlaysUsed)
+            if let lw = local.dailyWindowStart, let cw = cloud.dailyWindowStart {
+                windowStart = lw >= cw ? lw : cw
+            } else {
+                windowStart = local.dailyWindowStart ?? cloud.dailyWindowStart
+            }
+            playDate = nil
+        }
+
+        return EntitlementSnapshot(
+            isPremium:          premium,
+            premiumByCode:      byCode,
+            activeCodeID:       code,
+            freeIntroCompleted: intro,
+            dailyPlaysUsed:     plays,
+            nextPlayableDate:   playDate,
+            dailyWindowStart:   windowStart
+        )
+    }
+
+    // MARK: - Monotonic onboarding merge (pure, testable)
+
+    /// OR-merge two onboarding snapshots — once a flag is true it never reverts.
+    nonisolated static func mergeOnboarding(
+        local: OnboardingSnapshot,
+        cloud: OnboardingSnapshot
+    ) -> OnboardingSnapshot {
+        OnboardingSnapshot(
+            hasCompletedIntro:     local.hasCompletedIntro     || cloud.hasCompletedIntro,
+            hasSeenNarrativeIntro: local.hasSeenNarrativeIntro || cloud.hasSeenNarrativeIntro,
+            hasShownFirstHook:     local.hasShownFirstHook     || cloud.hasShownFirstHook
+        )
+    }
+
+    // MARK: - Monotonic mechanic-unlock merge (pure, testable)
+
+    /// Union-merge two mechanic-unlock sets — once announced, never unannounced.
+    nonisolated static func mergeMechanicUnlocks(
+        local: [String],
+        cloud: [String]
+    ) -> [String] {
+        Array(Set(local).union(cloud)).sorted()
+    }
+
+    // MARK: - Monotonic story-seen merge (pure, testable)
+
+    /// Union-merge two story-seen-ID sets — once seen, never unseen.
+    nonisolated static func mergeStorySeenIDs(
+        local: [String],
+        cloud: [String]
+    ) -> [String] {
+        Array(Set(local).union(cloud)).sorted()
+    }
+
     // MARK: - Private — helpers
 
-    /// Union-merge the local profile's completions into `payload` so no level is ever lost.
+    /// Union-merge local profile, entitlement, onboarding, and mechanics into `payload`
+    /// so no progress is ever lost and no state regresses.
     private func mergeLocalInto(_ payload: inout CloudSavePayload) {
         let local = ProgressionStore.profile
+        Self.mergeProfiles(local: local, into: &payload.profile)
+
+        // Merge entitlement state: local always has a snapshot; payload may not (v1)
+        let localEnt = EntitlementStore.shared.currentSnapshot
+        if let cloudEnt = payload.entitlement {
+            payload.entitlement = Self.mergeEntitlements(local: localEnt, cloud: cloudEnt)
+        } else {
+            payload.entitlement = localEnt
+        }
+
+        // Merge onboarding: OR-merge local vs cloud
+        let localOnb = OnboardingStore.currentSnapshot
+        if let cloudOnb = payload.onboarding {
+            payload.onboarding = Self.mergeOnboarding(local: localOnb, cloud: cloudOnb)
+        } else {
+            payload.onboarding = localOnb
+        }
+
+        // Merge mechanic unlocks: union-merge local vs cloud
+        let localMech = MechanicUnlockStore.announcedRawValues
+        if let cloudMech = payload.mechanicUnlocks {
+            payload.mechanicUnlocks = Self.mergeMechanicUnlocks(local: localMech, cloud: cloudMech)
+        } else {
+            payload.mechanicUnlocks = localMech
+        }
+
+        // Merge story seen IDs: union-merge local vs cloud
+        let localSeen = Array(StoryStore.seenIDs).sorted()
+        if let cloudSeen = payload.storySeenIDs {
+            payload.storySeenIDs = Self.mergeStorySeenIDs(local: localSeen, cloud: cloudSeen)
+        } else {
+            payload.storySeenIDs = localSeen
+        }
+    }
+
+    // MARK: - Monotonic profile merge (pure, testable)
+
+    /// Monotonically merge `local` into `cloud` so that every per-level score and
+    /// every scalar counter in `cloud` is ≥ the maximum of the two inputs.
+    ///
+    /// **Invariant:** a merge never downgrades player progress.
+    ///
+    /// This is a pure function with no side effects — safe for unit testing.
+    nonisolated static func mergeProfiles(local: AstronautProfile, into cloud: inout AstronautProfile) {
+        // bestEfficiencyByLevel: take max from both sides
         for (k, v) in local.bestEfficiencyByLevel {
-            let existing = payload.profile.bestEfficiencyByLevel[k] ?? 0
-            payload.profile.bestEfficiencyByLevel[k] = max(v, existing)
+            cloud.bestEfficiencyByLevel[k] = max(v, cloud.bestEfficiencyByLevel[k] ?? 0)
         }
-        for (k, v) in local.lastEfficiencyByLevel where payload.profile.lastEfficiencyByLevel[k] == nil {
-            payload.profile.lastEfficiencyByLevel[k] = v
+        // lastEfficiencyByLevel: take max from both sides (never regress gating progress)
+        for (k, v) in local.lastEfficiencyByLevel {
+            cloud.lastEfficiencyByLevel[k] = max(v, cloud.lastEfficiencyByLevel[k] ?? 0)
         }
-        // Re-run level-up in case merged completions push level higher
-        while payload.profile.canLevelUp { payload.profile.level += 1 }
+        // Scalar counters: always take the higher value
+        cloud.totalScore = max(local.totalScore, cloud.totalScore)
+        // Level: cascade from merged data, then take the higher of cascaded vs local
+        while cloud.canLevelUp { cloud.level += 1 }
+        cloud.level = max(local.level, cloud.level)
     }
 
     private func applyLocally(_ payload: CloudSavePayload) {
         ProgressionStore.save(payload.profile)
         PassStore.restore(payload.passes)
+        if let cloudEnt = payload.entitlement {
+            EntitlementStore.shared.applyCloudState(cloudEnt)
+        }
+        if let cloudOnb = payload.onboarding {
+            OnboardingStore.applyCloudState(cloudOnb)
+        }
+        if let cloudMech = payload.mechanicUnlocks {
+            MechanicUnlockStore.applyCloudState(cloudMech)
+        }
+        if let cloudSeen = payload.storySeenIDs {
+            StoryStore.applyCloudState(cloudSeen)
+        }
         persistSyncDate(payload.lastUpdated)
     }
 

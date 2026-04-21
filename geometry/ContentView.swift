@@ -18,6 +18,9 @@ struct ContentView: View {
     // Set when an explicit user tap (Next Mission) arms the paywall after beats play.
     @State private var pendingPaywallBypassesHook: Bool = false
 
+    // ── Versus mode ──────────────────────────────────────────────────────
+    @State private var showingVersus: Bool = false
+
     // ── Multi-step intro flow ──────────────────────────────────────────────
     /// nil = intro complete (player goes to Home as normal).
     enum IntroStep: Equatable {
@@ -205,7 +208,8 @@ struct ContentView: View {
                 HomeView(
                     onPlay:     { level in tryPlay(level) },
                     onMissions: { showingLevelSelect = true },
-                    onUpgrade:  { showPaywall(.homeSoftCTA) }
+                    onUpgrade:  { showPaywall(.homeSoftCTA) },
+                    onVersus:   { showingVersus = true }
                 )
                 .transition(.asymmetric(
                     insertion: .move(edge: .leading),
@@ -266,6 +270,14 @@ struct ContentView: View {
             )
             .environmentObject(SettingsStore.shared)
             .environmentObject(EntitlementStore.shared)
+        }
+        .fullScreenCover(isPresented: $showingVersus) {
+            VersusView(
+                matchManager: VersusMatchmakingManager.shared,
+                onDismiss: { showingVersus = false }
+            )
+            .environmentObject(VersusMatchmakingManager.shared)
+            .environmentObject(SettingsStore.shared)
         }
         // Dispatch deferred post-win beat batches when returning to Home
         .onChange(of: activeLevel?.id) { oldID, newID in

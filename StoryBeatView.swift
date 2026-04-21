@@ -753,13 +753,19 @@ final class StoryBeatQueue {
     /// Call when the player returns to Home. Flattens ALL pending batches,
     /// deduplicates by beat ID, and enqueues them all — no beat is silently
     /// dropped when multiple wins happened in a single session.
+    ///
+    /// UserDefaults is cleared AFTER enqueueing so that an app kill between
+    /// the clear and the enqueue cannot silently lose beats.
     func dispatchPendingBatches() {
         guard !pendingBatches.isEmpty else { return }
-        UserDefaults.standard.removeObject(forKey: Self.pendingKey)
-        var seenIDs = Set<String>()
-        let all = pendingBatches.flatMap { $0 }.filter { seenIDs.insert($0.id).inserted }
+        var dedup = Set<String>()
+        let all = pendingBatches.flatMap { $0 }.filter { dedup.insert($0.id).inserted }
         pendingBatches.removeAll()
         if !all.isEmpty { enqueue(all) }
+        // Clear persistence AFTER enqueue — beats are now in the live queue.
+        // If app is killed after this point the beats are mid-display and will
+        // be filtered as "already seen" on next restore (advance → markSeen).
+        UserDefaults.standard.removeObject(forKey: Self.pendingKey)
     }
 
     /// Dismiss the current beat (marks it seen) and advance to the next, if any.
@@ -781,11 +787,20 @@ final class StoryBeatQueue {
     // MARK: - Persistence
 
     /// Restore any pending batches that were staged before an app kill.
+    ///
+    /// Filters out beats that were already marked as seen — handles the case where
+    /// the app was killed after `advance()` persisted the seen state but before
+    /// UserDefaults cleared the pending list.
     private func restoreIfNeeded() {
         let ids = UserDefaults.standard.stringArray(forKey: Self.pendingKey) ?? []
         guard !ids.isEmpty else { return }
-        let beats = ids.compactMap { id in StoryBeatCatalog.beats.first(where: { $0.id == id }) }
-        guard !beats.isEmpty else {
+        let beats = ids.compactMap { id in
+            // Only restore beats that exist in the catalog AND haven't been seen yet
+            guard !StoryStore.isSeen(id) else { return nil as StoryBeat? }
+            return StoryBeatCatalog.beats.first(where: { $0.id == id })
+        }
+        if beats.isEmpty {
+            // All restored beats were already seen — clean up stale persistence
             UserDefaults.standard.removeObject(forKey: Self.pendingKey)
             return
         }

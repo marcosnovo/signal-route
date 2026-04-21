@@ -183,6 +183,15 @@ struct GameView: View {
             }
         }
         .task {
+            // Recover any mechanic story beats orphaned by a prior app kill.
+            // If a mechanic was announced (MechanicUnlockStore) but its story beat
+            // was never marked as seen (StoryStore), re-enqueue it now.
+            for mechanic in MechanicType.allCases where MechanicUnlockStore.hasAnnounced(mechanic) {
+                let ctx = StoryContext.forMechanic(mechanic, level: ProgressionStore.profile.level)
+                if let beat = StoryStore.pending(for: .mechanicUnlocked, context: ctx) {
+                    mechanicStoryQueue.enqueue(beat)
+                }
+            }
             // Let SwiftUI finish its first layout pass, then reveal the board.
             try? await Task.sleep(nanoseconds: 350_000_000)
             withAnimation(.easeOut(duration: 0.25)) { missionLoading = false }

@@ -405,7 +405,6 @@ struct AppStrings {
     func storyTriggerLabel(_ trigger: StoryTrigger) -> String {
         switch trigger {
         case .firstLaunch:          return t("MISSION BRIEF",       "INFORME DE MISIÓN",       "BRIEFING MISSION")
-        case .postOnboarding:       return t("TRAINING COMPLETE",   "ENTRENAMIENTO LISTO",     "ENTRAÎNEMENT TERMINÉ")
         case .firstMissionReady:    return t("MISSION READY",       "MISIÓN LISTA",            "MISSION PRÊTE")
         case .firstMissionComplete: return t("MISSION REPORT",      "INFORME DE MISIÓN",       "RAPPORT DE MISSION")
         case .onboardingComplete:   return t("GATE ACTIVE",         "COMPUERTA ACTIVA",        "PORTE ACTIVE")

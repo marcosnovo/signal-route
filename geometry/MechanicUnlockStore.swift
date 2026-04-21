@@ -20,6 +20,21 @@ enum MechanicUnlockStore {
         announced = set
     }
 
+    // MARK: - Cloud sync
+
+    /// Current announced mechanics as sorted raw-value strings for cloud save.
+    static var announcedRawValues: [String] {
+        Array(announced).sorted()
+    }
+
+    /// Apply a merged set of mechanic unlocks from the cloud.
+    /// Only adds — never removes an already-announced mechanic.
+    static func applyCloudState(_ rawValues: [String]) {
+        var set = announced
+        for rv in rawValues { set.insert(rv) }
+        announced = set
+    }
+
     // MARK: - Debug
 
     static func reset() {
