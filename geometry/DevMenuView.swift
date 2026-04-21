@@ -1119,6 +1119,7 @@ struct DevMenuView: View {
             }
 
             // Clock-hardening diagnostics
+            #if DEBUG
             if store.nextPlayableDate != nil {
                 let diag = store.clockDiagnostics
                 VStack(spacing: 2) {
@@ -1146,6 +1147,7 @@ struct DevMenuView: View {
                 }
                 .padding(.horizontal, 16).padding(.bottom, 6)
             }
+            #endif
 
             TechDivider()
 
