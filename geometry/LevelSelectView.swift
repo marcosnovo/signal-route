@@ -14,21 +14,14 @@ struct MissionMapView: View {
 
     private var profile: AstronautProfile { ProgressionStore.profile }
 
-    @State private var appeared = false
-
-
 
     var body: some View {
         ZStack {
             AppTheme.backgroundPrimary.ignoresSafeArea()
             BackgroundGrid()
-            StarMapBackground()      // subtle twinkling star layer
 
             VStack(spacing: 0) {
                 header
-                    .opacity(appeared ? 1 : 0)
-                    .offset(y: appeared ? 0 : -10)
-                    .animation(.easeOut(duration: 0.35).delay(0.04), value: appeared)
 
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -58,7 +51,8 @@ struct MissionMapView: View {
                 }
             }
         }
-        .onAppear { appeared = true }
+
+
     }
 
     // MARK: - Header
@@ -66,20 +60,18 @@ struct MissionMapView: View {
     private var header: some View {
         HStack {
             Button(action: onDismiss) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.left").font(.system(size: 11, weight: .bold))
-                    TechLabel(text: S.back)
+                HStack(spacing: 5) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                    TechLabel(text: S.close)
                 }
-                .foregroundStyle(AppTheme.textSecondary)
+                .foregroundStyle(AppTheme.textPrimary.opacity(0.65))
             }
 
             Spacer()
 
             VStack(spacing: 2) {
-                Text(S.missionMapTitle)
-                    .font(AppTheme.mono(13, weight: .bold))
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .kerning(2)
+                TechLabel(text: S.missionMapTitle, color: AppTheme.sage)
                 TechLabel(
                     text: S.missionsComplete(done: profile.uniqueCompletions, total: LevelGenerator.levels.count),
                     color: AppTheme.accentPrimary
@@ -88,12 +80,14 @@ struct MissionMapView: View {
 
             Spacer()
 
-            Color.clear.frame(width: 60)
+            // Balance spacer (invisible mirror of close button)
+            HStack(spacing: 5) {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+                TechLabel(text: S.close)
+            }.opacity(0)
         }
         .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
-        .background(AppTheme.backgroundSecondary.ignoresSafeArea(edges: .top))
+        .padding(.vertical, 14)
         .overlay(alignment: .bottom) { TechDivider() }
     }
 

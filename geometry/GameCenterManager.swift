@@ -97,13 +97,12 @@ final class GameCenterManager: ObservableObject {
 
     // MARK: - Leaderboard — submit
 
-    /// Convert efficiency (0–1) to a 0–1000 integer leaderboard score and submit it.
+    /// Submit the player's cumulative leaderboard score (sum of best per-level weighted scores).
     /// Also loads the player's rank and updates `rankFeedback` for the victory screen.
     /// No-op if Game Center is not authenticated.
-    func submitScore(efficiency: Float) async {
+    func submitScore(_ score: Int) async {
         guard isAuthenticated else { return }
         rankFeedback = nil
-        let score = Int((efficiency * 1000).rounded())
         lastSubmittedScore = score
 
         do {

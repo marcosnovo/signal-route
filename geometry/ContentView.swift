@@ -249,7 +249,7 @@ struct ContentView: View {
         .animation(.spring(response: 0.44, dampingFraction: 0.88), value: introStep)
         .animation(.easeInOut(duration: 0.30), value: storyQueue.current?.id)
         // ── Mission map modal ────────────────────────────────────────────
-        .fullScreenCover(isPresented: $showingLevelSelect) {
+        .sheet(isPresented: $showingLevelSelect) {
             MissionMapView(
                 onSelect: { level in
                     showingLevelSelect = false

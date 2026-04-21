@@ -209,6 +209,58 @@ enum GameStatus: Equatable {
     case playing, won, lost
 }
 
+// MARK: - Level Scoring
+/// Pure scoring helpers — no state, no side effects.
+enum LevelScoring {
+
+    /// Difficulty multiplier (higher tiers = more points).
+    static func difficultyMultiplier(for tier: DifficultyTier) -> Float {
+        switch tier {
+        case .easy:   return 1.0
+        case .medium: return 1.5
+        case .hard:   return 2.25
+        case .expert: return 3.5
+        }
+    }
+
+    /// Grid size multiplier (larger boards = more points).
+    static func gridMultiplier(for gridSize: Int) -> Float {
+        switch gridSize {
+        case ...4:  return 1.0
+        case 5:     return 1.2
+        default:    return 1.5   // 6×6+
+        }
+    }
+
+    /// Objective type multiplier (special objectives = bonus).
+    static func objectiveMultiplier(for type: LevelObjectiveType) -> Float {
+        switch type {
+        case .normal:       return 1.0
+        case .maxCoverage:  return 1.15
+        case .energySaving: return 1.25
+        }
+    }
+
+    /// Time pressure bonus (timed levels = 10% bonus).
+    static func timePressureMultiplier(timed: Bool) -> Float {
+        timed ? 1.1 : 1.0
+    }
+
+    /// Maximum achievable points for a level at 100% quality.
+    static func basePoints(for level: Level) -> Float {
+        1000.0
+            * difficultyMultiplier(for: level.difficulty)
+            * gridMultiplier(for: level.gridSize)
+            * objectiveMultiplier(for: level.objectiveType)
+            * timePressureMultiplier(timed: level.timeLimit != nil)
+    }
+
+    /// Final score for a level, given the player's quality (0–1).
+    static func computeScore(level: Level, quality: Float) -> Int {
+        Int((basePoints(for: level) * quality).rounded())
+    }
+}
+
 // MARK: - GameResult
 /// Snapshot of a completed game session.
 struct GameResult {
@@ -368,6 +420,24 @@ struct AstronautProfile: Codable {
     /// Prevents farming: replaying a level with poor execution reduces its contribution
     /// to level-up progress.
     var lastEfficiencyByLevel: [String: Float] = [:]
+
+    /// Best difficulty-weighted score per level ID — for cumulative leaderboard.
+    /// Updated only when the new score strictly exceeds the previous best.
+    var bestScoreByLevel: [String: Int] = [:]
+
+    /// Cumulative leaderboard score: sum of best per-level weighted scores.
+    var leaderboardScore: Int { bestScoreByLevel.values.reduce(0, +) }
+
+    /// Backfills `bestScoreByLevel` from `bestEfficiencyByLevel` + level catalog
+    /// so existing players get their cumulative score on first post-update launch.
+    mutating func migrateScoresIfNeeded() {
+        guard bestScoreByLevel.isEmpty, !bestEfficiencyByLevel.isEmpty else { return }
+        for (key, efficiency) in bestEfficiencyByLevel {
+            guard let levelId = Int(key),
+                  let level = LevelGenerator.levels.first(where: { $0.id == levelId }) else { continue }
+            bestScoreByLevel[key] = LevelScoring.computeScore(level: level, quality: efficiency)
+        }
+    }
 
     // ── Computed — unique completion stats ────────────────────────────────
 

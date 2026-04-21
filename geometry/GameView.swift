@@ -292,9 +292,10 @@ struct GameView: View {
         // Notify ContentView immediately so it can collect story beats while context is accurate
         if !isIntro {
             onWin?(vm.currentLevel, vm.lastLevelUpEvent)
-            // Submit to Game Center leaderboard (fire-and-forget)
-            if let efficiency = vm.gameResult?.efficiency {
-                Task { await gcManager.submitScore(efficiency: efficiency) }
+            // Submit cumulative leaderboard score to Game Center (fire-and-forget)
+            let leaderboardScore = ProgressionStore.profile.leaderboardScore
+            if leaderboardScore > 0 {
+                Task { await gcManager.submitScore(leaderboardScore) }
             }
         }
 

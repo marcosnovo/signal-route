@@ -1559,7 +1559,7 @@ struct GameCenterManagerStateTests {
 
     @Test("lastSubmittedScore starts nil before any submission")
     func lastSubmittedScoreInitiallyNil() {
-        // lastSubmittedScore is only set inside submitScore(efficiency:).
+        // lastSubmittedScore is only set inside submitScore(_:).
         // Without a real GK session this must remain nil.
         #expect(GameCenterManager.shared.lastSubmittedScore == nil)
     }

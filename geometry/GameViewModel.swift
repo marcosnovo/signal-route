@@ -365,7 +365,7 @@ class GameViewModel: ObservableObject {
             quality = objectiveQuality
         }
 
-        let computedScore = status == .won ? 1000 + Int(quality * 2000) : 0
+        let computedScore = status == .won ? LevelScoring.computeScore(level: currentLevel, quality: quality) : 0
 
         return GameResult(
             levelId:        currentLevel.id,

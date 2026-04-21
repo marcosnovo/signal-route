@@ -400,6 +400,10 @@ final class CloudSaveManager: ObservableObject {
         for (k, v) in local.lastEfficiencyByLevel {
             cloud.lastEfficiencyByLevel[k] = max(v, cloud.lastEfficiencyByLevel[k] ?? 0)
         }
+        // bestScoreByLevel: take max from both sides (cumulative leaderboard)
+        for (k, v) in local.bestScoreByLevel {
+            cloud.bestScoreByLevel[k] = max(v, cloud.bestScoreByLevel[k] ?? 0)
+        }
         // Scalar counters: always take the higher value
         cloud.totalScore = max(local.totalScore, cloud.totalScore)
         // Level: cascade from merged data, then take the higher of cascaded vs local

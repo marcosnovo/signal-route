@@ -35,9 +35,21 @@ enum ProgressionStore {
             return fresh
         }
 
-        // One-time migration: seed last-score store from best-score store
+        // One-time migrations
+        var needsSave = false
+
+        // Migration 1: seed last-score store from best-score store
         if decoded.lastEfficiencyByLevel.isEmpty && !decoded.bestEfficiencyByLevel.isEmpty {
             decoded.lastEfficiencyByLevel = decoded.bestEfficiencyByLevel
+            needsSave = true
+        }
+
+        // Migration 2: backfill weighted leaderboard scores from efficiency data
+        let hadScores = decoded.bestScoreByLevel.isEmpty
+        decoded.migrateScoresIfNeeded()
+        if hadScores && !decoded.bestScoreByLevel.isEmpty { needsSave = true }
+
+        if needsSave {
             save(decoded)   // save() also sets _cache
         } else {
             _cache = decoded
@@ -77,10 +89,16 @@ enum ProgressionStore {
 
         let key = String(result.levelId)
 
-        // Best score: update only when the new result strictly beats the previous best (for display).
+        // Best efficiency: update only when the new result strictly beats the previous best (for display).
         let previousBest = p.bestEfficiencyByLevel[key] ?? 0
         if result.efficiency > previousBest {
             p.bestEfficiencyByLevel[key] = result.efficiency
+        }
+
+        // Best weighted score: update only when the new score exceeds previous (for leaderboard).
+        let previousBestScore = p.bestScoreByLevel[key] ?? 0
+        if result.score > previousBestScore {
+            p.bestScoreByLevel[key] = result.score
         }
 
         // Last score: always overwrite regardless of quality (for level-up gating).
