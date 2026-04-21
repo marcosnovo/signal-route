@@ -32,6 +32,15 @@ class GameViewModel: ObservableObject {
     /// Populated when the game is won; used by GameView to animate the signal sweep.
     private(set) var signalPath: [(Int, Int)] = []
 
+    /// Pre-computed set of non-energized tiles adjacent to an energized tile.
+    /// Updated once per propagation so GameView doesn't need O(N) per tile per render.
+    private(set) var nearSignalPositions: Set<Int> = []
+
+    /// Packs (row, col) into a single Int for O(1) Set lookup.
+    func isNearSignal(row: Int, col: Int) -> Bool {
+        nearSignalPositions.contains(row &* 64 &+ col)
+    }
+
     // MARK: Mechanics — time limit
     @Published var timeRemaining: Int? = nil
 
@@ -59,7 +68,7 @@ class GameViewModel: ObservableObject {
         switch failureCause {
         case .fragileTileDepleted:  return "FRAGILE TILE BURNED OUT"
         case .chargeGateIncomplete: return "CHARGE GATE NOT ACTIVATED"
-        case .moveLimitExhausted:   return "SIGNAL ROUTE NOT FOUND"
+        case .moveLimitExhausted:   return "SIGNAL LOST IN VOID"
         }
     }
 
@@ -236,7 +245,7 @@ class GameViewModel: ObservableObject {
             scheduleDrift(row: row, col: col, delay: delay)
         }
 
-        updateConnections(processMechanics: true)
+        updateConnections(processMechanics: true, animated: false)
 
         if checkWin() {
             status = .won
@@ -282,7 +291,8 @@ class GameViewModel: ObservableObject {
                 wrongTapCol = -1
             }
         }
-        updateHint()
+        // Defer hint recalculation so the tap handler returns immediately
+        Task { @MainActor in updateHint() }
     }
 
     // MARK: - Soft hint update
@@ -483,7 +493,7 @@ class GameViewModel: ObservableObject {
 
             // Drift +1 clockwise — automatic, does NOT count as a move or use rotationsUsed
             tiles[row][col].rotate()
-            updateConnections(processMechanics: true)
+            updateConnections(processMechanics: true, animated: false)
             HapticsManager.light()
             SoundManager.play(.drift)
 
@@ -663,6 +673,24 @@ class GameViewModel: ObservableObject {
         }
         targetsOnline = onlineTargets
         activeNodes   = onlineNodes
+
+        // Pre-compute near-signal frontier for hint glow (avoids O(N) per tile in view)
+        if hintEnabled {
+            var frontier = Set<Int>()
+            let gs = gridSize
+            for r in 0..<gs {
+                for c in 0..<gs where !local[r][c].isEnergized {
+                    for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                        let nr = r + dr, nc = c + dc
+                        if nr >= 0, nr < gs, nc >= 0, nc < gs, local[nr][nc].isEnergized {
+                            frontier.insert(r &* 64 &+ c)
+                            break
+                        }
+                    }
+                }
+            }
+            nearSignalPositions = frontier
+        }
 
         if animated {
             withAnimation(.easeOut(duration: 0.15)) {

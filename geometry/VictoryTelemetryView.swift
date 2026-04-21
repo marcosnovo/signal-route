@@ -212,7 +212,7 @@ struct VictoryTelemetryView: View {
                 Image(systemName: "circle.grid.3x3")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(sageMid)
-                Text("SIGNAL ROUTE")
+                Text("SIGNAL VOID")
                     .font(.system(size: 9, weight: .bold))
                     .tracking(1.8)
                     .foregroundStyle(sageMid)

@@ -38,6 +38,8 @@ struct GameView: View {
     @State private var circuitErrorFlash: Double = 0
     /// Shown after mission 3 (first hook): "SIGNAL ESTABLISHED" + progress counter.
     @State private var showMilestone: Bool = false
+    /// Brief loading overlay shown on mission start — masks SwiftUI view rebuild jank.
+    @State private var missionLoading: Bool = true
 
     init(level: Level,
          isIntro: Bool = false,
@@ -171,6 +173,19 @@ struct GameView: View {
                     .transition(.opacity)
                     .zIndex(200)
             }
+
+            // Mission loading overlay — immediate dark screen with mission ID,
+            // masks SwiftUI view hierarchy rebuild and board generation jank.
+            if missionLoading {
+                MissionLoadingOverlay(missionId: vm.currentLevel.id)
+                    .transition(.opacity)
+                    .zIndex(300)
+            }
+        }
+        .task {
+            // Let SwiftUI finish its first layout pass, then reveal the board.
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            withAnimation(.easeOut(duration: 0.25)) { missionLoading = false }
         }
         .onDisappear {
             // If the player exits mid-game (not via win or loss), record as abandon
@@ -332,19 +347,19 @@ struct GameView: View {
     /// Flow-loop routing after the win animation settles.
     ///
     /// - Intro level: jump directly to the next step (no overlay).
-    /// - Missions 1–2: auto-advance to next mission after a short pause — addictive loop, no overlay.
-    /// - Mission 3 (first time): show the "SIGNAL ESTABLISHED" milestone for 2.2 s, then VictoryTelemetryView.
-    /// - Mission 3+: show the standard VictoryTelemetryView overlay.
+    /// - Missions 1–7: auto-advance to next mission after a short pause — addictive loop, no overlay.
+    /// - Mission 8 (first time): show the "SIGNAL ESTABLISHED" milestone for 2.2 s, then VictoryTelemetryView.
+    /// - Mission 8+: show the standard VictoryTelemetryView overlay.
     @MainActor
     private func autoAdvanceOrOverlay() {
         if isIntro {
             (onIntroComplete ?? onDismiss)()
-        } else if vm.currentLevel.id <= 2 {
+        } else if vm.currentLevel.id <= 7 {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 (onNextMission ?? onDismiss)()
             }
-        } else if vm.currentLevel.id == 3 && !OnboardingStore.hasShownFirstHook {
+        } else if vm.currentLevel.id == 8 && !OnboardingStore.hasShownFirstHook {
             OnboardingStore.markFirstHookShown()
             withAnimation(.spring(response: 0.44, dampingFraction: 0.76)) {
                 showMilestone = true
@@ -626,7 +641,7 @@ struct GameView: View {
                                     isFailureCulprit: vm.status == .lost
                                         && vm.culpritTiles.contains { $0.0 == row && $0.1 == col },
                                     interferenceScale: vm.activeAdjustments.interferenceScale,
-                                    isNearSignal:     isNearSignal(row: row, col: col),
+                                    isNearSignal:     vm.isNearSignal(row: row, col: col),
                                     isHintTarget:     vm.hintEnabled && vm.hintTileRow == row && vm.hintTileCol == col,
                                     isHintPulsing:    vm.hintPulsing,
                                     isWrongTap:       vm.wrongTapRow == row && vm.wrongTapCol == col,
@@ -726,15 +741,7 @@ struct GameView: View {
 
     /// Returns true when the tile at (row, col) is adjacent to at least one energized tile
     /// but is not itself energized — used to drive the energy-bias hint layer.
-    private func isNearSignal(row: Int, col: Int) -> Bool {
-        guard vm.hintEnabled && !vm.tiles[row][col].isEnergized else { return false }
-        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-            let nr = row + dr, nc = col + dc
-            guard nr >= 0, nr < vm.gridSize, nc >= 0, nc < vm.gridSize else { continue }
-            if vm.tiles[nr][nc].isEnergized { return true }
-        }
-        return false
-    }
+
 
     private var metricDivider: some View {
         Rectangle()
@@ -1228,13 +1235,13 @@ struct SectorCompleteView: View {
     private var planet: Planet {
         Planet.catalog[min(pass.planetIndex, Planet.catalog.count - 1)]
     }
-    /// The name of the sector just completed — taken directly from the pass so text and card are always consistent.
-    private var completedName: String { pass.planetName }
+    /// The name of the sector just completed — localized via AppStrings.
+    private var completedName: String { S.planetName(pass.planetName) }
     /// The name of the next planet being unlocked — nil when this is the final sector.
     private var nextPlanetName: String? {
         let nextIdx = pass.planetIndex + 1
         guard nextIdx < Planet.catalog.count else { return nil }
-        return Planet.catalog[nextIdx].name
+        return S.planetName(Planet.catalog[nextIdx].name)
     }
 
     @State private var titleAppeared   = false
@@ -1434,6 +1441,45 @@ struct MilestoneView: View {
             withAnimation(.spring(response: 0.42, dampingFraction: 0.82).delay(0.45)) {
                 counterRevealed = true
             }
+        }
+    }
+}
+
+// MARK: - MissionLoadingOverlay
+/// Full-screen dark overlay shown briefly while the board initializes.
+/// Gives instant visual feedback on tap and masks any SwiftUI rebuild jank.
+private struct MissionLoadingOverlay: View {
+    let missionId: Int
+    @State private var lineProgress: CGFloat = 0
+    @State private var labelOpacity: Double = 0
+
+    var body: some View {
+        ZStack {
+            AppTheme.backgroundPrimary.ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                Text("MISSION \(String(format: "%03d", missionId))")
+                    .font(AppTheme.mono(14, weight: .bold))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .opacity(labelOpacity)
+
+                // Animated signal line
+                GeometryReader { geo in
+                    Capsule()
+                        .fill(AppTheme.accentPrimary.opacity(0.6))
+                        .frame(width: geo.size.width * lineProgress, height: 2)
+                }
+                .frame(width: 120, height: 2)
+
+                Text("INITIALIZING")
+                    .font(AppTheme.mono(9, weight: .medium))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
+                    .opacity(labelOpacity)
+            }
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.15)) { labelOpacity = 1 }
+            withAnimation(.easeInOut(duration: 0.30)) { lineProgress = 1 }
         }
     }
 }

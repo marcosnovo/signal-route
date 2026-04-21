@@ -36,6 +36,17 @@ enum TileType {
         case .cross:    return [.north, .east, .south, .west]
         }
     }
+
+    /// Pre-computed connections for each of the 4 rotations — avoids Set allocation in hot loops.
+    static let rotatedConnections: [TileType: [Set<Direction>]] = {
+        var map = [TileType: [Set<Direction>]]()
+        for type in [TileType.straight, .curve, .tShape, .cross] {
+            map[type] = (0..<4).map { rot in
+                Set(type.baseConnections.map { $0.rotated(by: rot) })
+            }
+        }
+        return map
+    }()
 }
 
 // MARK: - NodeRole
@@ -69,7 +80,9 @@ struct Tile: Identifiable {
     /// Canonical blocked inbound directions at rotation 0.
     /// Empty set (default) = no restriction — identical to current behavior.
     /// Set by the level generator for one-way relay tiles.
-    var baseBlockedInboundDirections: Set<Direction> = []
+    var baseBlockedInboundDirections: Set<Direction> = [] {
+        didSet { _recomputeBlockedCache() }
+    }
 
     // MARK: — Fragile Tile mechanic (id ≥ 151)
     /// Non-nil = tile burns out after being energized this many player-move times.
@@ -91,11 +104,13 @@ struct Tile: Identifiable {
     /// True = visual static overlay applied; makes tile orientation harder to read.
     var hasInterference: Bool = false
 
+    /// Pre-computed blocked inbound directions for each rotation (0–3).
+    /// Avoids Set allocation in hot BFS loop.
+    var _blockedByRotation: [Set<Direction>] = [[], [], [], []]
+
     /// Directions (in grid space) from which energy cannot enter this tile at the current rotation.
-    /// Derived by rotating `baseBlockedInboundDirections` by the tile's current rotation.
-    /// This means the one-way constraint rotates with the tile as the player taps it.
     var blockedInboundDirections: Set<Direction> {
-        Set(baseBlockedInboundDirections.map { $0.rotated(by: rotation) })
+        _blockedByRotation[rotation]
     }
 
     var isRotationLocked: Bool {
@@ -115,11 +130,17 @@ struct Tile: Identifiable {
     }
 
     var connections: Set<Direction> {
-        Set(type.baseConnections.map { $0.rotated(by: rotation) })
+        TileType.rotatedConnections[type]![rotation]
     }
 
     mutating func rotate() {
         rotation = (rotation + 1) % 4
+    }
+
+    mutating func _recomputeBlockedCache() {
+        for r in 0..<4 {
+            _blockedByRotation[r] = Set(baseBlockedInboundDirections.map { $0.rotated(by: r) })
+        }
     }
 }
 
@@ -247,7 +268,7 @@ struct GameResult {
         let bar = String(repeating: "█", count: filled)
                 + String(repeating: "░", count: 5 - filled)
         return """
-        SIGNAL ROUTE · \(dateStr)
+        SIGNAL VOID · \(dateStr)
         \(success ? "SUCCESS ✓" : "FAILURE ✗")
         QUALITY  \(bar)  \(efficiencyPercent)%  [\(routeRating)]
         NODES  \(nodesActivated)/\(totalNodes)

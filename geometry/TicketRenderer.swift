@@ -9,7 +9,11 @@ enum TicketRenderer {
 
     // MARK: - Public API
 
-    /// Renders a 1080×1080 UIImage ticket for the given pass and player profile.
+    /// Renders a 720×720 UIImage ticket for the given pass and player profile.
+    ///
+    /// 720 px is optimal: fills the display at native resolution on all iPhones
+    /// (720 / 2 = 360 pt ≈ screen width minus padding) while being 56 % fewer
+    /// pixels than 1080, dramatically reducing render time.
     ///
     /// `format.scale = 1.0` forces pixel-accurate output: the CGContext coordinates
     /// map 1-to-1 to pixels regardless of the device's display scale factor.
@@ -17,10 +21,11 @@ enum TicketRenderer {
     /// `nonisolated` — UIGraphicsImageRenderer + Core Graphics drawing is documented
     /// thread-safe; this lets the call happen off the main thread via Task.detached.
     nonisolated static func render(pass: PlanetPass, profile: AstronautProfile) -> UIImage {
-        let size = CGSize(width: 1080, height: 1080)
+        let size = CGSize(width: 720, height: 720)
         let format = UIGraphicsImageRendererFormat()
         format.scale  = 1.0    // pixel-accurate: 1080 pt == 1080 px
         format.opaque = true
+        format.preferredRange = .standard   // sRGB — prevents color shift when shared
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
         return renderer.image { _ in
             drawTicket(pass: pass, profile: profile, in: size)
@@ -29,21 +34,31 @@ enum TicketRenderer {
 
     // MARK: - Orchestration
 
+    /// Design canvas is 1080×1080; `size` may be smaller (e.g. 720).
+    /// We apply a uniform scale so all coordinates stay in the 1080 design space.
     private static func drawTicket(pass: PlanetPass, profile: AstronautProfile, in size: CGSize) {
         let planet = Planet.catalog[min(pass.planetIndex, Planet.catalog.count - 1)]
         let accent = UIColor(planet.color)
 
+        // Scale CG context so all drawing uses the original 1080 coordinate space
+        let designSize: CGFloat = 1080
+        let scale = size.width / designSize
+        if let ctx = UIGraphicsGetCurrentContext(), scale != 1.0 {
+            ctx.scaleBy(x: scale, y: scale)
+        }
+        let canvas = CGSize(width: designSize, height: designSize)
+
         // Layer order: background → planet → astronaut → bars → text
-        drawBackground(in: size)
-        drawPlanetVisual(planetIndex: pass.planetIndex, accent: accent, in: size)
-        drawAstronautSilhouette(accent: accent, in: size)
-        drawLeftBar(accent: accent, height: size.height)
-        drawTopBar(pass: pass, planet: planet, in: size, accent: accent)
-        drawPlanetSection(pass: pass, planet: planet, in: size, accent: accent)
-        drawEfficiency(pass: pass, in: size, accent: accent)
-        hairline(x: 32, y: 742, width: size.width - 32, color: accent.withAlphaComponent(0.25))
-        drawStats(pass: pass, profile: profile, in: size, accent: accent)
-        drawFooter(pass: pass, in: size, accent: accent)
+        drawBackground(in: canvas)
+        drawPlanetVisual(planetIndex: pass.planetIndex, accent: accent, in: canvas)
+        drawAstronautSilhouette(accent: accent, in: canvas)
+        drawLeftBar(accent: accent, height: canvas.height)
+        drawTopBar(pass: pass, planet: planet, in: canvas, accent: accent)
+        drawPlanetSection(pass: pass, planet: planet, in: canvas, accent: accent)
+        drawEfficiency(pass: pass, in: canvas, accent: accent)
+        hairline(x: 32, y: 742, width: canvas.width - 32, color: accent.withAlphaComponent(0.25))
+        drawStats(pass: pass, profile: profile, in: canvas, accent: accent)
+        drawFooter(pass: pass, in: canvas, accent: accent)
     }
 
     // MARK: - Planet Visual
@@ -394,13 +409,6 @@ enum TicketRenderer {
     private static func drawBackground(in size: CGSize) {
         UIColor(red: 0.040, green: 0.047, blue: 0.059, alpha: 1).setFill()
         UIRectFill(CGRect(origin: .zero, size: size))
-        // Extremely faint scan lines — texture only, no readability impact
-        UIColor.white.withAlphaComponent(0.003).setFill()
-        var y: CGFloat = 0
-        while y < size.height {
-            UIRectFill(CGRect(x: 0, y: y, width: size.width, height: 1))
-            y += 5
-        }
     }
 
     // MARK: - Left Bar
@@ -420,7 +428,7 @@ enum TicketRenderer {
         UIRectFill(CGRect(x: 30, y: 0, width: size.width - 30, height: 90))
         hairline(x: 30, y: 90, width: size.width - 30, color: accent.withAlphaComponent(0.30))
 
-        draw("SIGNAL ROUTE", at: CGPoint(x: 66, y: 24),
+        draw("SIGNAL VOID", at: CGPoint(x: 66, y: 24),
              size: 22, weight: .bold, color: .white.withAlphaComponent(0.92), kern: 4)
         draw(pass.serialCode, at: CGPoint(x: 66, y: 54),
              size: 16, weight: .regular, color: .white.withAlphaComponent(0.72), kern: 2)

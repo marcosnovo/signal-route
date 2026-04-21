@@ -32,6 +32,9 @@ enum SoundManager {
         // Reactive audio
         case nearFailurePulse // sub-bass D2 thud — near-failure heartbeat (looped by AudioManager)
         case comboNote        // F#4→A4 micro chirp — 3+ consecutive connections reward
+        // Ticket interactions
+        case ticketOpen       // planet pass reveal — parchment unfold with electronic hum
+        case ticketMove       // ticket drag gesture — holographic card slide swoosh
 
         /// Minimum interval (seconds) before the same SFX can play again.
         /// Prevents audio stacking from rapid taps or tight loops.
@@ -49,8 +52,47 @@ enum SoundManager {
                 return 0.700   // looped externally every 850 ms — guard against double-fire
             case .comboNote:
                 return 0.100   // quick reward, but not faster than combos realistically fire
+            case .ticketOpen:
+                return 2.000   // one reveal per view appear
+            case .ticketMove:
+                return 0.300   // drag gesture — don't spam during continuous drag
             default:
                 return 0.200   // UI + win/lose + story — no need for rapid repeats
+            }
+        }
+
+        /// Bundle MP3 file name (without extension), or nil to use PCM synthesis.
+        nonisolated var bundleFileName: String? {
+            switch self {
+            case .tileRotate:       return "sfx_tileRotate"
+            case .tileLocked:       return "sfx_tileLocked"
+            case .relayEnergized:   return "sfx_relayEnergized"
+            case .targetOnline:     return "sfx_targetOnline"
+            case .win:              return "sfx_win"
+            case .lose:             return "sfx_lose"
+            case .overloadArm:      return "sfx_overloadArm"
+            case .mechanicUnlock:   return "sfx_mechanicUnlock"
+            case .sectorComplete:   return "sfx_sectorComplete"
+            case .tapPrimary:       return "sfx_tapPrimary"
+            case .uiSuccess:        return "sfx_uiSuccess"
+            case .nearFailurePulse: return "sfx_nearFailurePulse"
+            case .sonicLogoFull:    return "sfx_sonicLogoFull"
+            case .sonicLogoShort:   return "sfx_sonicLogoShort"
+            case .sonicLogoSubtle:  return "sfx_sonicLogoFull"   // same file, lower volume
+            case .ticketOpen:       return "sfx_ticketOpen"
+            case .ticketMove:       return "sfx_ticketMove"
+            // Ultra-short SFX — synthesis is more precise at <100ms
+            case .drift, .timerTick, .tapSecondary, .storyAdvance, .comboNote:
+                return nil
+            }
+        }
+
+        /// Playback volume for bundled SFX. Most play at full volume;
+        /// sonicLogoSubtle plays the full logo file at 35%.
+        nonisolated var bundleVolume: Float {
+            switch self {
+            case .sonicLogoSubtle: return 0.35
+            default: return 1.0
             }
         }
 
@@ -60,6 +102,7 @@ enum SoundManager {
             switch self {
             case .sonicLogoFull, .sonicLogoShort, .sonicLogoSubtle: return 1
             case .nearFailurePulse, .comboNote: return 2
+            case .ticketOpen, .ticketMove: return 1
             default: return 3
             }
         }
@@ -83,24 +126,31 @@ enum SoundManager {
     // MARK: - Public API
 
     /// Call once at app launch from an async context.
-    /// All heavy work (PCM synthesis + AVAudioPlayer creation) runs on a background thread
-    /// so the main thread is never blocked. Only the final pool assignment and music start
-    /// happen on the caller's actor context, and those are trivially fast.
+    /// Tries to load bundled MP3 SFX first (ElevenLabs-generated), falls back to PCM synthesis.
+    /// All heavy work runs on a background thread so the main thread never blocks.
     static func prepare() async {
         configureSession()
 
-        // Synthesise PCM, pack WAV, and build the player pool entirely off the main actor.
-        // Priority: .userInitiated — needs to complete before the player opens the first level.
         let readyPools: [SFX: [AVAudioPlayer]] =
             await Task.detached(priority: .userInitiated) {
-                let sfxDataList = SFX.allCases.map { wavData(samples: synthesizeMono($0), channels: 1) }
-
-                // Create and prepareToPlay on the background thread — safe for AVAudioPlayer.
                 var pools: [SFX: [AVAudioPlayer]] = [:]
-                for (sfx, data) in zip(SFX.allCases, sfxDataList) {
+
+                for sfx in SFX.allCases {
+                    // 1. Try loading bundled MP3 (AI-generated SFX).
+                    let data: Data
+                    if let bundleName = sfx.bundleFileName,
+                       let url = Bundle.main.url(forResource: bundleName, withExtension: "mp3"),
+                       let mp3Data = try? Data(contentsOf: url) {
+                        data = mp3Data
+                    } else {
+                        // 2. Fallback: synthesise from PCM.
+                        data = wavData(samples: synthesizeMono(sfx), channels: 1)
+                    }
+
+                    let volume: Float = sfx.bundleVolume
                     pools[sfx] = (0..<sfx.poolSize).compactMap { _ in
                         guard let p = try? AVAudioPlayer(data: data, fileTypeHint: nil) else { return nil }
-                        p.volume = 1.0
+                        p.volume = volume
                         p.prepareToPlay()
                         return p
                     }
@@ -188,6 +238,9 @@ enum SoundManager {
         // Reactive audio
         case .nearFailurePulse: return nearFailurePulse()
         case .comboNote:        return comboNote()
+        // Ticket — bundled MP3 only; fallback to a short chime if missing
+        case .ticketOpen:       return chime(freq: 293.66, dur: 0.5, amp: 0.3)
+        case .ticketMove:       return laser(f0: 293, f1: 440, dur: 0.06, decay: 60, amp: 0.2)
         }
     }
 

@@ -16,9 +16,7 @@ struct MissionMapView: View {
 
     @State private var appeared = false
 
-    #if DEBUG
-    @State private var auditRunning = false
-    #endif
+
 
     var body: some View {
         ZStack {
@@ -90,31 +88,12 @@ struct MissionMapView: View {
 
             Spacer()
 
-            #if DEBUG
-            HStack(spacing: 10) {
-                Button(action: { runAudit(useSolver: false) }) {
-                    TechLabel(
-                        text: auditRunning ? "…" : "AUDIT",
-                        color: auditRunning ? AppTheme.textSecondary : AppTheme.accentPrimary
-                    )
-                }
-                .disabled(auditRunning)
-                Button(action: { runAudit(useSolver: true) }) {
-                    TechLabel(
-                        text: auditRunning ? "…" : "SOLVE",
-                        color: auditRunning ? AppTheme.textSecondary : AppTheme.accentSecondary
-                    )
-                }
-                .disabled(auditRunning)
-            }
-            #else
             Color.clear.frame(width: 60)
-            #endif
         }
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 12)
-        .background(AppTheme.backgroundSecondary)
+        .background(AppTheme.backgroundSecondary.ignoresSafeArea(edges: .top))
         .overlay(alignment: .bottom) { TechDivider() }
     }
 
@@ -131,16 +110,6 @@ struct MissionMapView: View {
         }
     }
 
-    // MARK: - Debug audit
-
-    #if DEBUG
-    private func runAudit(useSolver: Bool) {
-        auditRunning = true
-        let reports = LevelValidationRunner.validateAll(useSolver: useSolver)
-        LevelValidationRunner.printReport(reports)
-        auditRunning = false
-    }
-    #endif
 }
 
 // MARK: - StarMapBackground
@@ -331,13 +300,13 @@ private struct SectorCard: View {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 5) {
                     statusBadge
-                    Text(region.name)
+                    Text(S.regionName(region.name))
                         .font(AppTheme.mono(18, weight: .black))
                         .foregroundStyle(displayState == .locked
                                          ? AppTheme.textSecondary.opacity(0.60)
                                          : AppTheme.textPrimary)
                         .kerning(1)
-                    Text(region.subtitle)
+                    Text(S.zoneBrief(region.subtitle))
                         .font(AppTheme.mono(9, weight: .regular))
                         .foregroundStyle(displayState == .locked
                                          ? AppTheme.textSecondary.opacity(0.45)

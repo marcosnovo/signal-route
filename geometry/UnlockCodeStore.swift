@@ -76,6 +76,15 @@ final class UnlockCodeStore: ObservableObject {
         case exhausted    // code reached its maxUses
     }
 
+    // MARK: - Built-in codes (shipped with every build — available to all players)
+
+    /// Add codes here so every player has them.  To retire a code, set `isActive: false`.
+    /// The dev menu is useful for testing locally; once confirmed, move the code here.
+    static let builtInCodes: [UnlockCode] = [
+        UnlockCode(code: "SIGNALRM", type: .fullUnlock, isActive: true,
+                   maxUses: nil, usesCount: 0, note: "Full unlock — all players"),
+    ]
+
     // MARK: - Persistence
 
     private let storageKey = "unlockCodeStore.codes.v1"
@@ -178,9 +187,21 @@ final class UnlockCodeStore: ObservableObject {
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode([UnlockCode].self, from: data)
-        else { return }
-        codes = decoded
+        // Local codes (dev-menu created, per-device)
+        var local: [UnlockCode] = []
+        if let data = UserDefaults.standard.data(forKey: storageKey),
+           let decoded = try? JSONDecoder().decode([UnlockCode].self, from: data) {
+            local = decoded
+        }
+
+        // Merge: built-in codes always present; local codes kept alongside.
+        // If a built-in code has the same key as a local one, the built-in
+        // definition wins (so you can deactivate a code by shipping a new build).
+        var merged: [UnlockCode] = Self.builtInCodes
+        let builtInKeys = Set(Self.builtInCodes.map(\.code))
+        for c in local where !builtInKeys.contains(c.code) {
+            merged.append(c)
+        }
+        codes = merged
     }
 }

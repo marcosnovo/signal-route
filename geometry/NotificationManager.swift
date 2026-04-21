@@ -1,7 +1,7 @@
 import UserNotifications
 
 // MARK: - NotificationManager
-/// Central manager for all local notifications in Signal Route.
+/// Central manager for all local notifications in Signal Void.
 ///
 /// ## Notification categories (extensible)
 ///   - `cooldown_expired`  — fired when the 24h free-user gate lifts

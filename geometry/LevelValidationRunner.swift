@@ -288,7 +288,7 @@ enum LevelValidationRunner {
 
         print("")
         print("╔══════════════════════════════════════════════════════════╗")
-        print("║       SIGNAL ROUTE — CATALOGUE AUDIT                    ║")
+        print("║       SIGNAL VOID — CATALOGUE AUDIT                    ║")
         print("╠══════════════════════════════════════════════════════════╣")
         print(String(format: "║  Total levels     : %-36d║", total))
         print(String(format: "║  Levels warned    : %-36d║", warned))
@@ -686,7 +686,7 @@ enum DifficultyDataset {
     static func printTable(_ dataset: [LevelDifficultyMetrics]) {
         print("")
         print("╔═══════════════════════════════════════════════════════════════════════════════════════════╗")
-        print("║  SIGNAL ROUTE — DIFFICULTY DATASET                                                       ║")
+        print("║  SIGNAL VOID — DIFFICULTY DATASET                                                       ║")
         print("╠═══════════════════════════════════════════════════════════════════════════════════════════╣")
         print("║  ! LVL  DECLARED  COMPUTED(sc)  GRD  TGT  OBJ  TIME  minM  maxM  buf   cx  MECHANICS     ║")
         print("╠═══════════════════════════════════════════════════════════════════════════════════════════╣")
@@ -1021,7 +1021,7 @@ enum LevelIssueDetector {
 
         print("")
         print("╔══════════════════════════════════════════════════════════════╗")
-        print("║  SIGNAL ROUTE — BALANCE ISSUE REPORT                        ║")
+        print("║  SIGNAL VOID — BALANCE ISSUE REPORT                        ║")
         print(String(format: "║  Total: %-3d   Critical: %-3d   Warnings: %-3d               ║",
             issues.count, criticals.count, warnings.count))
         print("╚══════════════════════════════════════════════════════════════╝")
@@ -1250,7 +1250,7 @@ enum RebalancingEngine {
 
         print("")
         print("╔══════════════════════════════════════════════════════════════════════╗")
-        print("║  SIGNAL ROUTE — AUTO REBALANCE REPORT                               ║")
+        print("║  SIGNAL VOID — AUTO REBALANCE REPORT                               ║")
         print(String(format: "║  Total: %-3d  OK: %-3d  Tighten: %-3d  Loosen: %-3d  |Δ|sum: %-4d   ║",
             suggestions.count,
             suggestions.count - changes.count,
@@ -1523,7 +1523,7 @@ enum DifficultyCurveAnalyzer {
     static func printReport(phases: [PhaseReport], anomalies: [CurveAnomaly]) {
         print("")
         print("╔══════════════════════════════════════════════════════════════════╗")
-        print("║  SIGNAL ROUTE — GLOBAL DIFFICULTY CURVE                         ║")
+        print("║  SIGNAL VOID — GLOBAL DIFFICULTY CURVE                         ║")
         print("╚══════════════════════════════════════════════════════════════════╝")
         print("")
         print("  ── PHASE HEALTH ──────────────────────────────────────────────────")

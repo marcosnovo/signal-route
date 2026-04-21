@@ -246,6 +246,7 @@ struct PlanetPass3DView: View {
                 .onChanged { value in
                     if !isDragging {
                         isDragging = true
+                        SoundManager.play(.ticketMove)
                         // Freeze any in-flight idle drift so it doesn't fight the gesture.
                         // Dampen motion to 15% — just enough to feel alive, not enough to blur drag intent.
                         withAnimation(.easeOut(duration: 0.12)) {
@@ -294,7 +295,7 @@ struct PlanetPass3DView: View {
                 }
             }
         }
-        .onAppear    { motion.start() }
+        .onAppear    { motion.start(); SoundManager.play(.ticketOpen) }
         .onDisappear { motion.stop()  }
         .task { await runEntrySequence() }
         .task { await runIdleMotion()   }
@@ -367,9 +368,20 @@ struct PlanetPass3DView: View {
     }
 
     private var ticketImage: some View {
-        Image(uiImage: image)
+        let ty = Float(activeTiltY)
+        let tx = Float(activeTiltX)
+        return Image(uiImage: image)
             .resizable()
             .scaledToFit()
+            .visualEffect { content, proxy in
+                content.colorEffect(
+                    ShaderLibrary.holographic(
+                        .float2(Float(proxy.size.width), Float(proxy.size.height)),
+                        .float(ty),
+                        .float(tx)
+                    )
+                )
+            }
             .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -705,7 +717,7 @@ struct PlanetPass3DView: View {
                         .font(.system(size: 22, weight: .thin))
                         .foregroundStyle(accentColor.opacity(0.70))
 
-                    Text("SIGNAL ROUTE")
+                    Text("SIGNAL VOID")
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .tracking(5)
                         .foregroundStyle(Color.white.opacity(0.52))

@@ -8,6 +8,9 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: SettingsStore
     @Environment(\.dismiss) private var dismiss
 
+    @State private var showingTerms = false
+    @State private var showingPrivacy = false
+
     private var S: AppStrings { AppStrings(lang: settings.language) }
 
     var body: some View {
@@ -45,6 +48,8 @@ struct SettingsView: View {
 
                         languageSection
 
+                        legalSection
+
                         buildInfo
                     }
                     .padding(20)
@@ -64,7 +69,7 @@ struct SettingsView: View {
                         .font(.system(size: 10, weight: .bold))
                     TechLabel(text: S.close)
                 }
-                .foregroundStyle(AppTheme.textSecondary)
+                .foregroundStyle(AppTheme.textPrimary.opacity(0.65))
             }
             Spacer()
             TechLabel(text: S.systemConfig, color: AppTheme.sage)
@@ -170,6 +175,58 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: Legal section
+
+    private var legalSection: some View {
+        settingsSection(title: S.legalSection) {
+            legalRow(icon: "doc.text.fill",
+                     label: S.termsTitle,
+                     sub: S.termsSub) { showingTerms = true }
+            TechDivider()
+            legalRow(icon: "lock.shield.fill",
+                     label: S.privacyTitle,
+                     sub: S.privacySub) { showingPrivacy = true }
+        }
+        .sheet(isPresented: $showingTerms) {
+            LegalTextView(title: S.termsTitle, content: S.termsBody)
+                .environmentObject(settings)
+        }
+        .sheet(isPresented: $showingPrivacy) {
+            LegalTextView(title: S.privacyTitle, content: S.privacyBody)
+                .environmentObject(settings)
+        }
+    }
+
+    private func legalRow(icon: String, label: String,
+                           sub: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .frame(width: 24)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(label)
+                        .font(AppTheme.mono(12, weight: .semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .kerning(0.5)
+                    Text(sub)
+                        .font(AppTheme.mono(9))
+                        .foregroundStyle(AppTheme.sage.opacity(0.55))
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+        }
+    }
+
     // MARK: Build info
 
     private var buildInfo: some View {
@@ -178,12 +235,66 @@ struct SettingsView: View {
                 .fill(AppTheme.sage.opacity(0.14))
                 .frame(height: 0.5)
             HStack {
-                TechLabel(text: "SIGNAL ROUTE  ·  v1.0")
+                TechLabel(text: "SIGNAL VOID  ·  v1.0.1")
                 Spacer()
                 TechLabel(text: "\(LevelGenerator.levels.count) \(S.missionsLabel)",
                           color: AppTheme.sage.opacity(0.55))
             }
         }
         .padding(.top, 8)
+    }
+}
+
+// MARK: - LegalTextView
+
+/// Full-screen sheet displaying Terms or Privacy Policy text.
+private struct LegalTextView: View {
+
+    let title: String
+    let content: String
+
+    @EnvironmentObject private var settings: SettingsStore
+    @Environment(\.dismiss) private var dismiss
+
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
+    var body: some View {
+        ZStack {
+            AppTheme.backgroundPrimary.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Nav strip
+                HStack {
+                    Button(action: { dismiss() }) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                            TechLabel(text: S.close)
+                        }
+                        .foregroundStyle(AppTheme.textPrimary.opacity(0.65))
+                    }
+                    Spacer()
+                    TechLabel(text: title, color: AppTheme.sage)
+                    Spacer()
+                    // Balance spacer
+                    HStack(spacing: 5) {
+                        Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+                        TechLabel(text: S.close)
+                    }.opacity(0)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .overlay(alignment: .bottom) { TechDivider() }
+
+                ScrollView {
+                    Text(content)
+                        .font(AppTheme.mono(10))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .lineSpacing(5)
+                        .padding(20)
+                        .padding(.bottom, 40)
+                }
+            }
+        }
     }
 }

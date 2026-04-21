@@ -86,7 +86,7 @@ struct SplashView: View {
                     .opacity(0.55)
             }
 
-            Text("SIGNAL ROUTE")
+            Text("SIGNAL VOID")
                 .font(AppTheme.mono(32, weight: .black))
                 .foregroundStyle(Color.white)
                 .kerning(5)

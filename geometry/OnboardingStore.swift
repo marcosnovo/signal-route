@@ -36,11 +36,11 @@ enum OnboardingStore {
         UserDefaults.standard.set(true, forKey: narrativeKey)
     }
 
-    // ── First hook milestone (mission 3) ──────────────────────────────────
+    // ── First hook milestone (mission 8) ──────────────────────────────────
 
     private static let firstHookKey = "hasShownFirstHook"
 
-    /// True once the mission-3 "SIGNAL ESTABLISHED" milestone has been displayed.
+    /// True once the mission-8 "SIGNAL ESTABLISHED" milestone has been displayed.
     static var hasShownFirstHook: Bool {
         UserDefaults.standard.bool(forKey: firstHookKey)
     }

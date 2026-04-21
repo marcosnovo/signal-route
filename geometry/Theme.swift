@@ -44,7 +44,7 @@ enum AppTheme {
     static let sage                = Color(hex: "C7D7C6")   // muted sage — functional labels & data guides
     static let surfacePrimary      = sage                    // #C7D7C6 light functional surface
     static let textPrimary         = Color(hex: "F0EDE8")   // off-white
-    static let textSecondary       = Color(hex: "8A8A8A")   // technical gray (AA contrast on dark bg)
+    static let textSecondary       = Color(hex: "9A9A9A")   // technical gray (AA+ contrast on dark bg)
     static let stroke              = Color.white.opacity(0.08)
     static let strokeBright        = Color.white.opacity(0.15)
     static let danger              = Color(hex: "E84040")
@@ -191,7 +191,7 @@ struct TechLabel: View {
 
     var body: some View {
         Text(text)
-            .font(AppTheme.mono(8, weight: .semibold))
+            .font(AppTheme.mono(9, weight: .semibold))
             .foregroundStyle(color)
             .kerning(1.5)
     }

@@ -58,7 +58,7 @@ struct ContentView: View {
 
     private var audioState: AudioState {
         if showingPaywall              { return .cooldown  }   // silence: only SFX during paywall decision
-        if showingLevelSelect          { return .cooldown  }   // silence: decision moment, no music distraction
+        if showingLevelSelect          { return .homeIdle  }   // keep ambient music while browsing missions
         if storyQueue.current != nil   { return .story     }
         if activeLevel != nil          { return .inMission }
         return .homeIdle
@@ -201,19 +201,6 @@ struct ContentView: View {
                     insertion: .move(edge: .trailing),
                     removal:   .move(edge: .trailing)
                 ))
-            } else if showingLevelSelect {
-                MissionMapView(
-                    onSelect: { level in
-                        showingLevelSelect = false
-                        tryPlay(level)
-                    },
-                    onDismiss: { showingLevelSelect = false },
-                    onUpgrade: { showPaywall(.nextMissionBlocked) }
-                )
-                .transition(.asymmetric(
-                    insertion: .move(edge: .bottom),
-                    removal:   .move(edge: .bottom)
-                ))
             } else {
                 HomeView(
                     onPlay:     { level in tryPlay(level) },
@@ -255,9 +242,31 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: activeLevel != nil)
-        .animation(.spring(response: 0.38, dampingFraction: 0.88), value: showingLevelSelect)
         .animation(.spring(response: 0.44, dampingFraction: 0.88), value: introStep)
         .animation(.easeInOut(duration: 0.30), value: storyQueue.current?.id)
+        // ── Mission map modal ────────────────────────────────────────────
+        .fullScreenCover(isPresented: $showingLevelSelect) {
+            MissionMapView(
+                onSelect: { level in
+                    showingLevelSelect = false
+                    // Brief delay so the modal dismiss animation completes cleanly
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 300_000_000)
+                        tryPlay(level)
+                    }
+                },
+                onDismiss: { showingLevelSelect = false },
+                onUpgrade: {
+                    showingLevelSelect = false
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 300_000_000)
+                        showPaywall(.nextMissionBlocked)
+                    }
+                }
+            )
+            .environmentObject(SettingsStore.shared)
+            .environmentObject(EntitlementStore.shared)
+        }
         // Dispatch deferred post-win beat batches when returning to Home
         .onChange(of: activeLevel?.id) { oldID, newID in
             guard oldID != nil, newID == nil else { return }
@@ -386,43 +395,34 @@ struct ContentView: View {
     /// Called immediately on win (before navigation) so profile context is accurate.
     ///
     /// Beat sequence per sector-completing win:
-    ///   0. onboardingComplete   (only when the 3rd free-intro win just occurred)
-    ///   1. firstMissionComplete (only on the very first mission ever)
-    ///   2. sectorComplete       — retrospective of what was accomplished
-    ///   3. passUnlocked         — official authorization for the next sector
-    ///   4. enteringNewSector    — briefing for the destination just unlocked
-    ///   5. rankUp               — personal recognition when a level threshold is crossed
+    ///   0. firstMissionComplete (only on the very first mission ever)
+    ///   1. sectorComplete       — retrospective of what was accomplished
+    ///   2. passUnlocked         — official authorization for the next sector
+    ///   3. enteringNewSector    — briefing for the destination just unlocked
+    ///   4. rankUp               — personal recognition when a level threshold is crossed
+    ///   5. onboardingComplete   — gate context (positive beats play first, gate last)
     private func collectStoryBeats(for level: Level, event: LevelUpEvent?) {
         let profile = ProgressionStore.profile
         var triggers: [(StoryTrigger, StoryContext)] = []
 
-        // 0. Onboarding complete — fires the first time the free-intro quota is exhausted.
-        //    recordAttempt has already been called, so freeIntroCompleted == freeIntroLimit here.
-        let ent = EntitlementStore.shared
-        if !ent.isPremium,
-           !ent.isInIntroPhase,
-           !StoryStore.isSeen("story_onboarding_complete") {
-            triggers.append((.onboardingComplete, StoryContext(playerLevel: profile.level)))
-        }
-
-        // 1. First mission ever completed
+        // 0. First mission ever completed
         if profile.uniqueCompletions == 1 {
             triggers.append((.firstMissionComplete, StoryContext(playerLevel: profile.level)))
         }
 
-        // 2–4. Sector-related beats — fire as a sequence when the sector finishes
+        // 1–3. Sector-related beats — fire as a sequence when the sector finishes
         if let sector = SpatialRegion.catalog.first(where: { $0.levelRange.contains(level.id) }),
            sector.levels.allSatisfy({ profile.hasCompleted(levelId: $0.id) }) {
 
-            // 2. Sector complete — recap
+            // 1. Sector complete — recap
             triggers.append((.sectorComplete, .forSector(sector.id, level: profile.level)))
 
-            // 3–4. Pass + new sector entry — only when a fresh pass was actually issued
+            // 2–3. Pass + new sector entry — only when a fresh pass was actually issued
             if event?.newPass != nil {
-                // 3. Pass unlocked — authorization (requiredSectorID = the sector that issued it)
+                // 2. Pass unlocked — authorization (requiredSectorID = the sector that issued it)
                 triggers.append((.passUnlocked,
                     StoryContext(playerLevel: profile.level, completedSectorID: sector.id)))
-                // 4. Entering new sector — destination briefing (requiredSectorID = next sector)
+                // 3. Entering new sector — destination briefing (requiredSectorID = next sector)
                 let nextID = sector.id + 1
                 if SpatialRegion.catalog.contains(where: { $0.id == nextID }) {
                     triggers.append((.enteringNewSector,
@@ -431,9 +431,18 @@ struct ContentView: View {
             }
         }
 
-        // 5. Rank up — fire for milestone levels (2, 5, 10)
+        // 4. Rank up — fire for milestone levels (2, 5, 10)
         if let event, event.levelsGained > 0 {
             triggers.append((.rankUp, .forRankUp(to: profile.level)))
+        }
+
+        // 5. Onboarding complete — fires the first time the free-intro quota is exhausted.
+        //    Placed LAST so all positive beats (rank-up, sector clear) play before the gate.
+        let ent = EntitlementStore.shared
+        if !ent.isPremium,
+           !ent.isInIntroPhase,
+           !StoryStore.isSeen("story_onboarding_complete") {
+            triggers.append((.onboardingComplete, StoryContext(playerLevel: profile.level)))
         }
 
         let beats = StoryStore.pendingQueue(triggers: triggers)

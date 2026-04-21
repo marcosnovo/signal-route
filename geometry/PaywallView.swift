@@ -146,7 +146,7 @@ struct PaywallView: View {
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(AppTheme.textSecondary.opacity(0.75))
+                    .foregroundStyle(AppTheme.textPrimary.opacity(0.65))
                     .frame(width: 44, height: 44)
                     .background(.ultraThinMaterial)
                     .clipShape(Circle())

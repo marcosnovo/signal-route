@@ -467,6 +467,7 @@ struct DevMenuView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .background(AppTheme.backgroundPrimary.ignoresSafeArea(edges: .top))
         .overlay(alignment: .bottom) { TechDivider() }
     }
 

@@ -70,6 +70,54 @@ struct AppStrings {
     var tapToViewPlanetPass: String { t("TAP TO VIEW PLANET PASS", "TOCA PARA VER EL PASE", "TOUCHER POUR LE LAISSEZ-PASSER") }
     var viewPass:            String { t("VIEW PASS",               "VER PASE",              "VOIR LE PASSE") }
 
+    // MARK: - Planet & region names (used in HomeView, LevelSelectView, pass cards)
+
+    func planetName(_ name: String) -> String {
+        switch name {
+        case "EARTH ORBIT":   return t("EARTH ORBIT",   "ÓRBITA TERRESTRE",         "ORBITE TERRESTRE")
+        case "MOON":          return t("MOON",           "LUNA",                     "LUNE")
+        case "MARS":          return t("MARS",           "MARTE",                    "MARS")
+        case "ASTEROID BELT": return t("ASTEROID BELT",  "CINTURÓN DE ASTEROIDES",   "CEINTURE D'ASTÉROÏDES")
+        case "JUPITER":       return t("JUPITER",        "JÚPITER",                  "JUPITER")
+        case "SATURN":        return t("SATURN",         "SATURNO",                  "SATURNE")
+        case "URANUS":        return t("URANUS",         "URANO",                    "URANUS")
+        case "NEPTUNE":       return t("NEPTUNE",        "NEPTUNO",                  "NEPTUNE")
+        default: return name
+        }
+    }
+
+    func regionName(_ name: String) -> String {
+        switch name {
+        case "EARTH ORBIT":    return t("EARTH ORBIT",    "ÓRBITA TERRESTRE",         "ORBITE TERRESTRE")
+        case "LUNAR APPROACH": return t("LUNAR APPROACH", "APROXIMACIÓN LUNAR",       "APPROCHE LUNAIRE")
+        case "MARS SECTOR":    return t("MARS SECTOR",    "SECTOR MARTE",             "SECTEUR MARS")
+        case "ASTEROID BELT":  return t("ASTEROID BELT",  "CINTURÓN DE ASTEROIDES",   "CEINTURE D'ASTÉROÏDES")
+        case "JUPITER RELAY":  return t("JUPITER RELAY",  "RELÉ JÚPITER",             "RELAIS JUPITER")
+        case "SATURN RING":    return t("SATURN RING",    "ANILLOS DE SATURNO",       "ANNEAUX DE SATURNE")
+        case "URANUS VOID":    return t("URANUS VOID",    "VACÍO DE URANO",           "VIDE D'URANUS")
+        case "NEPTUNE DEEP":   return t("NEPTUNE DEEP",   "NEPTUNO PROFUNDO",         "NEPTUNE PROFOND")
+        default: return name
+        }
+    }
+
+    func zoneBrief(_ brief: String) -> String {
+        switch brief {
+        case "TRAINING ZONE":       return t("TRAINING ZONE",       "ZONA DE ENTRENAMIENTO",     "ZONE D'ENTRAÎNEMENT")
+        case "LUNAR APPROACH":      return t("LUNAR APPROACH",      "APROXIMACIÓN LUNAR",        "APPROCHE LUNAIRE")
+        case "RED PLANET OPS":      return t("RED PLANET OPS",      "OPS PLANETA ROJO",          "OPS PLANÈTE ROUGE")
+        case "DEBRIS FIELD":        return t("DEBRIS FIELD",        "CAMPO DE ESCOMBROS",        "CHAMP DE DÉBRIS")
+        case "GAS GIANT RELAY":     return t("GAS GIANT RELAY",     "RELÉ DEL GIGANTE GASEOSO",  "RELAIS DU GÉANT GAZEUX")
+        case "GAS GIANT COMMS":     return t("GAS GIANT COMMS",     "COMMS GIGANTE GASEOSO",     "COMMS GÉANT GAZEUX")
+        case "RING SYSTEM TRANSIT": return t("RING SYSTEM TRANSIT", "TRÁNSITO DE ANILLOS",       "TRANSIT DES ANNEAUX")
+        case "ICE GIANT SURVEY":    return t("ICE GIANT SURVEY",    "EXPLORACIÓN GIGANTE HELADO","EXPLORATION DU GÉANT GLACÉ")
+        case "DEEP SPACE COMMS":    return t("DEEP SPACE COMMS",    "COMMS ESPACIO PROFUNDO",    "COMMS ESPACE PROFOND")
+        case "PHASE 2 OPERATIONS":  return t("PHASE 2 OPERATIONS",  "OPERACIONES FASE 2",        "OPÉRATIONS PHASE 2")
+        default: return brief
+        }
+    }
+
+    var missionEff: String { t("MISSION EFF", "EFF. MISIÓN", "EFF. MISSION") }
+
     // MARK: - Planet ticket
     var planetPass:           String { t("PLANET PASS",                  "PASE PLANETARIO",               "LAISSEZ-PASSER") }
     var trainingClearance:    String { t("TRAINING CLEARANCE",            "AUTORIZACIÓN DE ENTRENAMIENTO", "AUTORISATION D'ENTRAÎNEMENT") }
@@ -77,9 +125,9 @@ struct AppStrings {
     /// Share sheet body text — personalised with the player's current level.
     func shareProgressText(level: Int) -> String {
         t(
-            "I reached level \(level) in SIGNAL ROUTE 🚀\nCan you go further?",
-            "He alcanzado el nivel \(level) en SIGNAL ROUTE 🚀\n¿Puedes llegar más lejos?",
-            "J'ai atteint le niveau \(level) dans SIGNAL ROUTE 🚀\nPeux-tu aller plus loin ?"
+            "I reached level \(level) in SIGNAL VOID 🚀\nCan you go further?",
+            "He alcanzado el nivel \(level) en SIGNAL VOID 🚀\n¿Puedes llegar más lejos?",
+            "J'ai atteint le niveau \(level) dans SIGNAL VOID 🚀\nPeux-tu aller plus loin ?"
         )
     }
     var renderingPass:        String { t("RENDERING PASS…",              "GENERANDO PASE…",               "GÉNÉRATION DU LAISSEZ-PASSER…") }
@@ -173,7 +221,7 @@ struct AppStrings {
         case .normal:
             return targets > 1
                 ? t("ACTIVATE \(targets) TARGETS", "ACTIVAR \(targets) OBJETIVOS", "ACTIVER \(targets) CIBLES")
-                : t("CONNECT SOURCE TO TARGET",    "CONECTAR FUENTE AL OBJETIVO",  "CONNECTER SOURCE À CIBLE")
+                : t("BRIDGE THE VOID",              "CRUZAR EL VACÍO",              "COMBLER LE VIDE")
         case .maxCoverage:
             return t("MAXIMIZE ACTIVE GRID",  "MAXIMIZAR RED ACTIVA",  "MAXIMISER LE RÉSEAU ACTIF")
         case .energySaving:
@@ -213,7 +261,7 @@ struct AppStrings {
     }
 
     // MARK: - Intro win overlay
-    var signalRouted:              String { t("SIGNAL ROUTED",               "SEÑAL DIRIGIDA",                 "SIGNAL ACHEMINÉ") }
+    var signalRouted:              String { t("VOID BRIDGED",                "VACÍO CRUZADO",                  "VIDE COMBLÉ") }
     var networkOnline:             String { t("NETWORK ONLINE",              "RED EN LÍNEA",                   "RÉSEAU EN LIGNE") }
     var systemCalibrationComplete: String { t("SYSTEM CALIBRATION COMPLETE", "CALIBRACIÓN DEL SISTEMA COMPLETA","CALIBRATION DU SYSTÈME TERMINÉE") }
     var clearedForDeployment:      String { t("CLEARED FOR DEPLOYMENT",      "AUTORIZADO PARA EL DESPLIEGUE",  "AUTORISÉ POUR LE DÉPLOIEMENT") }
@@ -402,13 +450,306 @@ struct AppStrings {
         t("\(original) → \(discounted)", "\(original) → \(discounted)", "\(original) → \(discounted)")
     }
 
+    // MARK: - Legal
+    var legalSection:    String { t("LEGAL",                "LEGAL",                 "LÉGAL") }
+    var termsTitle:      String { t("TERMS & CONDITIONS",   "TÉRMINOS Y CONDICIONES","CONDITIONS D'UTILISATION") }
+    var termsSub:        String { t("Usage terms",          "Términos de uso",       "Conditions d'usage") }
+    var privacyTitle:    String { t("PRIVACY POLICY",       "POLÍTICA DE PRIVACIDAD","POLITIQUE DE CONFIDENTIALITÉ") }
+    var privacySub:      String { t("Data & privacy",       "Datos y privacidad",    "Données et vie privée") }
+
+    var termsBody: String {
+        t(
+            """
+            SIGNAL VOID — TERMS & CONDITIONS
+
+            Last updated: April 2025
+
+            1. ACCEPTANCE
+            By downloading, installing, or using Signal Void ("the App"), you agree to these Terms & Conditions. If you do not agree, do not use the App.
+
+            2. LICENSE
+            We grant you a limited, non-exclusive, non-transferable, revocable license to use the App for personal, non-commercial entertainment on Apple devices you own or control, subject to the Apple Licensed Application End User License Agreement (EULA).
+
+            3. FREE AND PREMIUM ACCESS
+            The App offers a free tier with a limited number of daily missions. After the introductory period, free users may play a set number of missions per day with a cooldown period between sessions. A one-time in-app purchase ("Unlimited Access") removes all daily limits permanently.
+
+            4. IN-APP PURCHASES
+            The App offers an optional one-time purchase processed exclusively by Apple through the App Store. All transactions are subject to Apple's terms and conditions. Purchases are non-refundable except as required by applicable law. Refund requests must be directed to Apple. The purchase is tied to your Apple ID and can be restored on any device signed into the same account.
+
+            5. APPLE GAME CENTER
+            The App integrates with Apple Game Center for leaderboard functionality. By using this feature you agree to Apple's Game Center terms. No additional account creation is required by Signal Void.
+
+            6. ICLOUD SYNC
+            If iCloud is enabled on your device, the App may sync your game progress (mission completions, scores, and progression data) to your personal iCloud account. This sync is managed entirely by Apple's infrastructure. You can disable this in your device's Settings > iCloud.
+
+            7. USER CONDUCT
+            You agree not to: reverse-engineer, decompile, or disassemble the App; use the App for unlawful purposes; exploit bugs or glitches to gain unfair advantages; attempt to circumvent daily play limits or purchase verification; distribute modified versions of the App.
+
+            8. INTELLECTUAL PROPERTY
+            All content, code, graphics, audio, music, and design in the App are the exclusive property of the developer and protected by copyright and intellectual property laws. You may not reproduce, distribute, or create derivative works from any part of the App without prior written permission.
+
+            9. DISCLAIMERS
+            The App is provided "as is" without warranties of any kind, express or implied. We do not guarantee uninterrupted or error-free operation. Game progress may be lost due to device failure, software updates, or other circumstances beyond our control. We reserve the right to modify, suspend, or discontinue the App at any time without notice.
+
+            10. LIMITATION OF LIABILITY
+            To the maximum extent permitted by applicable law, the developer shall not be liable for any indirect, incidental, special, or consequential damages arising from or related to the use or inability to use the App, including but not limited to loss of game progress or data.
+
+            11. GOVERNING LAW
+            These Terms are governed by the laws of Spain. Any disputes arising from or related to these Terms shall be subject to the exclusive jurisdiction of the courts of Spain, without prejudice to mandatory consumer protection laws of your country of residence.
+
+            12. CHANGES
+            We may update these Terms at any time by publishing a new version within the App. Continued use after changes constitutes acceptance of the updated Terms.
+
+            13. CONTACT
+            For questions about these Terms, contact: marcosnovodev@gmail.com
+            """,
+            """
+            SIGNAL VOID — TÉRMINOS Y CONDICIONES
+
+            Última actualización: Abril 2025
+
+            1. ACEPTACIÓN
+            Al descargar, instalar o usar Signal Void ("la App"), aceptas estos Términos y Condiciones. Si no estás de acuerdo, no uses la App.
+
+            2. LICENCIA
+            Te otorgamos una licencia limitada, no exclusiva, intransferible y revocable para usar la App con fines de entretenimiento personal y no comercial en dispositivos Apple que poseas o controles, sujeta al Acuerdo de Licencia de Usuario Final (EULA) de Apple.
+
+            3. ACCESO GRATUITO Y PREMIUM
+            La App ofrece un nivel gratuito con un número limitado de misiones diarias. Tras el periodo introductorio, los usuarios gratuitos pueden jugar un número determinado de misiones por día con un periodo de espera entre sesiones. Una compra única ("Acceso Ilimitado") elimina todos los límites diarios de forma permanente.
+
+            4. COMPRAS DENTRO DE LA APP
+            La App ofrece una compra opcional única procesada exclusivamente por Apple a través de la App Store. Todas las transacciones están sujetas a los términos y condiciones de Apple. Las compras no son reembolsables, excepto cuando lo exija la ley aplicable. Las solicitudes de reembolso deben dirigirse a Apple. La compra está vinculada a tu Apple ID y puede restaurarse en cualquier dispositivo con la misma cuenta.
+
+            5. APPLE GAME CENTER
+            La App se integra con Apple Game Center para la funcionalidad de clasificaciones. Al usar esta función, aceptas los términos de Game Center de Apple. Signal Void no requiere la creación de cuentas adicionales.
+
+            6. SINCRONIZACIÓN ICLOUD
+            Si iCloud está habilitado en tu dispositivo, la App puede sincronizar tu progreso de juego (misiones completadas, puntuaciones y datos de progresión) en tu cuenta personal de iCloud. Esta sincronización es gestionada íntegramente por la infraestructura de Apple. Puedes desactivarla en Ajustes > iCloud de tu dispositivo.
+
+            7. CONDUCTA DEL USUARIO
+            Te comprometes a no: realizar ingeniería inversa, descompilar o desensamblar la App; usar la App con fines ilegales; explotar errores o fallos para obtener ventajas injustas; intentar eludir los límites diarios de juego o la verificación de compras; distribuir versiones modificadas de la App.
+
+            8. PROPIEDAD INTELECTUAL
+            Todo el contenido, código, gráficos, audio, música y diseño de la App son propiedad exclusiva del desarrollador y están protegidos por las leyes de derechos de autor y propiedad intelectual. No puedes reproducir, distribuir ni crear obras derivadas de ninguna parte de la App sin permiso previo por escrito.
+
+            9. DESCARGOS DE RESPONSABILIDAD
+            La App se proporciona "tal cual", sin garantías de ningún tipo, expresas o implícitas. No garantizamos un funcionamiento ininterrumpido ni libre de errores. El progreso del juego puede perderse debido a fallos del dispositivo, actualizaciones de software u otras circunstancias fuera de nuestro control. Nos reservamos el derecho de modificar, suspender o descontinuar la App en cualquier momento sin previo aviso.
+
+            10. LIMITACIÓN DE RESPONSABILIDAD
+            En la máxima medida permitida por la ley aplicable, el desarrollador no será responsable de ningún daño indirecto, incidental, especial o consecuente derivado de o relacionado con el uso o la imposibilidad de uso de la App, incluyendo pero no limitado a la pérdida de progreso o datos del juego.
+
+            11. LEY APLICABLE
+            Estos Términos se rigen por las leyes de España. Cualquier disputa derivada de o relacionada con estos Términos estará sujeta a la jurisdicción exclusiva de los tribunales de España, sin perjuicio de las leyes obligatorias de protección al consumidor de tu país de residencia.
+
+            12. CAMBIOS
+            Podemos actualizar estos Términos en cualquier momento publicando una nueva versión dentro de la App. El uso continuado tras los cambios constituye la aceptación de los Términos actualizados.
+
+            13. CONTACTO
+            Para preguntas sobre estos Términos, contacta: marcosnovodev@gmail.com
+            """,
+            """
+            SIGNAL VOID — CONDITIONS D'UTILISATION
+
+            Dernière mise à jour : Avril 2025
+
+            1. ACCEPTATION
+            En téléchargeant, installant ou utilisant Signal Void (« l'Application »), vous acceptez les présentes Conditions d'Utilisation. Si vous n'êtes pas d'accord, n'utilisez pas l'Application.
+
+            2. LICENCE
+            Nous vous accordons une licence limitée, non exclusive, non transférable et révocable pour utiliser l'Application à des fins de divertissement personnel et non commercial sur des appareils Apple que vous possédez ou contrôlez, conformément au Contrat de Licence Utilisateur Final (EULA) d'Apple.
+
+            3. ACCÈS GRATUIT ET PREMIUM
+            L'Application propose un niveau gratuit avec un nombre limité de missions quotidiennes. Après la période d'introduction, les utilisateurs gratuits peuvent jouer un nombre défini de missions par jour avec un délai d'attente entre les sessions. Un achat unique (« Accès Illimité ») supprime définitivement toutes les limites quotidiennes.
+
+            4. ACHATS INTÉGRÉS
+            L'Application propose un achat unique optionnel traité exclusivement par Apple via l'App Store. Toutes les transactions sont soumises aux conditions générales d'Apple. Les achats ne sont pas remboursables, sauf si la loi l'exige. Les demandes de remboursement doivent être adressées à Apple. L'achat est lié à votre identifiant Apple et peut être restauré sur tout appareil connecté au même compte.
+
+            5. APPLE GAME CENTER
+            L'Application s'intègre à Apple Game Center pour la fonctionnalité de classement. En utilisant cette fonctionnalité, vous acceptez les conditions de Game Center d'Apple. Signal Void ne nécessite aucune création de compte supplémentaire.
+
+            6. SYNCHRONISATION ICLOUD
+            Si iCloud est activé sur votre appareil, l'Application peut synchroniser votre progression (missions terminées, scores et données de progression) dans votre compte iCloud personnel. Cette synchronisation est entièrement gérée par l'infrastructure d'Apple. Vous pouvez la désactiver dans Réglages > iCloud de votre appareil.
+
+            7. CONDUITE DE L'UTILISATEUR
+            Vous vous engagez à ne pas : effectuer de rétro-ingénierie, décompiler ou désassembler l'Application ; utiliser l'Application à des fins illégales ; exploiter des bugs ou des failles pour obtenir des avantages injustes ; tenter de contourner les limites quotidiennes de jeu ou la vérification des achats ; distribuer des versions modifiées de l'Application.
+
+            8. PROPRIÉTÉ INTELLECTUELLE
+            Tout le contenu, le code, les graphismes, l'audio, la musique et le design de l'Application sont la propriété exclusive du développeur et protégés par les lois sur le droit d'auteur et la propriété intellectuelle. Vous ne pouvez reproduire, distribuer ni créer d'œuvres dérivées d'aucune partie de l'Application sans autorisation écrite préalable.
+
+            9. CLAUSE DE NON-RESPONSABILITÉ
+            L'Application est fournie « en l'état », sans garantie d'aucune sorte, expresse ou implicite. Nous ne garantissons pas un fonctionnement ininterrompu ou exempt d'erreurs. La progression du jeu peut être perdue en raison de pannes d'appareil, de mises à jour logicielles ou d'autres circonstances indépendantes de notre volonté. Nous nous réservons le droit de modifier, suspendre ou interrompre l'Application à tout moment sans préavis.
+
+            10. LIMITATION DE RESPONSABILITÉ
+            Dans la mesure maximale permise par la loi applicable, le développeur ne pourra être tenu responsable de tout dommage indirect, accessoire, spécial ou consécutif découlant de ou lié à l'utilisation ou l'impossibilité d'utiliser l'Application, y compris mais sans s'y limiter, la perte de progression ou de données de jeu.
+
+            11. LOI APPLICABLE
+            Les présentes Conditions sont régies par les lois d'Espagne. Tout litige découlant de ou lié aux présentes Conditions sera soumis à la compétence exclusive des tribunaux d'Espagne, sans préjudice des lois impératives de protection des consommateurs de votre pays de résidence.
+
+            12. MODIFICATIONS
+            Nous pouvons mettre à jour ces Conditions à tout moment en publiant une nouvelle version dans l'Application. L'utilisation continue après les modifications vaut acceptation des Conditions mises à jour.
+
+            13. CONTACT
+            Pour toute question concernant ces Conditions, contactez : marcosnovodev@gmail.com
+            """
+        )
+    }
+
+    var privacyBody: String {
+        t(
+            """
+            SIGNAL VOID — PRIVACY POLICY
+
+            Last updated: April 2025
+
+            1. OVERVIEW
+            Signal Void ("the App") is designed with privacy as a core principle. We do not require user accounts, do not collect personal information, and do not send data to external servers.
+
+            2. DATA PROCESSED BY APPLE SERVICES
+            The App integrates exclusively with Apple's own services. The developer does not have direct access to the data processed by these services:
+            • Apple Game Center — Your Game Center alias and efficiency scores are shared with Apple for leaderboard functionality. This data is governed by Apple's Privacy Policy.
+            • iCloud — If enabled on your device, your game progress (mission completions, scores, planet passes, and progression data) is synced to your personal iCloud account. You can manage or delete this data in Settings > [your name] > iCloud.
+            • App Store — If you make the optional in-app purchase, Apple processes the transaction. We do not receive or store any payment information.
+
+            3. DATA STORED ON YOUR DEVICE
+            The App stores the following data locally on your device using standard system storage:
+            • Game progress (completed missions, scores, efficiency ratings)
+            • User preferences (sound, music, haptics, language, motion settings)
+            • Session data (daily play counts, cooldown timers)
+            This data remains on your device and is not transmitted to any external server.
+
+            4. DATA WE DO NOT COLLECT
+            We do not collect, store, or transmit: names, email addresses, phone numbers, location data, device identifiers, advertising identifiers (IDFA), usage analytics, crash reports, or any personally identifiable information. The App does not use Apple's App Tracking Transparency framework because no tracking occurs.
+
+            5. LOCAL NOTIFICATIONS
+            The App may request permission to send local notifications (e.g., to inform you when a cooldown period ends). These notifications are generated and stored entirely on your device. No notification data is sent to external servers. You can disable notifications at any time in Settings > Notifications > Signal Void.
+
+            6. THIRD-PARTY SERVICES
+            The App does not integrate any third-party analytics, advertising, crash reporting, or tracking services. All functionality is provided through Apple's native frameworks.
+
+            7. CHILDREN'S PRIVACY
+            The App does not knowingly collect personal data from anyone, including children under the age of 13 (or applicable age in your jurisdiction). The minimal data processing described above (all handled by Apple's services) applies equally to all users regardless of age.
+
+            8. DATA RETENTION AND DELETION
+            Since we do not collect data on external servers, there is no data for us to retain or delete. Local game data can be removed by deleting the App from your device. iCloud data can be managed through your device's iCloud settings.
+
+            9. INTERNATIONAL USERS
+            The App does not transfer personal data across borders because it does not collect personal data. All data storage is either local to your device or within your personal iCloud account, managed by Apple according to their data processing policies.
+
+            10. YOUR RIGHTS (GDPR / CCPA)
+            Under the EU General Data Protection Regulation (GDPR) and the California Consumer Privacy Act (CCPA), you have rights regarding your personal data. Since Signal Void does not collect personal data, these rights are inherently fulfilled. For data stored by Apple's services (Game Center, iCloud, App Store), please refer to Apple's Privacy Policy and your device settings.
+
+            11. CHANGES
+            We may update this Privacy Policy at any time by publishing a new version within the App. Continued use after changes constitutes acceptance.
+
+            12. CONTACT
+            For privacy-related questions, contact: marcosnovodev@gmail.com
+            """,
+            """
+            SIGNAL VOID — POLÍTICA DE PRIVACIDAD
+
+            Última actualización: Abril 2025
+
+            1. DESCRIPCIÓN GENERAL
+            Signal Void ("la App") está diseñada con la privacidad como principio fundamental. No requerimos cuentas de usuario, no recopilamos información personal y no enviamos datos a servidores externos.
+
+            2. DATOS PROCESADOS POR SERVICIOS DE APPLE
+            La App se integra exclusivamente con los propios servicios de Apple. El desarrollador no tiene acceso directo a los datos procesados por estos servicios:
+            • Apple Game Center — Tu alias y puntuaciones de eficiencia de Game Center se comparten con Apple para la funcionalidad de clasificaciones. Estos datos se rigen por la Política de Privacidad de Apple.
+            • iCloud — Si está habilitado en tu dispositivo, tu progreso de juego (misiones completadas, puntuaciones, pases planetarios y datos de progresión) se sincroniza en tu cuenta personal de iCloud. Puedes gestionar o eliminar estos datos en Ajustes > [tu nombre] > iCloud.
+            • App Store — Si realizas la compra opcional, Apple procesa la transacción. No recibimos ni almacenamos ninguna información de pago.
+
+            3. DATOS ALMACENADOS EN TU DISPOSITIVO
+            La App almacena los siguientes datos localmente en tu dispositivo mediante el almacenamiento estándar del sistema:
+            • Progreso del juego (misiones completadas, puntuaciones, calificaciones de eficiencia)
+            • Preferencias de usuario (sonido, música, hápticos, idioma, ajustes de movimiento)
+            • Datos de sesión (conteo de partidas diarias, temporizadores de espera)
+            Estos datos permanecen en tu dispositivo y no se transmiten a ningún servidor externo.
+
+            4. DATOS QUE NO RECOPILAMOS
+            No recopilamos, almacenamos ni transmitimos: nombres, direcciones de correo electrónico, números de teléfono, datos de ubicación, identificadores de dispositivo, identificadores publicitarios (IDFA), análisis de uso, informes de errores ni ninguna información de identificación personal. La App no utiliza el framework App Tracking Transparency de Apple porque no se realiza ningún seguimiento.
+
+            5. NOTIFICACIONES LOCALES
+            La App puede solicitar permiso para enviar notificaciones locales (por ejemplo, para informarte cuando termina un periodo de espera). Estas notificaciones se generan y almacenan completamente en tu dispositivo. No se envían datos de notificación a servidores externos. Puedes desactivar las notificaciones en cualquier momento en Ajustes > Notificaciones > Signal Void.
+
+            6. SERVICIOS DE TERCEROS
+            La App no integra ningún servicio de análisis, publicidad, informes de errores ni seguimiento de terceros. Toda la funcionalidad se proporciona a través de los frameworks nativos de Apple.
+
+            7. PRIVACIDAD DE MENORES
+            La App no recopila conscientemente datos personales de nadie, incluidos menores de 13 años (o la edad aplicable en tu jurisdicción). El procesamiento mínimo de datos descrito anteriormente (todo gestionado por los servicios de Apple) se aplica por igual a todos los usuarios independientemente de su edad.
+
+            8. RETENCIÓN Y ELIMINACIÓN DE DATOS
+            Dado que no recopilamos datos en servidores externos, no hay datos que retener o eliminar por nuestra parte. Los datos locales del juego pueden eliminarse borrando la App de tu dispositivo. Los datos de iCloud pueden gestionarse a través de los ajustes de iCloud de tu dispositivo.
+
+            9. USUARIOS INTERNACIONALES
+            La App no transfiere datos personales a través de fronteras porque no recopila datos personales. Todo el almacenamiento de datos es local en tu dispositivo o dentro de tu cuenta personal de iCloud, gestionada por Apple según sus políticas de procesamiento de datos.
+
+            10. TUS DERECHOS (RGPD / CCPA)
+            Bajo el Reglamento General de Protección de Datos (RGPD) de la UE y la Ley de Privacidad del Consumidor de California (CCPA), tienes derechos sobre tus datos personales. Dado que Signal Void no recopila datos personales, estos derechos se cumplen inherentemente. Para datos almacenados por los servicios de Apple (Game Center, iCloud, App Store), consulta la Política de Privacidad de Apple y los ajustes de tu dispositivo.
+
+            11. CAMBIOS
+            Podemos actualizar esta Política de Privacidad en cualquier momento publicando una nueva versión dentro de la App. El uso continuado tras los cambios constituye su aceptación.
+
+            12. CONTACTO
+            Para preguntas relacionadas con la privacidad, contacta: marcosnovodev@gmail.com
+            """,
+            """
+            SIGNAL VOID — POLITIQUE DE CONFIDENTIALITÉ
+
+            Dernière mise à jour : Avril 2025
+
+            1. APERÇU
+            Signal Void (« l'Application ») est conçue avec le respect de la vie privée comme principe fondamental. Nous ne nécessitons pas de compte utilisateur, ne collectons pas d'informations personnelles et n'envoyons pas de données à des serveurs externes.
+
+            2. DONNÉES TRAITÉES PAR LES SERVICES APPLE
+            L'Application s'intègre exclusivement aux propres services d'Apple. Le développeur n'a pas d'accès direct aux données traitées par ces services :
+            • Apple Game Center — Votre alias et vos scores d'efficacité Game Center sont partagés avec Apple pour la fonctionnalité de classement. Ces données sont régies par la Politique de Confidentialité d'Apple.
+            • iCloud — Si activé sur votre appareil, votre progression (missions terminées, scores, laissez-passer planétaires et données de progression) est synchronisée dans votre compte iCloud personnel. Vous pouvez gérer ou supprimer ces données dans Réglages > [votre nom] > iCloud.
+            • App Store — Si vous effectuez l'achat optionnel, Apple traite la transaction. Nous ne recevons ni ne stockons aucune information de paiement.
+
+            3. DONNÉES STOCKÉES SUR VOTRE APPAREIL
+            L'Application stocke les données suivantes localement sur votre appareil via le stockage système standard :
+            • Progression du jeu (missions terminées, scores, notes d'efficacité)
+            • Préférences utilisateur (son, musique, haptique, langue, réglages de mouvement)
+            • Données de session (compteur de parties quotidiennes, minuteries d'attente)
+            Ces données restent sur votre appareil et ne sont transmises à aucun serveur externe.
+
+            4. DONNÉES QUE NOUS NE COLLECTONS PAS
+            Nous ne collectons, ne stockons ni ne transmettons : noms, adresses e-mail, numéros de téléphone, données de localisation, identifiants d'appareil, identifiants publicitaires (IDFA), analyses d'utilisation, rapports de plantage, ni aucune information personnelle identifiable. L'Application n'utilise pas le framework App Tracking Transparency d'Apple car aucun suivi n'est effectué.
+
+            5. NOTIFICATIONS LOCALES
+            L'Application peut demander l'autorisation d'envoyer des notifications locales (par exemple, pour vous informer de la fin d'un délai d'attente). Ces notifications sont générées et stockées entièrement sur votre appareil. Aucune donnée de notification n'est envoyée à des serveurs externes. Vous pouvez désactiver les notifications à tout moment dans Réglages > Notifications > Signal Void.
+
+            6. SERVICES TIERS
+            L'Application n'intègre aucun service d'analyse, de publicité, de rapport de plantage ou de suivi tiers. Toutes les fonctionnalités sont fournies via les frameworks natifs d'Apple.
+
+            7. VIE PRIVÉE DES ENFANTS
+            L'Application ne collecte sciemment aucune donnée personnelle de quiconque, y compris des enfants de moins de 13 ans (ou l'âge applicable dans votre juridiction). Le traitement minimal des données décrit ci-dessus (entièrement géré par les services d'Apple) s'applique également à tous les utilisateurs, quel que soit leur âge.
+
+            8. CONSERVATION ET SUPPRESSION DES DONNÉES
+            Comme nous ne collectons pas de données sur des serveurs externes, il n'y a pas de données à conserver ou supprimer de notre côté. Les données locales du jeu peuvent être supprimées en désinstallant l'Application de votre appareil. Les données iCloud peuvent être gérées via les réglages iCloud de votre appareil.
+
+            9. UTILISATEURS INTERNATIONAUX
+            L'Application ne transfère pas de données personnelles au-delà des frontières car elle ne collecte pas de données personnelles. Tout le stockage de données est soit local sur votre appareil, soit dans votre compte iCloud personnel, géré par Apple conformément à ses politiques de traitement des données.
+
+            10. VOS DROITS (RGPD / CCPA)
+            En vertu du Règlement Général sur la Protection des Données (RGPD) de l'UE et du California Consumer Privacy Act (CCPA), vous disposez de droits concernant vos données personnelles. Comme Signal Void ne collecte pas de données personnelles, ces droits sont intrinsèquement respectés. Pour les données stockées par les services d'Apple (Game Center, iCloud, App Store), veuillez consulter la Politique de Confidentialité d'Apple et les réglages de votre appareil.
+
+            11. MODIFICATIONS
+            Nous pouvons mettre à jour cette Politique de Confidentialité à tout moment en publiant une nouvelle version dans l'Application. L'utilisation continue après les modifications vaut acceptation.
+
+            12. CONTACT
+            Pour toute question relative à la vie privée, contactez : marcosnovodev@gmail.com
+            """
+        )
+    }
+
     // MARK: - Local notifications
     var notifCooldownTitle: String { t("The network is live again",
                                        "La red vuelve a estar disponible",
                                        "Le réseau est de nouveau disponible") }
-    var notifCooldownBody:  String { t("You can play again in Signal Route.",
-                                       "Ya puedes volver a jugar en Signal Route.",
-                                       "Vous pouvez rejouer dans Signal Route.") }
+    var notifCooldownBody:  String { t("You can play again in Signal Void.",
+                                       "Ya puedes volver a jugar en Signal Void.",
+                                       "Vous pouvez rejouer dans Signal Void.") }
 
     // MARK: - Home V2 / V3
     var play:        String { t("PLAY",          "JUGAR",               "JOUER") }
@@ -492,7 +833,7 @@ struct AppStrings {
         switch cause {
         case .fragileTileDepleted:  return t("FRAGILE TILE BURNED OUT",   "NODO FRÁGIL AGOTADO",         "NŒUD FRAGILE ÉPUISÉ")
         case .chargeGateIncomplete: return t("CHARGE GATE NOT ACTIVATED", "COMPUERTA DE CARGA INACTIVA", "PORTE DE CHARGE INACTIVE")
-        case .moveLimitExhausted:   return t("SIGNAL ROUTE NOT FOUND",    "RUTA DE SEÑAL NO ENCONTRADA", "ROUTE DU SIGNAL INTROUVABLE")
+        case .moveLimitExhausted:   return t("SIGNAL LOST IN VOID",       "SEÑAL PERDIDA EN EL VACÍO",   "SIGNAL PERDU DANS LE VIDE")
         }
     }
 

@@ -82,7 +82,7 @@ struct BackgroundEnergyLine: View {
         let w    = size.width
         let h    = size.height
         let yMin = h * 0.14          // clear system bar area
-        let yMax = h * 0.86          // clear bottom strip
+        let yMax = h * 0.55          // stay above HUD cards at the bottom
 
         func randY() -> CGFloat { CGFloat.random(in: yMin...yMax) }
 
