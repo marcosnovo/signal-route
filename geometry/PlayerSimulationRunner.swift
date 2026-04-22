@@ -458,7 +458,8 @@ final class PlayerSimulationRunner: ObservableObject {
             score:          700,
             moveRating:     efficiency,
             energyRating:   efficiency,
-            timeRating:     1.0
+            timeRating:     1.0,
+            attemptCount:   1
         )
     }
 }

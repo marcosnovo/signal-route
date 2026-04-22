@@ -10,8 +10,13 @@ final class GameCenterManager: ObservableObject {
 
     static let shared = GameCenterManager()
 
-    // ── Product constants ──────────────────────────────────────────────────
-    static let leaderboardID = "signal_route_efficiency"
+    // ── Leaderboard IDs (configured in App Store Connect) ─────────────────
+    private static let prefix = "com.marcosnovo.signalvoidgame.leaderboard"
+    static let leaderboardTotalScore = "\(prefix).total_score"
+    static let leaderboardTierEasy   = "\(prefix).tier_easy"
+    static let leaderboardTierMedium = "\(prefix).tier_medium"
+    static let leaderboardTierHard   = "\(prefix).tier_hard"
+    static let leaderboardTierExpert = "\(prefix).tier_expert"
 
     // MARK: Published state
     @Published private(set) var isAuthenticated: Bool = false
@@ -97,30 +102,44 @@ final class GameCenterManager: ObservableObject {
 
     // MARK: - Leaderboard — submit
 
-    /// Submit the player's cumulative leaderboard score (sum of best per-level weighted scores).
+    /// Submit the player's scores to all 5 leaderboards (total + 4 tier-specific).
     /// Also loads the player's rank and updates `rankFeedback` for the victory screen.
     /// No-op if Game Center is not authenticated.
-    func submitScore(_ score: Int) async {
+    func submitAllScores(profile: AstronautProfile) async {
         guard isAuthenticated else { return }
         rankFeedback = nil
-        lastSubmittedScore = score
 
-        do {
-            try await GKLeaderboard.submitScore(
-                score,
-                context: 0,
-                player: GKLocalPlayer.local,
-                leaderboardIDs: [Self.leaderboardID]
-            )
-            #if DEBUG
-            print("[GameCenter] ✓ Submitted score=\(score) to \(Self.leaderboardID)")
-            #endif
-            await loadRankFeedback()
-        } catch {
-            #if DEBUG
-            print("[GameCenter] ✗ Score submit failed: \(error.localizedDescription)")
-            #endif
+        let total  = profile.leaderboardScore
+        lastSubmittedScore = total
+
+        let submissions: [(Int, [String])] = [
+            (total,                               [Self.leaderboardTotalScore]),
+            (profile.tierScore(for: .easy),       [Self.leaderboardTierEasy]),
+            (profile.tierScore(for: .medium),     [Self.leaderboardTierMedium]),
+            (profile.tierScore(for: .hard),       [Self.leaderboardTierHard]),
+            (profile.tierScore(for: .expert),     [Self.leaderboardTierExpert]),
+        ]
+
+        for (score, ids) in submissions where score > 0 {
+            do {
+                try await GKLeaderboard.submitScore(
+                    score,
+                    context: 0,
+                    player: GKLocalPlayer.local,
+                    leaderboardIDs: ids
+                )
+            } catch {
+                #if DEBUG
+                print("[GameCenter] ✗ Score submit failed for \(ids): \(error.localizedDescription)")
+                #endif
+            }
         }
+
+        #if DEBUG
+        print("[GameCenter] ✓ Submitted scores: total=\(total)")
+        #endif
+
+        await loadRankFeedback()
     }
 
     /// Clear stale rank feedback (call when a new game session starts).
@@ -140,7 +159,7 @@ final class GameCenterManager: ObservableObject {
         }
         guard let topVC = topPresentedViewController() else { return }
         let vc = GKGameCenterViewController(
-            leaderboardID: Self.leaderboardID,
+            leaderboardID: Self.leaderboardTotalScore,
             playerScope:   .global,
             timeScope:     .allTime
         )
@@ -177,7 +196,7 @@ final class GameCenterManager: ObservableObject {
 
     private func loadRankFeedback() async {
         do {
-            let boards = try await GKLeaderboard.loadLeaderboards(IDs: [Self.leaderboardID])
+            let boards = try await GKLeaderboard.loadLeaderboards(IDs: [Self.leaderboardTotalScore])
             guard let lb = boards.first else { return }
 
             // loadEntries(for:timeScope:range:) returns (localPlayerEntry, rangeEntries, totalCount)

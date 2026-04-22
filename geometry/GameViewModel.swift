@@ -377,7 +377,8 @@ class GameViewModel: ObservableObject {
             score:          computedScore,
             moveRating:     moveRating,
             energyRating:   energyRating,
-            timeRating:     timeRating
+            timeRating:     timeRating,
+            attemptCount:   attemptCount
         )
     }
 
@@ -754,7 +755,8 @@ class GameViewModel: ObservableObject {
             score:          0,
             moveRating:     0,
             energyRating:   0,
-            timeRating:     0
+            timeRating:     0,
+            attemptCount:   attemptCount
         )
         DailyStore.save(result)
     }

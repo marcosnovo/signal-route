@@ -32,7 +32,8 @@ enum DailyStore {
             "score":          result.score,
             "moveRating":     Double(result.moveRating),
             "energyRating":   Double(result.energyRating),
-            "timeRating":     Double(result.timeRating)
+            "timeRating":     Double(result.timeRating),
+            "attemptCount":   result.attemptCount
         ]
         defaults.set(dict, forKey: todayKey)
     }
@@ -58,7 +59,8 @@ enum DailyStore {
             score:          dict["score"] as? Int ?? 0,
             moveRating:     Float(dict["moveRating"]   as? Double ?? 0),
             energyRating:   Float(dict["energyRating"] as? Double ?? 0),
-            timeRating:     Float(dict["timeRating"]   as? Double ?? 1)
+            timeRating:     Float(dict["timeRating"]   as? Double ?? 1),
+            attemptCount:   dict["attemptCount"] as? Int ?? 1
         )
     }
 }

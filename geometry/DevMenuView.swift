@@ -812,7 +812,7 @@ struct DevMenuView: View {
         let name       = gcManager.displayName
         let hasAvatar  = gcManager.playerAvatar != nil
         let lastScore  = gcManager.lastSubmittedScore
-        let lbID       = GameCenterManager.leaderboardID
+        let lbID       = GameCenterManager.leaderboardTotalScore
         let rankLabel: String = {
             guard let fb = gcManager.rankFeedback else { return "—" }
             switch fb {

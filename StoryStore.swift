@@ -94,7 +94,8 @@ enum StoryStore {
             }
         }
 
-        return results
+        // Cap at 3 beats per sequence to avoid narrative fatigue.
+        return Array(results.prefix(3))
     }
 
     // MARK: - Cloud sync

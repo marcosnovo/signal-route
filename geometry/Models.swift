@@ -282,6 +282,8 @@ struct GameResult {
     let energyRating: Float
     /// Time quality: timeRemaining / timeLimit, or 1.0 for untimed levels.
     let timeRating: Float
+    /// Number of attempts on this level in the current session (1 = first try).
+    let attemptCount: Int
 
     // ── Derived ───────────────────────────────────────────────────────────
 
@@ -427,6 +429,35 @@ struct AstronautProfile: Codable {
 
     /// Cumulative leaderboard score: sum of best per-level weighted scores.
     var leaderboardScore: Int { bestScoreByLevel.values.reduce(0, +) }
+
+    /// Leaderboard score filtered to a single difficulty tier.
+    func tierScore(for tier: DifficultyTier) -> Int {
+        bestScoreByLevel.reduce(0) { sum, entry in
+            guard let id = Int(entry.key),
+                  let level = LevelGenerator.levels.first(where: { $0.id == id }),
+                  level.difficulty == tier else { return sum }
+            return sum + entry.value
+        }
+    }
+
+    /// Count of completed levels matching a difficulty tier.
+    func completedCount(for tier: DifficultyTier) -> Int {
+        bestEfficiencyByLevel.keys.compactMap { Int($0) }.filter { id in
+            LevelGenerator.levels.first(where: { $0.id == id })?.difficulty == tier
+        }.count
+    }
+
+    /// Count of levels with optimal efficiency (>= 0.95) matching a level type.
+    func optimalCount(for type: LevelType) -> Int {
+        bestEfficiencyByLevel.filter { $0.value >= 0.95 }.keys.compactMap { Int($0) }.filter { id in
+            LevelGenerator.levels.first(where: { $0.id == id })?.levelType == type
+        }.count
+    }
+
+    /// Total count of levels with optimal efficiency (>= 0.95).
+    var totalOptimalCount: Int {
+        bestEfficiencyByLevel.values.filter { $0 >= 0.95 }.count
+    }
 
     /// Backfills `bestScoreByLevel` from `bestEfficiencyByLevel` + level catalog
     /// so existing players get their cumulative score on first post-update launch.

@@ -1552,14 +1552,14 @@ struct GameCenterManagerStateTests {
 
     @Test("rankFeedback starts nil before any score is submitted")
     func rankFeedbackInitiallyNil() {
-        // rankFeedback is only set after a successful submitScore+leaderboard load.
+        // rankFeedback is only set after a successful submitAllScores+leaderboard load.
         // In the test environment (no GK auth) it must remain nil.
         #expect(GameCenterManager.shared.rankFeedback == nil)
     }
 
     @Test("lastSubmittedScore starts nil before any submission")
     func lastSubmittedScoreInitiallyNil() {
-        // lastSubmittedScore is only set inside submitScore(_:).
+        // lastSubmittedScore is only set inside submitAllScores(profile:).
         // Without a real GK session this must remain nil.
         #expect(GameCenterManager.shared.lastSubmittedScore == nil)
     }

@@ -25,26 +25,26 @@ struct StoryBeatView: View {
     }
 
     var body: some View {
-        ZStack {
-            // ── Backdrop ──────────────────────────────────────────────
-            Color.black.opacity(0.92)
+        GeometryReader { geo in
+            let cardH = geo.size.height * 0.82
+
+            ZStack {
+                // ── Backdrop ──────────────────────────────────────────────
+                Color.black.opacity(0.92)
+                    .ignoresSafeArea()
+                    .onTapGesture { handleTap() }
+
+                // ── Ambient glow ──────────────────────────────────────────
+                RadialGradient(
+                    gradient: Gradient(colors: [accentColor.opacity(0.10), .clear]),
+                    center: .center,
+                    startRadius: 40,
+                    endRadius: 280
+                )
                 .ignoresSafeArea()
-                .onTapGesture { handleTap() }
+                .allowsHitTesting(false)
 
-            // ── Ambient glow ──────────────────────────────────────────
-            RadialGradient(
-                gradient: Gradient(colors: [accentColor.opacity(0.10), .clear]),
-                center: .center,
-                startRadius: 40,
-                endRadius: 280
-            )
-            .ignoresSafeArea()
-            .allowsHitTesting(false)
-
-            // ── Card ──────────────────────────────────────────────────
-            VStack(spacing: 0) {
-                Spacer()
-
+                // ── Card (fixed size — matches StoryModal dimensions) ────
                 VStack(spacing: 0) {
                     if let name = beat.imageName,
                        let uiImage = UIImage(named: name)?.normalizedForDisplay {
@@ -55,6 +55,8 @@ struct StoryBeatView: View {
                     beatContent
                     acknowledgeButton
                 }
+                .frame(width: geo.size.width - 40)
+                .frame(height: cardH)
                 .background(
                     ZStack {
                         AppTheme.backgroundSecondary
@@ -66,12 +68,10 @@ struct StoryBeatView: View {
                         .strokeBorder(accentColor.opacity(0.30), lineWidth: 0.5)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 6))
-                .padding(.horizontal, 22)
                 .scaleEffect(appeared ? 1.0 : 0.95)
-
-                Spacer()
             }
         }
+        .ignoresSafeArea()
         .opacity(appeared ? 1.0 : 0.0)
         .onAppear {
             withAnimation(.spring(response: 0.44, dampingFraction: 0.88)) {
@@ -188,6 +188,8 @@ struct StoryBeatView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Spacer(minLength: 0)
+
             // Footer hint — fades in after typing completes; localized via AppStrings
             if let hint = beat.footerHint {
                 HStack(spacing: 5) {
@@ -206,6 +208,7 @@ struct StoryBeatView: View {
         .padding(.horizontal, 18)
         .padding(.top, 20)
         .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
     /// "ACKNOWLEDGE" CTA — disabled while typewriter is running.
