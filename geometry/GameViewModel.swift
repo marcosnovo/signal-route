@@ -312,7 +312,17 @@ class GameViewModel: ObservableObject {
             return
         }
 
-        if let pos = HintEngine.frontierTile(in: tiles) {
+        // Intro level (3×3 handcrafted): always hint the center tile — it's the one-tap solution.
+        if currentLevel.id == 0 {
+            let center = currentLevel.gridSize / 2
+            if !tiles[center][center].isEnergized {
+                hintTileRow = center
+                hintTileCol = center
+            } else {
+                hintTileRow = -1
+                hintTileCol = -1
+            }
+        } else if let pos = HintEngine.frontierTile(in: tiles) {
             hintTileRow = pos.row
             hintTileCol = pos.col
         } else {

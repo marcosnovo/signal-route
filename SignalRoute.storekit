@@ -2,28 +2,28 @@
   "identifier" : "SignalRoute",
   "nonConsumableProducts" : [
     {
-      "displayPrice" : "4.99",
-      "familySharable" : false,
+      "displayPrice" : "1.99",
+      "familySharable" : true,
       "internalID" : "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
       "localizations" : [
         {
-          "description" : "Unlock unlimited missions. No daily limits, ever.",
-          "displayName" : "Unlimited Access",
+          "description" : "Unlock all 180 missions. No daily limits, ever.",
+          "displayName" : "Signal Void Full Unlock",
           "locale" : "en_US"
         },
         {
-          "description" : "Desbloquea misiones ilimitadas. Sin límites diarios.",
-          "displayName" : "Acceso ilimitado",
+          "description" : "Desbloquea las 180 misiones. Sin límites diarios.",
+          "displayName" : "Signal Void Desbloqueo Total",
           "locale" : "es_ES"
         },
         {
-          "description" : "Accès illimité à toutes les missions. Sans limite quotidienne.",
-          "displayName" : "Accès illimité",
+          "description" : "Débloquez les 180 missions. Sans limite quotidienne.",
+          "displayName" : "Signal Void Déblocage Complet",
           "locale" : "fr_FR"
         }
       ],
-      "productID" : "com.signalroute.fullaccess",
-      "referenceName" : "Unlimited Access",
+      "productID" : "com.marcosnovo.signalvoidgame.fullunlock",
+      "referenceName" : "Signal Void Full Unlock",
       "type" : "NonConsumable"
     }
   ],

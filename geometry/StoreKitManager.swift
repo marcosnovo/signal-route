@@ -17,7 +17,7 @@ final class StoreKitManager: ObservableObject {
     static let shared = StoreKitManager()
 
     // ── Product identifier ─────────────────────────────────────────────────
-    static let productID = "com.signalroute.fullaccess"
+    static let productID = "com.marcosnovo.signalvoidgame.fullunlock"
 
     // ── Published state ────────────────────────────────────────────────────
     @Published private(set) var product:       Product?
@@ -69,10 +69,13 @@ final class StoreKitManager: ObservableObject {
         }
     }
 
+    /// Localized strings helper using the current language setting.
+    private var S: AppStrings { AppStrings(lang: SettingsStore.shared.language) }
+
     /// Initiate a purchase for the full-access product.
     func purchase() async {
         guard let product else {
-            purchaseState = .failed("Product not available.")
+            purchaseState = .failed(S.purchaseProductMissing)
             return
         }
         purchaseState = .purchasing
@@ -104,7 +107,7 @@ final class StoreKitManager: ObservableObject {
             // If premium was already active the state is now .success via handle(_:).
             // If nothing was found, report to the user.
             if purchaseState == .restoring {
-                purchaseState = .failed("No previous purchase found.")
+                purchaseState = .failed(S.purchaseRestoreNone)
             }
         } catch {
             purchaseState = .failed(error.localizedDescription)

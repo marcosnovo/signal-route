@@ -289,9 +289,10 @@ Three-tier haptic feedback (light / medium / heavy) using singleton `UIImpactFee
 - After 8 free sessions, 3 plays per 24-hour rolling window
 - Uses monotonic uptime + wall-clock verification (resistant to clock-forward manipulation)
 
-**Premium — Single Lifetime Purchase:**
-- One-time in-app purchase removes all play limits
-- Can also be granted via unlock codes
+**Premium — Single Lifetime Purchase ($1.99 USD):**
+- One-time non-consumable in-app purchase removes all play limits
+- Family Sharing supported — one purchase covers the entire family group
+- Can also be granted via unlock codes (DEBUG builds only)
 
 ### Paywall Presentation
 
@@ -372,9 +373,13 @@ Merge strategy is **monotonic** — never downgrades local progress. Safety chec
 
 ### StoreKit 2
 
-- Single lifetime in-app purchase product
-- Transaction listener for purchase restoration
-- Unlock code redemption system as alternative activation
+- **Product:** `com.marcosnovo.signalvoidgame.fullunlock` — non-consumable, $1.99 USD
+- **Family Sharing:** enabled — one purchase covers the whole family group
+- CTA button displays the real `product.displayPrice` from StoreKit (locale-aware)
+- Restore Purchases: visible bordered button (App Store guideline compliance)
+- Transaction listener runs at app launch for background purchase/refund/revocation handling
+- Discount/unlock code input: available in DEBUG builds only (hidden in RELEASE per guideline 3.1.1)
+- All purchase error strings are fully localized (EN/ES/FR)
 
 ### Local Notifications
 

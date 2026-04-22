@@ -496,6 +496,8 @@ struct AppStrings {
     var purchaseErrorNetwork:   String { t("No connection. Check your network.","Sin conexión. Revisa tu red.",         "Pas de connexion. Vérifiez votre réseau.") }
     var purchaseErrorNotAllowed: String { t("In-app purchases are restricted on this device.","Las compras están restringidas en este dispositivo.","Les achats intégrés sont restreints sur cet appareil.") }
     var purchaseAlreadyOwned:   String { t("You already own the full game.",   "Ya tienes el juego completo.",          "Vous possédez déjà le jeu complet.") }
+    var purchaseProductMissing: String { t("Product not available. Try again later.", "Producto no disponible. Inténtalo más tarde.", "Produit non disponible. Réessayez plus tard.") }
+    var purchaseRestoreNone:   String { t("No previous purchase found.",      "No se encontró ninguna compra anterior.","Aucun achat précédent trouvé.") }
 
     // MARK: - Discount codes
     var discountCodePlaceholder: String { t("Discount code",     "Código de descuento", "Code de réduction") }

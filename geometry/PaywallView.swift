@@ -79,10 +79,12 @@ struct PaywallView: View {
 
                 Spacer(minLength: 10)
 
+                #if DEBUG
                 discountSection
                     .padding(.horizontal, 20)
 
                 Spacer(minLength: 10)
+                #endif
 
                 ctaSection
                     .padding(.horizontal, 20)
@@ -426,7 +428,7 @@ struct PaywallView: View {
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
             .buttonStyle(.plain)
-            .disabled(isBusy)
+            .disabled(isBusy || storeKit.product == nil)
             .breathingCTA(color: accent)
             .scaleEffect(ctaAppeared ? 1.0 : 0.96)
             .opacity(ctaAppeared ? 1.0 : 0)
@@ -471,30 +473,43 @@ struct PaywallView: View {
             .buttonStyle(.plain)
             .padding(.top, 10)
 
-            // ── Temporal context + restore ─────────────────────────────────
-            VStack(spacing: 8) {
-                if showsResetHint {
-                    Text(resetLabel)
-                        .font(AppTheme.mono(7)).kerning(0.4)
-                        .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
-                }
-
-                Button {
-                    Task { await storeKit.restorePurchases() }
-                } label: {
-                    let isRestoring = storeKit.purchaseState == .restoring
-                    HStack(spacing: 5) {
-                        if isRestoring {
-                            ProgressView().scaleEffect(0.65).tint(AppTheme.textSecondary)
-                        }
-                        Text(restoreLabel)
-                            .font(AppTheme.mono(8)).kerning(0.5)
-                            .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
-                    }
-                }
-                .buttonStyle(.plain)
-                .disabled(storeKit.purchaseState == .restoring)
+            // ── Temporal context hint ─────────────────────────────────────
+            if showsResetHint {
+                Text(resetLabel)
+                    .font(AppTheme.mono(7)).kerning(0.4)
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
+                    .padding(.top, 8)
             }
+
+            // ── Restore purchases (bordered secondary) ───────────────────
+            Button {
+                HapticsManager.light()
+                SoundManager.play(.tapSecondary)
+                Task { await storeKit.restorePurchases() }
+            } label: {
+                let isRestoring = storeKit.purchaseState == .restoring
+                HStack(spacing: 6) {
+                    Spacer(minLength: 0)
+                    if isRestoring {
+                        ProgressView().scaleEffect(0.65).tint(sage)
+                    }
+                    Text(restoreLabel)
+                        .font(AppTheme.mono(10, weight: .bold)).kerning(1.0)
+                        .foregroundStyle(sage.opacity(0.72))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity).frame(height: 44)
+                .background(.white.opacity(0.030))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .strokeBorder(sage.opacity(0.20), lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(storeKit.purchaseState == .restoring)
             .padding(.top, 8)
         }
     }
@@ -601,11 +616,13 @@ struct PaywallView: View {
     }
 
     private var upgradeLabel: String {
-        switch settings.language {
-        case .en: return "CONTINUE NOW"
-        case .es: return "CONTINUAR AHORA"
-        case .fr: return "CONTINUER MAINTENANT"
+        if let product = storeKit.product {
+            return S.paywallCtaBuy(product.displayPrice).uppercased()
         }
+        if case .failed = storeKit.purchaseState {
+            return S.paywallCtaBuy("--").uppercased()
+        }
+        return S.paywallLoading.uppercased()
     }
 
     private var ctaSubtext: String { S.paywallLegal }
