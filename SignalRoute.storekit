@@ -1,10 +1,23 @@
 {
-  "identifier" : "SignalRoute",
-  "nonConsumableProducts" : [
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "502612ED",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
     {
       "displayPrice" : "1.99",
-      "familySharable" : true,
-      "internalID" : "A1B2C3D4-E5F6-7890-ABCD-EF1234567890",
+      "familyShareable" : true,
+      "internalID" : "6763014141",
       "localizations" : [
         {
           "description" : "Unlock all 180 missions. No daily limits, ever.",
@@ -28,12 +41,24 @@
     }
   ],
   "settings" : {
-    "_storeKitVersion" : "2"
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
   },
-  "subscriptionGroups" : [],
+  "subscriptionGroups" : [
+
+  ],
   "version" : {
-    "major" : 3,
-    "minor" : 0,
-    "patch" : 0
+    "major" : 5,
+    "minor" : 0
   }
 }

@@ -14,6 +14,7 @@
 		6A4FDB9D2F8CECFE0069C7B0 /* StoryBeatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDB9C2F8CECFE0069C7B0 /* StoryBeatView.swift */; };
 		6A4FDB9F2F8CEE700069C7B0 /* NarrativeIntroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDB9E2F8CEE700069C7B0 /* NarrativeIntroView.swift */; };
 		6A4FDBA12F8CEE830069C7B0 /* MissionClearanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4FDBA02F8CEE830069C7B0 /* MissionClearanceView.swift */; };
+		6A72A1CA2F9903A500A26454 /* SignalRoute.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 6A72A1C92F9903A500A26454 /* SignalRoute.storekit */; };
 		6A89C9132F8E433500CF3706 /* StoryAssetValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C9122F8E433500CF3706 /* StoryAssetValidator.swift */; };
 		6A89C9172F8EA10000CF3706 /* PlayerSkillStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C9162F8EA10000CF3706 /* PlayerSkillStore.swift */; };
 		6A89C9192F8EA21A00CF3706 /* AdaptiveDifficultyEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A89C9182F8EA21A00CF3706 /* AdaptiveDifficultyEngine.swift */; };
@@ -23,7 +24,6 @@
 		6A8FD3D62F983216001E27EC /* AchievementManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A8FD3D52F983216001E27EC /* AchievementManager.swift */; };
 		6AA27C602F92813D00482A03 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AA27C5F2F92813D00482A03 /* AudioManager.swift */; };
 		6AA27C622F92848600482A03 /* MusicSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AA27C612F92848600482A03 /* MusicSynthesizer.swift */; };
-		6AE576F42F911614004E5007 /* SignalRoute.storekit in Resources */ = {isa = PBXBuildFile; fileRef = 6AE576F32F911614004E5007 /* SignalRoute.storekit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,6 +54,7 @@
 		6A68C0EC2F890D860077D0E0 /* geometry.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = geometry.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6A68C0F92F890D870077D0E0 /* geometryTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = geometryTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		6A68C1032F890D870077D0E0 /* geometryUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = geometryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		6A72A1C92F9903A500A26454 /* SignalRoute.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = SignalRoute.storekit; sourceTree = "<group>"; };
 		6A89C9122F8E433500CF3706 /* StoryAssetValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoryAssetValidator.swift; sourceTree = "<group>"; };
 		6A89C9162F8EA10000CF3706 /* PlayerSkillStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSkillStore.swift; sourceTree = "<group>"; };
 		6A89C9182F8EA21A00CF3706 /* AdaptiveDifficultyEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdaptiveDifficultyEngine.swift; sourceTree = "<group>"; };
@@ -63,7 +64,6 @@
 		6A8FD3D52F983216001E27EC /* AchievementManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementManager.swift; sourceTree = "<group>"; };
 		6AA27C5F2F92813D00482A03 /* AudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioManager.swift; sourceTree = "<group>"; };
 		6AA27C612F92848600482A03 /* MusicSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSynthesizer.swift; sourceTree = "<group>"; };
-		6AE576F32F911614004E5007 /* SignalRoute.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = SignalRoute.storekit; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -112,6 +112,7 @@
 		6A68C0E32F890D860077D0E0 = {
 			isa = PBXGroup;
 			children = (
+				6A72A1C92F9903A500A26454 /* SignalRoute.storekit */,
 				6A68C0EE2F890D860077D0E0 /* geometry */,
 				6A68C0FC2F890D870077D0E0 /* geometryTests */,
 				6A68C1062F890D870077D0E0 /* geometryUITests */,
@@ -129,7 +130,6 @@
 				6A89C91D2F8EA40000CF3706 /* SessionTracker.swift */,
 				6A89C91B2F8EA30000CF3706 /* PaywallMomentSelector.swift */,
 				6A89C9212F8EA60000CF3706 /* FrustrationGuard.swift */,
-				6AE576F32F911614004E5007 /* SignalRoute.storekit */,
 				6AA27C5F2F92813D00482A03 /* AudioManager.swift */,
 				6AA27C612F92848600482A03 /* MusicSynthesizer.swift */,
 				6A8FD3D52F983216001E27EC /* AchievementManager.swift */,
@@ -266,7 +266,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6AE576F42F911614004E5007 /* SignalRoute.storekit in Resources */,
+				6A72A1CA2F9903A500A26454 /* SignalRoute.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

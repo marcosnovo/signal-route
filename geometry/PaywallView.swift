@@ -410,26 +410,27 @@ struct PaywallView: View {
                 Task { await storeKit.purchase() }
             } label: {
                 ZStack {
-                    VStack(spacing: 3) {
-                        Text(upgradeLabel)
-                            .font(AppTheme.mono(13, weight: .black)).kerning(1.0)
-                            .foregroundStyle(.black.opacity(isBusy ? 0 : 0.88))
+                    HStack(spacing: 10) {
                         if !isBusy {
-                            priceSubtext
+                            Image(systemName: "lock.open.fill")
+                                .font(.system(size: 13, weight: .bold))
                         }
+                        Text(upgradeLabel)
+                            .font(AppTheme.mono(12, weight: .bold)).kerning(2)
                     }
+                    .foregroundStyle(.white.opacity(isBusy ? 0 : 1))
                     if isBusy {
                         ProgressView()
-                            .tint(.black.opacity(0.75))
+                            .tint(.white.opacity(0.75))
                     }
                 }
                 .frame(maxWidth: .infinity).frame(height: 56)
-                .background(accent.opacity(isBusy ? 0.60 : 1.0))
+                .background(AppTheme.accentPrimary.opacity(isBusy ? 0.60 : 1.0))
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
             .buttonStyle(.plain)
-            .disabled(isBusy || storeKit.product == nil)
-            .breathingCTA(color: accent)
+            .disabled(isBusy)
+            .breathingCTA()
             .scaleEffect(ctaAppeared ? 1.0 : 0.96)
             .opacity(ctaAppeared ? 1.0 : 0)
 

@@ -53,10 +53,23 @@ final class StoreKitManager: ObservableObject {
         guard product == nil else { return }
         purchaseState = .loading
         do {
+            #if DEBUG
+            print("[StoreKit] Requesting product: \(Self.productID)")
+            #endif
             let products = try await Product.products(for: [Self.productID])
-            product       = products.first
-            purchaseState = .idle
+            #if DEBUG
+            print("[StoreKit] Received \(products.count) product(s): \(products.map(\.id))")
+            #endif
+            if let found = products.first {
+                product       = found
+                purchaseState = .idle
+            } else {
+                purchaseState = .failed(S.purchaseProductMissing)
+            }
         } catch {
+            #if DEBUG
+            print("[StoreKit] ✗ loadProduct error: \(error)")
+            #endif
             purchaseState = .failed(error.localizedDescription)
         }
     }
