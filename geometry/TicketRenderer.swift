@@ -20,7 +20,8 @@ enum TicketRenderer {
     ///
     /// `nonisolated` — UIGraphicsImageRenderer + Core Graphics drawing is documented
     /// thread-safe; this lets the call happen off the main thread via Task.detached.
-    nonisolated static func render(pass: PlanetPass, profile: AstronautProfile) -> UIImage {
+    nonisolated static func render(pass: PlanetPass, profile: AstronautProfile,
+                                    language: AppLanguage = .en) -> UIImage {
         let size = CGSize(width: 720, height: 720)
         let format = UIGraphicsImageRendererFormat()
         format.scale  = 1.0    // pixel-accurate: 1080 pt == 1080 px
@@ -28,7 +29,7 @@ enum TicketRenderer {
         format.preferredRange = .standard   // sRGB — prevents color shift when shared
         let renderer = UIGraphicsImageRenderer(size: size, format: format)
         return renderer.image { _ in
-            drawTicket(pass: pass, profile: profile, in: size)
+            drawTicket(pass: pass, profile: profile, language: language, in: size)
         }
     }
 
@@ -36,9 +37,11 @@ enum TicketRenderer {
 
     /// Design canvas is 1080×1080; `size` may be smaller (e.g. 720).
     /// We apply a uniform scale so all coordinates stay in the 1080 design space.
-    private static func drawTicket(pass: PlanetPass, profile: AstronautProfile, in size: CGSize) {
+    private static func drawTicket(pass: PlanetPass, profile: AstronautProfile,
+                                    language: AppLanguage, in size: CGSize) {
         let planet = Planet.catalog[min(pass.planetIndex, Planet.catalog.count - 1)]
         let accent = UIColor(planet.color)
+        let S = AppStrings(lang: language)
 
         // Scale CG context so all drawing uses the original 1080 coordinate space
         let designSize: CGFloat = 1080
@@ -53,11 +56,11 @@ enum TicketRenderer {
         drawPlanetVisual(planetIndex: pass.planetIndex, accent: accent, in: canvas)
         drawAstronautSilhouette(accent: accent, in: canvas)
         drawLeftBar(accent: accent, height: canvas.height)
-        drawTopBar(pass: pass, planet: planet, in: canvas, accent: accent)
-        drawPlanetSection(pass: pass, planet: planet, in: canvas, accent: accent)
-        drawEfficiency(pass: pass, in: canvas, accent: accent)
+        drawTopBar(pass: pass, planet: planet, S: S, in: canvas, accent: accent)
+        drawPlanetSection(pass: pass, planet: planet, S: S, in: canvas, accent: accent)
+        drawEfficiency(pass: pass, S: S, in: canvas, accent: accent)
         hairline(x: 32, y: 742, width: canvas.width - 32, color: accent.withAlphaComponent(0.25))
-        drawStats(pass: pass, profile: profile, in: canvas, accent: accent)
+        drawStats(pass: pass, profile: profile, S: S, in: canvas, accent: accent)
         drawFooter(pass: pass, in: canvas, accent: accent)
     }
 
@@ -422,7 +425,7 @@ enum TicketRenderer {
 
     // MARK: - Top Bar
 
-    private static func drawTopBar(pass: PlanetPass, planet: Planet,
+    private static func drawTopBar(pass: PlanetPass, planet: Planet, S: AppStrings,
                                     in size: CGSize, accent: UIColor) {
         accent.withAlphaComponent(0.060).setFill()
         UIRectFill(CGRect(x: 30, y: 0, width: size.width - 30, height: 90))
@@ -433,48 +436,50 @@ enum TicketRenderer {
         draw(pass.serialCode, at: CGPoint(x: 66, y: 54),
              size: 16, weight: .regular, color: .white.withAlphaComponent(0.72), kern: 2)
 
-        let passLabel = pass.isEarned ? "PLANET PASS" : "TRAINING CLEARANCE"
+        let passLabel = pass.isEarned ? S.planetPass : S.trainingClearance
         let passAttr = attr(passLabel, size: 22, weight: .bold, color: accent, kern: 3)
         passAttr.draw(at: CGPoint(x: size.width - passAttr.size().width - 48, y: 24))
-        let diffAttr = attr(planet.difficulty.fullLabel, size: 14, weight: .semibold,
+        let diffAttr = attr(S.difficultyFullLabel(planet.difficulty), size: 14, weight: .semibold,
                             color: accent.withAlphaComponent(0.72), kern: 2)
         diffAttr.draw(at: CGPoint(x: size.width - diffAttr.size().width - 48, y: 54))
     }
 
     // MARK: - Planet Section
 
-    private static func drawPlanetSection(pass: PlanetPass, planet: Planet,
+    private static func drawPlanetSection(pass: PlanetPass, planet: Planet, S: AppStrings,
                                            in size: CGSize, accent: UIColor) {
         let leftX: CGFloat = 66
 
-        draw(planet.missionBrief, at: CGPoint(x: leftX, y: 112),
+        draw(S.zoneBrief(planet.missionBrief), at: CGPoint(x: leftX, y: 112),
              size: 19, weight: .semibold, color: accent.withAlphaComponent(0.88), kern: 4)
 
         accent.withAlphaComponent(0.32).setFill()
         UIRectFill(CGRect(x: leftX, y: 143, width: 240, height: 0.5))
 
         // Planet name — large, full white
+        let localizedName = S.planetName(pass.planetName)
         let maxNameW = size.width - leftX - 80
-        let nameFontSize = adaptiveFontSize(for: pass.planetName, maxWidth: maxNameW, base: 158)
-        let nameAttr = NSAttributedString(string: pass.planetName, attributes: [
+        let nameFontSize = adaptiveFontSize(for: localizedName, maxWidth: maxNameW, base: 158)
+        let nameAttr = NSAttributedString(string: localizedName, attributes: [
             .font: UIFont.monospacedSystemFont(ofSize: nameFontSize, weight: .black),
             .foregroundColor: UIColor.white,
             .kern: -2.0
         ])
         nameAttr.draw(at: CGPoint(x: leftX - 4, y: 150))
 
-        let accessLabel = pass.isEarned ? "ACCESS AUTHORIZED" : "IN TRAINING"
+        let accessLabel = pass.isEarned ? S.accessAuthorized : S.inTraining
         draw(accessLabel, at: CGPoint(x: leftX, y: 382),
              size: 17, weight: .semibold, color: accent.withAlphaComponent(0.68), kern: 4)
     }
 
     // MARK: - Efficiency
 
-    private static func drawEfficiency(pass: PlanetPass, in size: CGSize, accent: UIColor) {
+    private static func drawEfficiency(pass: PlanetPass, S: AppStrings,
+                                        in size: CGSize, accent: UIColor) {
         let leftX: CGFloat = 66
         let topY:  CGFloat = 434
 
-        draw("MISSION EFFICIENCY", at: CGPoint(x: leftX, y: topY),
+        draw(S.missionEfficiency, at: CGPoint(x: leftX, y: topY),
              size: 17, weight: .semibold, color: .white.withAlphaComponent(0.70), kern: 3)
 
         let effPct = Int((pass.efficiencyScore * 100).rounded())
@@ -500,14 +505,14 @@ enum TicketRenderer {
 
     // MARK: - Stats
 
-    private static func drawStats(pass: PlanetPass, profile: AstronautProfile,
+    private static func drawStats(pass: PlanetPass, profile: AstronautProfile, S: AppStrings,
                                    in size: CGSize, accent: UIColor) {
         let topY: CGFloat = 762
         let cells: [(String, String)] = [
-            ("LEVEL",    String(format: "%02d", pass.levelReached)),
-            ("MISSIONS", String(format: "%04d", pass.missionCount)),
-            ("RANK",     profile.rankTitle),
-            ("STATUS",   pass.isEarned ? "CLEARED" : "IN PROGRESS"),
+            (S.levelLabel,    String(format: "%02d", pass.levelReached)),
+            (S.missionsLabel, String(format: "%04d", pass.missionCount)),
+            (S.rankLabel,     S.rankTitle(profile.level)),
+            (S.statusLabel,   pass.isEarned ? S.clearedStatus : S.inProgressStatus),
         ]
         let cellW = (size.width - 30) / CGFloat(cells.count)
         for (i, (label, value)) in cells.enumerated() {
@@ -597,12 +602,12 @@ final class TicketCache {
 
     private var store: [String: UIImage] = [:]
 
-    func image(for pass: PlanetPass) -> UIImage? {
-        store[cacheKey(for: pass)]
+    func image(for pass: PlanetPass, language: AppLanguage) -> UIImage? {
+        store[cacheKey(for: pass, language: language)]
     }
 
-    func cache(_ image: UIImage, for pass: PlanetPass) {
-        store[cacheKey(for: pass)] = image
+    func cache(_ image: UIImage, for pass: PlanetPass, language: AppLanguage) {
+        store[cacheKey(for: pass, language: language)] = image
     }
 
     /// Call when the player's pass data changes (e.g. after a level-up).
@@ -610,8 +615,8 @@ final class TicketCache {
         store.removeAll()
     }
 
-    private func cacheKey(for pass: PlanetPass) -> String {
+    private func cacheKey(for pass: PlanetPass, language: AppLanguage) -> String {
         let eff = Int((pass.efficiencyScore * 100).rounded())
-        return "\(pass.planetIndex)-\(pass.levelReached)-\(pass.missionCount)-\(eff)-\(pass.isEarned)"
+        return "\(pass.planetIndex)-\(pass.levelReached)-\(pass.missionCount)-\(eff)-\(pass.isEarned)-\(language.rawValue)"
     }
 }

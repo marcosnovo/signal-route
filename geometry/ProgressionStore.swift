@@ -10,7 +10,8 @@ import Foundation
 ///   • Expose a LevelUpEvent when a level boundary is crossed
 enum ProgressionStore {
 
-    private static let key = "astronaut-profile-v1"
+    private static let key       = "astronaut-profile-v1"
+    private static let backupKey = "astronaut-profile-backup"
 
     /// In-memory cache — eliminates repeated UserDefaults JSON decodes.
     /// Invalidated on every save() / reset() so it never goes stale.
@@ -20,22 +21,50 @@ enum ProgressionStore {
 
     /// Current profile — returns a default Level-1 profile if no data exists yet.
     ///
-    /// Performs a one-time migration the first time a player runs a build that
-    /// includes `lastEfficiencyByLevel`: if the new field is empty but `bestEfficiencyByLevel`
-    /// is not, we seed `last` from `best` so existing players keep their progress intact.
+    /// Safety layers:
+    ///   1. Decode from primary key. If that fails…
+    ///   2. Attempt decode from backup key (written on every save).
+    ///   3. Only returns a fresh profile if both are absent (genuine first launch).
+    ///
+    /// Performs one-time migrations for schema evolution (see inline comments).
     static var profile: AstronautProfile {
         if let cached = _cache { return cached }
 
-        guard
-            let data    = UserDefaults.standard.data(forKey: key),
-            var decoded = try? JSONDecoder().decode(AstronautProfile.self, from: data)
-        else {
-            let fresh = AstronautProfile()
-            _cache = fresh
-            return fresh
+        // ── Layer 1: Decode from primary key ─────────────────────────────
+        if let data = UserDefaults.standard.data(forKey: key) {
+            do {
+                var decoded = try JSONDecoder().decode(AstronautProfile.self, from: data)
+                return applyMigrations(&decoded)
+            } catch {
+                // CRITICAL: Log the failure so it's diagnosable — never silently lose data.
+                print("[ProgressionStore] ✗ PRIMARY decode failed (\(data.count) bytes): \(error)")
+            }
         }
 
-        // One-time migrations
+        // ── Layer 2: Recover from backup ─────────────────────────────────
+        if let backupData = UserDefaults.standard.data(forKey: backupKey) {
+            do {
+                var decoded = try JSONDecoder().decode(AstronautProfile.self, from: backupData)
+                print("[ProgressionStore] ⚠ Recovered from backup — completions=\(decoded.uniqueCompletions)")
+                let restored = applyMigrations(&decoded)
+                // Re-persist to primary so next launch doesn't hit this path again
+                if let reEncoded = try? JSONEncoder().encode(restored) {
+                    UserDefaults.standard.set(reEncoded, forKey: key)
+                }
+                return restored
+            } catch {
+                print("[ProgressionStore] ✗ BACKUP decode also failed (\(backupData.count) bytes): \(error)")
+            }
+        }
+
+        // ── Layer 3: Genuine first launch — no stored data anywhere ──────
+        let fresh = AstronautProfile()
+        _cache = fresh
+        return fresh
+    }
+
+    /// Apply schema migrations and cache the result. Returns the migrated profile.
+    private static func applyMigrations(_ decoded: inout AstronautProfile) -> AstronautProfile {
         var needsSave = false
 
         // Migration 1: seed last-score store from best-score store
@@ -59,11 +88,26 @@ enum ProgressionStore {
     }
 
     /// Persist the given profile to UserDefaults and update the in-memory cache.
+    ///
+    /// Safety: also writes to a backup key so data can be recovered if the
+    /// primary key becomes corrupted or a future schema change breaks decoding.
     static func save(_ profile: AstronautProfile) {
+        // ── Regression guard: warn if saving a profile with fewer completions ──
+        if let existing = _cache, existing.uniqueCompletions > 0,
+           profile.uniqueCompletions == 0 && !_isDevReset {
+            print("[ProgressionStore] ⚠ REGRESSION BLOCKED — attempted to overwrite \(existing.uniqueCompletions) completions with 0. Ignoring save.")
+            return
+        }
+
         _cache = profile
         guard let data = try? JSONEncoder().encode(profile) else { return }
         UserDefaults.standard.set(data, forKey: key)
+        // Write backup on every save — independent key survives primary corruption
+        UserDefaults.standard.set(data, forKey: backupKey)
     }
+
+    /// Flag to allow dev resets to bypass the regression guard.
+    private static var _isDevReset = false
 
     // MARK: - Recording a mission
 
@@ -141,8 +185,11 @@ enum ProgressionStore {
 
     /// Resets the profile to a fresh Level-1 state.
     static func reset() {
+        _isDevReset = true
+        defer { _isDevReset = false }
         _cache = nil
         UserDefaults.standard.removeObject(forKey: key)
+        UserDefaults.standard.removeObject(forKey: backupKey)
     }
 
     /// Jump to a specific player level and re-issue passes for all earned planets.

@@ -9,6 +9,8 @@ enum FailureCause {
     case fragileTileDepleted
     /// The move limit (or timer) expired with at least one charge gate still closed.
     case chargeGateIncomplete
+    /// maxCoverage objective with insufficient grid coverage at move exhaustion.
+    case coverageInsufficient
     /// Standard move-limit exhaustion with no active mechanic culprit.
     case moveLimitExhausted
 }
@@ -66,9 +68,10 @@ class GameViewModel: ObservableObject {
     /// Short label describing the failure cause for display in the loss overlay.
     var failureCauseLabel: String {
         switch failureCause {
-        case .fragileTileDepleted:  return "FRAGILE TILE BURNED OUT"
-        case .chargeGateIncomplete: return "CHARGE GATE NOT ACTIVATED"
-        case .moveLimitExhausted:   return "SIGNAL LOST IN VOID"
+        case .fragileTileDepleted:   return "FRAGILE TILE BURNED OUT"
+        case .chargeGateIncomplete:  return "CHARGE GATE NOT ACTIVATED"
+        case .coverageInsufficient:  return "INSUFFICIENT COVERAGE"
+        case .moveLimitExhausted:    return "SIGNAL LOST IN VOID"
         }
     }
 
@@ -398,6 +401,13 @@ class GameViewModel: ObservableObject {
         return Int(Float(activeNodes) / Float(total) * 100)
     }
 
+    /// True when maxCoverage threshold is not yet met.
+    var coverageBelowThreshold: Bool {
+        guard currentLevel.objectiveType == .maxCoverage else { return false }
+        let threshold = consecutiveFailures >= 3 ? 40 : 50
+        return gridCoveragePercent < threshold
+    }
+
     /// Extra nodes beyond the solution path. Relevant for energySaving.
     var energyWaste: Int {
         max(0, activeNodes - currentLevel.solutionPathLength)
@@ -431,6 +441,9 @@ class GameViewModel: ObservableObject {
         } else if !closedGatePositions.isEmpty {
             failureCause = .chargeGateIncomplete
             culpritTiles = closedGatePositions
+        } else if currentLevel.objectiveType == .maxCoverage && coverageBelowThreshold {
+            failureCause = .coverageInsufficient
+            culpritTiles = []
         } else {
             failureCause = .moveLimitExhausted
             culpritTiles = []
@@ -716,6 +729,14 @@ class GameViewModel: ObservableObject {
             let bonusSlack = consecutiveFailures >= 3 ? 1 : 0
             return activeNodes <= currentLevel.energySavingLimit + bonusSlack
         }
+
+        // maxCoverage: require at least 50% grid coverage.
+        // After 3+ consecutive failures, lower to 40% (silent frustration guard).
+        if currentLevel.objectiveType == .maxCoverage {
+            let threshold = consecutiveFailures >= 3 ? 40 : 50
+            return gridCoveragePercent >= threshold
+        }
+
         return true
     }
 

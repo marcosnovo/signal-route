@@ -256,7 +256,7 @@ private struct SectorCard: View {
         switch displayState {
         case .active:    return AppTheme.accentPrimary
         case .completed: return AppTheme.success
-        case .locked:    return AppTheme.textSecondary.opacity(0.45)
+        case .locked:    return AppTheme.danger.opacity(0.40)
         }
     }
 
@@ -297,13 +297,13 @@ private struct SectorCard: View {
                     Text(S.regionName(region.name))
                         .font(AppTheme.mono(18, weight: .black))
                         .foregroundStyle(displayState == .locked
-                                         ? AppTheme.textSecondary.opacity(0.60)
+                                         ? AppTheme.textSecondary.opacity(0.40)
                                          : AppTheme.textPrimary)
                         .kerning(1)
                     Text(S.zoneBrief(region.subtitle))
                         .font(AppTheme.mono(9, weight: .regular))
                         .foregroundStyle(displayState == .locked
-                                         ? AppTheme.textSecondary.opacity(0.45)
+                                         ? AppTheme.textSecondary.opacity(0.30)
                                          : region.accentColor.opacity(0.72))
                         .kerning(2)
                 }
@@ -336,7 +336,12 @@ private struct SectorCard: View {
         case .completed:
             TechLabel(text: S.sectorComplete, color: AppTheme.success)
         case .locked:
-            TechLabel(text: S.lockedLabel, color: AppTheme.textSecondary.opacity(0.70))
+            HStack(spacing: 5) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(AppTheme.danger.opacity(0.70))
+                TechLabel(text: S.lockedLabel, color: AppTheme.danger.opacity(0.70))
+            }
         }
     }
 
@@ -378,16 +383,12 @@ private struct SectorCard: View {
         case .locked:
             VStack(alignment: .trailing, spacing: 4) {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(AppTheme.textSecondary.opacity(0.65))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AppTheme.danger.opacity(0.50))
                 Text("\(total) \(S.missionsCount)")
                     .font(AppTheme.mono(9, weight: .bold))
-                    .foregroundStyle(AppTheme.textSecondary.opacity(0.70))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.50))
                     .kerning(1)
-                TechLabel(
-                    text: S.completePreviousSectors,
-                    color: AppTheme.textSecondary.opacity(0.70)
-                )
             }
         }
     }
@@ -495,7 +496,7 @@ private struct SectorCard: View {
         switch displayState {
         case .active:    return AppTheme.backgroundSecondary.opacity(0.78)
         case .completed: return AppTheme.backgroundSecondary.opacity(0.45)
-        case .locked:    return Color.clear
+        case .locked:    return AppTheme.danger.opacity(0.04)
         }
     }
 

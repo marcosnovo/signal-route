@@ -6095,9 +6095,9 @@ private struct DevPassViewerOverlay: View {
             withAnimation(.spring(response: 0.55, dampingFraction: 0.65).delay(0.10)) {
                 cardAppeared = true
             }
-            let p = pass; let profile = ProgressionStore.profile
+            let p = pass; let profile = ProgressionStore.profile; let lang = SettingsStore.shared.language
             Task.detached(priority: .userInitiated) {
-                let img = TicketRenderer.render(pass: p, profile: profile)
+                let img = TicketRenderer.render(pass: p, profile: profile, language: lang)
                 await MainActor.run { ticketImage = img }
             }
         }

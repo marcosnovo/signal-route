@@ -303,19 +303,55 @@ struct VictoryTelemetryView: View {
 
             Spacer(minLength: 0)
 
+            // ── Score breakdown row ──────────────────────────────────────
+            VStack(spacing: 0) {
+                Rectangle().fill(sageDivider).frame(height: 0.5)
+
+                HStack(alignment: .top, spacing: 0) {
+                    // Level score / max
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(S.missionScore)
+                            .font(.system(size: 8, weight: .semibold))
+                            .tracking(1.2)
+                            .foregroundStyle(sageMid)
+                        HStack(alignment: .firstTextBaseline, spacing: 3) {
+                            Text("\(vm.score)")
+                                .font(.system(size: 18, weight: .black))
+                                .foregroundStyle(sageInk)
+                                .monospacedDigit()
+                            Text("/ \(Int(LevelScoring.basePoints(for: vm.currentLevel)))")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(sageFaint)
+                                .monospacedDigit()
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+
+                    // Cumulative ranking total
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(S.rankingTotal)
+                            .font(.system(size: 8, weight: .semibold))
+                            .tracking(1.2)
+                            .foregroundStyle(sageMid)
+                        Text(ProgressionStore.profile.leaderboardScore.formatted())
+                            .font(.system(size: 18, weight: .black))
+                            .foregroundStyle(sageInk)
+                            .monospacedDigit()
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            }
+            .opacity(metricsVisible ? 1 : 0)
+            .offset(y: metricsVisible ? 0 : 10)
+            .animation(.easeOut(duration: 0.30), value: metricsVisible)
+
             // ── Bottom metrics row ───────────────────────────────────────
             VStack(spacing: 0) {
                 Rectangle().fill(sageDivider).frame(height: 0.5)
 
                 HStack(spacing: 0) {
-                    SageMetric(
-                        icon:  "scope",
-                        label: S.score,
-                        value: "\(vm.score)",
-                        ink:   sageInk,
-                        sub:   sageFaint
-                    )
-                    Rectangle().fill(sageDivider).frame(width: 0.5)
                     SageMetric(
                         icon:  "waveform",
                         label: S.usedMin,
@@ -656,8 +692,9 @@ struct VictoryTelemetryView: View {
 
         Task {
             // Heavy CG draw (1080×1080) happens off the main actor.
+            let lang = settings.language
             let image = await Task.detached(priority: .userInitiated) {
-                TicketRenderer.render(pass: pass, profile: profile)
+                TicketRenderer.render(pass: pass, profile: profile, language: lang)
             }.value
 
             // Back on main actor for UIKit presentation.
@@ -706,6 +743,8 @@ private struct SageMetric: View {
                 .font(.system(size: 20, weight: .black))
                 .foregroundStyle(ink)
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)

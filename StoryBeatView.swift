@@ -116,7 +116,7 @@ struct StoryBeatView: View {
             .overlay(alignment: .bottomLeading) {
                 HStack(spacing: 5) {
                     BlinkingDot(color: accent)
-                    Text(beat.source)
+                    Text(beat.displaySource(for: settings.language))
                         .font(AppTheme.mono(7, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.68))
                         .kerning(1.0)
@@ -139,7 +139,7 @@ struct StoryBeatView: View {
                 .foregroundStyle(accentColor.opacity(0.70))
                 .kerning(1.5)
             Spacer()
-            Text(beat.source)
+            Text(beat.displaySource(for: settings.language))
                 .font(AppTheme.mono(7, weight: .semibold))
                 .foregroundStyle(AppTheme.textSecondary)
                 .kerning(0.8)
@@ -211,11 +211,11 @@ struct StoryBeatView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
-    /// "ACKNOWLEDGE" CTA — disabled while typewriter is running.
+    /// "CONTINUE" CTA — disabled while typewriter is running.
     private var acknowledgeButton: some View {
         Button(action: dismiss) {
             HStack(spacing: 6) {
-                Text(S.acknowledge)
+                Text(S.continueAction)
                     .font(AppTheme.mono(10, weight: .bold))
                     .kerning(2)
                 Image(systemName: "chevron.right")
@@ -345,7 +345,7 @@ struct StoryModal: View {
                         AnimatedImageFrame(
                             uiImage: img,
                             height: cardH * 0.44,
-                            source: beat.source,
+                            source: beat.displaySource(for: settings.language),
                             accent: accent
                         )
                     } else {
@@ -409,7 +409,7 @@ struct StoryModal: View {
                 .foregroundStyle(accent.opacity(0.70))
                 .kerning(1.5)
             Spacer()
-            Text(beat.source)
+            Text(beat.displaySource(for: settings.language))
                 .font(AppTheme.mono(7, weight: .semibold))
                 .foregroundStyle(AppTheme.textSecondary)
                 .kerning(0.8)

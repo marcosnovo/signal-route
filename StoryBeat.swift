@@ -92,6 +92,31 @@ struct StoryBeat: Identifiable, Codable, Equatable {
         localizedBody?.text(for: language) ?? body
     }
 
+    /// Localized source label (transmission origin).
+    func displaySource(for language: AppLanguage) -> String {
+        switch source {
+        case "MISSION CONTROL":
+            switch language {
+            case .en: return source
+            case .es: return "CONTROL DE MISIÓN"
+            case .fr: return "CONTRÔLE DE MISSION"
+            }
+        case "COMMAND":
+            switch language {
+            case .en: return source
+            case .es: return "COMANDO"
+            case .fr: return "COMMANDEMENT"
+            }
+        case "ENGINEERING":
+            switch language {
+            case .en: return source
+            case .es: return "INGENIERÍA"
+            case .fr: return "INGÉNIERIE"
+            }
+        default: return source
+        }
+    }
+
     // MARK: - Init (all new fields have defaults)
 
     init(

@@ -18,6 +18,9 @@ struct ContentView: View {
     // Set when an explicit user tap (Next Mission) arms the paywall after beats play.
     @State private var pendingPaywallBypassesHook: Bool = false
 
+    // ── Deferred next level (story beats play first) ───────────────────
+    @State private var deferredNextLevel: Level? = nil
+
     // ── Versus mode ──────────────────────────────────────────────────────
     @State private var showingVersus: Bool = false
 
@@ -169,11 +172,20 @@ struct ContentView: View {
                            idx + 1 < levels.count {
                             // Clear pending auto-show — this tap handles the paywall directly.
                             pendingPaywallContext = nil
-                            // Pick celebratory context based on last win event.
-                            let ctx = PaywallMomentSelector.contextAfterWin(
-                                event: lastWinEvent, entitlement: EntitlementStore.shared
-                            ) ?? .postVictory
-                            tryPlay(levels[idx + 1], context: ctx)
+                            let nextLevel = levels[idx + 1]
+                            // Show pending story beats before navigating to next mission.
+                            // Beats (sector complete, rank-up, etc.) should play in front of
+                            // the next mission, not wait until the player returns to Home.
+                            storyQueue.dispatchPendingBatches()
+                            if storyQueue.current != nil {
+                                deferredNextLevel = nextLevel
+                                activeLevel = nil   // dismiss game → story overlay shows
+                            } else {
+                                let ctx = PaywallMomentSelector.contextAfterWin(
+                                    event: lastWinEvent, entitlement: EntitlementStore.shared
+                                ) ?? .postVictory
+                                tryPlay(nextLevel, context: ctx)
+                            }
                         }
                     },
                     onMissions: { activeLevel = nil; showingLevelSelect = true },
@@ -300,6 +312,12 @@ struct ContentView: View {
                 activeLevel = LevelGenerator.levels.first
             default:
                 break
+            }
+            // Resume deferred next mission after story beats finish
+            if let next = deferredNextLevel {
+                deferredNextLevel = nil
+                tryPlay(next)
+                return
             }
             // Fire pending paywall once the emotional beat sequence closes
             firePendingPaywallIfReady()

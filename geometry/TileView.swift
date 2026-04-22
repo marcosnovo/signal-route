@@ -41,6 +41,8 @@ struct TileView: View {
     /// True for one brief frame after a tap that didn't improve the circuit.
     /// Drives a subtle red flash so the player understands the tap didn't help.
     var isWrongTap: Bool = false
+    /// True when this is the intro-level hint tile — uses a stronger, more visible animation.
+    var isIntroHint: Bool = false
     let onTap: () -> Void
 
     @State private var wrongFlash: Double = 0.0
@@ -171,9 +173,25 @@ struct TileView: View {
             // ── Soft hint overlay ─────────────────────────────────────────────
             // When hints are active, the frontier tile receives a faint warmth.
             // After 12 s of inactivity the warmth intensifies to a slow pulse.
-            // Opacity ceiling is kept far below any mechanic indicator so it feels
-            // like a natural quality of the tile rather than an explicit marker.
-            if isHintTarget {
+            // Intro mode uses a much stronger animation so first-time players
+            // immediately understand which tile to tap.
+            if isIntroHint {
+                // INTRO: strong, unmissable hint
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .fill(AppTheme.accentPrimary.opacity(0.18))
+                    .allowsHitTesting(false)
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .strokeBorder(AppTheme.accentPrimary.opacity(0.60), lineWidth: 2.0)
+                    .pulsingGlow(color: AppTheme.accentPrimary, duration: 1.0)
+                    .allowsHitTesting(false)
+                Image(systemName: "hand.tap.fill")
+                    .font(.system(size: size * 0.22, weight: .medium))
+                    .foregroundStyle(AppTheme.accentPrimary.opacity(0.75))
+                    .offset(y: size * 0.30)
+                    .pulsingGlow(color: AppTheme.accentPrimary, duration: 1.0)
+                    .allowsHitTesting(false)
+            } else if isHintTarget {
+                // NORMAL: subtle hint
                 RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
                     .fill(AppTheme.accentPrimary.opacity(isHintPulsing ? 0.11 : 0.05))
                     .allowsHitTesting(false)

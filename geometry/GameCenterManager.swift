@@ -61,8 +61,14 @@ final class GameCenterManager: ObservableObject {
                 self.isGameCenterEnabled = true
                 self.displayName = player.displayName
                 self.loadAvatar()
-                // Pull cloud save as soon as we're authenticated
-                Task { await CloudSaveManager.shared.load() }
+                // Pull cloud save, then catch up any leaderboard scores that
+                // may have been missed (offline wins, failed submissions, migrations).
+                Task {
+                    await CloudSaveManager.shared.load()
+                    let profile = ProgressionStore.profile
+                    guard profile.leaderboardScore > 0 else { return }
+                    await self.submitAllScores(profile: profile)
+                }
             } else {
                 self.isAuthenticated = false
                 self.isGameCenterEnabled = false
@@ -128,6 +134,9 @@ final class GameCenterManager: ObservableObject {
                     player: GKLocalPlayer.local,
                     leaderboardIDs: ids
                 )
+                #if DEBUG
+                print("[GameCenter] ✓ Submitted \(score) → \(ids.first ?? "?")")
+                #endif
             } catch {
                 #if DEBUG
                 print("[GameCenter] ✗ Score submit failed for \(ids): \(error.localizedDescription)")
@@ -136,7 +145,7 @@ final class GameCenterManager: ObservableObject {
         }
 
         #if DEBUG
-        print("[GameCenter] ✓ Submitted scores: total=\(total)")
+        print("[GameCenter] ✓ All submissions done — total=\(total)")
         #endif
 
         await loadRankFeedback()
@@ -205,6 +214,9 @@ final class GameCenterManager: ObservableObject {
             )
 
             guard let entry = localEntry, total > 0 else { return }
+            #if DEBUG
+            print("[GameCenter] 🔍 GC stored score for local player: \(entry.score) | rank=\(entry.rank) of \(total)")
+            #endif
             let rank       = entry.rank
             let percentile = Int(Double(rank) / Double(total) * 100)
 

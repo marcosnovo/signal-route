@@ -38,7 +38,8 @@ enum OnboardingStore {
 
     // ── First hook milestone (mission 8) ──────────────────────────────────
 
-    private static let firstHookKey = "hasShownFirstHook"
+    private static let firstHookKey    = "hasShownFirstHook"
+    private static let tutorialDialogKey = "hasSeenTutorialDialog"
 
     /// True once the mission-8 "SIGNAL ESTABLISHED" milestone has been displayed.
     static var hasShownFirstHook: Bool {
@@ -50,23 +51,37 @@ enum OnboardingStore {
         UserDefaults.standard.set(true, forKey: firstHookKey)
     }
 
+    // ── Tutorial dialog (intro mission) ──────────────────────────────────
+
+    /// True once the pre-game tutorial dialog has been shown.
+    static var hasSeenTutorialDialog: Bool {
+        UserDefaults.standard.bool(forKey: tutorialDialogKey)
+    }
+
+    /// Call when the tutorial dialog is dismissed.
+    static func markTutorialDialogSeen() {
+        UserDefaults.standard.set(true, forKey: tutorialDialogKey)
+    }
+
     // ── Cloud sync ──────────────────────────────────────────────────────
 
     /// Current onboarding state as a Codable snapshot for cloud save.
     static var currentSnapshot: OnboardingSnapshot {
         OnboardingSnapshot(
-            hasCompletedIntro:     hasCompletedIntro,
-            hasSeenNarrativeIntro: hasSeenNarrativeIntro,
-            hasShownFirstHook:     hasShownFirstHook
+            hasCompletedIntro:      hasCompletedIntro,
+            hasSeenNarrativeIntro:  hasSeenNarrativeIntro,
+            hasShownFirstHook:      hasShownFirstHook,
+            hasSeenTutorialDialog:  hasSeenTutorialDialog
         )
     }
 
     /// Apply a merged onboarding snapshot from the cloud.
     /// Only sets flags to true — never reverts a true flag to false.
     static func applyCloudState(_ snapshot: OnboardingSnapshot) {
-        if snapshot.hasCompletedIntro    && !hasCompletedIntro    { markIntroCompleted() }
-        if snapshot.hasSeenNarrativeIntro && !hasSeenNarrativeIntro { markNarrativeSeen() }
-        if snapshot.hasShownFirstHook    && !hasShownFirstHook    { markFirstHookShown() }
+        if snapshot.hasCompletedIntro      && !hasCompletedIntro      { markIntroCompleted() }
+        if snapshot.hasSeenNarrativeIntro   && !hasSeenNarrativeIntro { markNarrativeSeen() }
+        if snapshot.hasShownFirstHook      && !hasShownFirstHook      { markFirstHookShown() }
+        if snapshot.hasSeenTutorialDialog  && !hasSeenTutorialDialog  { markTutorialDialogSeen() }
     }
 
     // ── Dev / testing ─────────────────────────────────────────────────────
@@ -76,5 +91,6 @@ enum OnboardingStore {
         UserDefaults.standard.removeObject(forKey: introKey)
         UserDefaults.standard.removeObject(forKey: narrativeKey)
         UserDefaults.standard.removeObject(forKey: firstHookKey)
+        UserDefaults.standard.removeObject(forKey: tutorialDialogKey)
     }
 }

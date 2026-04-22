@@ -22,9 +22,10 @@ struct EntitlementSnapshot: Codable {
 /// A Codable snapshot of the player's onboarding flags for cloud sync.
 /// All fields are monotonic — once true, they must never revert.
 struct OnboardingSnapshot: Codable {
-    var hasCompletedIntro:    Bool
+    var hasCompletedIntro:     Bool
     var hasSeenNarrativeIntro: Bool
-    var hasShownFirstHook:    Bool
+    var hasShownFirstHook:     Bool
+    var hasSeenTutorialDialog: Bool = false
 }
 
 // MARK: - CloudSavePayload
@@ -318,7 +319,8 @@ final class CloudSaveManager: ObservableObject {
         OnboardingSnapshot(
             hasCompletedIntro:     local.hasCompletedIntro     || cloud.hasCompletedIntro,
             hasSeenNarrativeIntro: local.hasSeenNarrativeIntro || cloud.hasSeenNarrativeIntro,
-            hasShownFirstHook:     local.hasShownFirstHook     || cloud.hasShownFirstHook
+            hasShownFirstHook:     local.hasShownFirstHook     || cloud.hasShownFirstHook,
+            hasSeenTutorialDialog: local.hasSeenTutorialDialog || cloud.hasSeenTutorialDialog
         )
     }
 
@@ -412,7 +414,13 @@ final class CloudSaveManager: ObservableObject {
     }
 
     private func applyLocally(_ payload: CloudSavePayload) {
-        ProgressionStore.save(payload.profile)
+        // Safety: never overwrite a richer local profile with a poorer cloud one.
+        let local = ProgressionStore.profile
+        if local.uniqueCompletions > payload.profile.uniqueCompletions {
+            print("[CloudSave] ⚠ Skipped profile apply — local has \(local.uniqueCompletions) completions, cloud has \(payload.profile.uniqueCompletions)")
+        } else {
+            ProgressionStore.save(payload.profile)
+        }
         PassStore.restore(payload.passes)
         if let cloudEnt = payload.entitlement {
             EntitlementStore.shared.applyCloudState(cloudEnt)

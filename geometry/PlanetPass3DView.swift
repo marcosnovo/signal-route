@@ -52,6 +52,9 @@ struct PlanetPass3DView: View {
     /// Stops idle, springs the card to rest, and fires an export-border flash.
     var isExporting:  Bool    = false
 
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
     // ── Entry animation ───────────────────────────────────────────────────
     @State private var entryOpacity: Double  = 0.0
     @State private var entryOffsetY: CGFloat = 22
@@ -753,7 +756,7 @@ struct PlanetPass3DView: View {
                     Text("·")
                         .font(.system(size: 8, design: .monospaced))
                         .foregroundStyle(Color.white.opacity(0.18))
-                    Text("SECTOR TRANSIT PASS")
+                    Text(S.sectorTransitPass)
                         .font(.system(size: 8, weight: .regular, design: .monospaced))
                         .tracking(1.5)
                         .foregroundStyle(Color.white.opacity(0.28))
@@ -762,7 +765,7 @@ struct PlanetPass3DView: View {
                 Spacer().frame(height: 9)
 
                 // 7. Clearance
-                Text("AUTHORIZED BEARER")
+                Text(S.authorizedBearer)
                     .font(.system(size: 7, weight: .medium, design: .monospaced))
                     .tracking(3)
                     .foregroundStyle(Color.white.opacity(0.16))

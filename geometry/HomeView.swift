@@ -874,7 +874,7 @@ struct HomeView: View {
         let prof = profile
         let planet = prof.currentPlanet
         let eff = Int((prof.averageEfficiency * 100).rounded())
-        return "\(planet.id)-\(prof.level)-\(prof.completedMissions)-\(eff)"
+        return "\(planet.id)-\(prof.level)-\(prof.completedMissions)-\(eff)-\(settings.language.rawValue)"
     }
 
     /// Renders the planet pass image at background priority while the user is on the home screen.
@@ -898,11 +898,12 @@ struct HomeView: View {
             provisional.isEarned = false
             return provisional
         }()
-        guard TicketCache.shared.image(for: p) == nil else { return }
+        let lang = settings.language
+        guard TicketCache.shared.image(for: p, language: lang) == nil else { return }
         let image = await Task.detached(priority: .userInitiated) {
-            TicketRenderer.render(pass: p, profile: prof)
+            TicketRenderer.render(pass: p, profile: prof, language: lang)
         }.value
-        TicketCache.shared.cache(image, for: p)
+        TicketCache.shared.cache(image, for: p, language: lang)
     }
 
     // MARK: Secret DEV menu trigger
@@ -1474,9 +1475,10 @@ struct PlanetTicketView: View {
         .task {
             let p    = pass
             let prof = profile
+            let lang = settings.language
 
             // Cache hit → show immediately, no animation needed
-            if let cached = TicketCache.shared.image(for: p) {
+            if let cached = TicketCache.shared.image(for: p, language: lang) {
                 ticketImage = cached
                 revealed    = true
                 return
@@ -1494,13 +1496,13 @@ struct PlanetTicketView: View {
 
             // Render on a background thread — doesn't block the UI
             let image = await Task.detached(priority: .userInitiated) {
-                TicketRenderer.render(pass: p, profile: prof)
+                TicketRenderer.render(pass: p, profile: prof, language: lang)
             }.value
 
             phaseTask.cancel()
 
             // Store so subsequent opens are instant
-            TicketCache.shared.cache(image, for: p)
+            TicketCache.shared.cache(image, for: p, language: lang)
             ticketImage = image
 
             // Quick scan reveal animation

@@ -38,6 +38,9 @@ struct GameView: View {
     @State private var circuitErrorFlash: Double = 0
     /// Shown after mission 3 (first hook): "SIGNAL ESTABLISHED" + progress counter.
     @State private var showMilestone: Bool = false
+    @State private var networkFlash: Bool = false
+    /// Pre-game tutorial dialog explaining signal→target on first intro play.
+    @State private var showTutorialOverlay: Bool = false
     /// Brief loading overlay shown on mission start — masks SwiftUI view rebuild jank.
     @State private var missionLoading: Bool = true
 
@@ -174,6 +177,16 @@ struct GameView: View {
                     .zIndex(200)
             }
 
+            // Tutorial overlay — shown once before the first intro mission
+            if showTutorialOverlay {
+                OnboardingTutorialOverlay {
+                    withAnimation(.easeOut(duration: 0.25)) { showTutorialOverlay = false }
+                    OnboardingStore.markTutorialDialogSeen()
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .zIndex(250)
+            }
+
             // Mission loading overlay — immediate dark screen with mission ID,
             // masks SwiftUI view hierarchy rebuild and board generation jank.
             if missionLoading {
@@ -195,6 +208,14 @@ struct GameView: View {
             // Let SwiftUI finish its first layout pass, then reveal the board.
             try? await Task.sleep(nanoseconds: 350_000_000)
             withAnimation(.easeOut(duration: 0.25)) { missionLoading = false }
+
+            // Show tutorial dialog on first intro play
+            if isIntro && !OnboardingStore.hasSeenTutorialDialog {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.80)) {
+                    showTutorialOverlay = true
+                }
+            }
         }
         .onDisappear {
             // If the player exits mid-game (not via win or loss), record as abandon
@@ -266,6 +287,7 @@ struct GameView: View {
                 // Reset — brief fade so the board isn't jarring
                 withAnimation(.easeOut(duration: 0.18)) { overlayVisible = false }
                 winPulse = false
+                networkFlash = false
                 boardSuccessOpacity = 0
                 signalFrontRow = -1
                 signalFrontCol = -1
@@ -313,9 +335,11 @@ struct GameView: View {
             let path = vm.signalPath
             guard !path.isEmpty else {
                 // Fallback: no path data → skip to winPulse immediately
+                withAnimation { networkFlash = true }
                 winPulse = true
                 HapticsManager.medium()
-                try? await Task.sleep(nanoseconds: 450_000_000)
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                networkFlash = false
                 let navigated1 = await showSectorCompleteIfNeeded()
                 if navigated1 {
                     onMissions?()
@@ -345,12 +369,17 @@ struct GameView: View {
             signalFrontRow = -1
             signalFrontCol = -1
 
+            // ── Flash the network status to draw attention ─────────────
+            withAnimation { networkFlash = true }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+
             // ── Cascade scale pulse across all energized tiles ─────────
             winPulse = true
             HapticsManager.success()
 
-            // Let the pulse settle before covering the board
-            try? await Task.sleep(nanoseconds: 380_000_000)
+            // Let the player see the completed board + "CONNECTED" status
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            networkFlash = false
             let navigated = await showSectorCompleteIfNeeded()
             if navigated {
                 onMissions?()
@@ -369,10 +398,13 @@ struct GameView: View {
     @MainActor
     private func autoAdvanceOrOverlay() {
         if isIntro {
-            (onIntroComplete ?? onDismiss)()
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                (onIntroComplete ?? onDismiss)()
+            }
         } else if vm.currentLevel.id <= 7 {
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 500_000_000)
+                try? await Task.sleep(nanoseconds: 800_000_000)
                 (onNextMission ?? onDismiss)()
             }
         } else if vm.currentLevel.id == 8 && !OnboardingStore.hasShownFirstHook {
@@ -588,24 +620,33 @@ struct GameView: View {
             EmptyView()
 
         case .maxCoverage:
-            // Live coverage bar
-            HStack(spacing: 8) {
-                TechLabel(text: S.gridCoverage)
-                GeometryReader { g in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 1).fill(AppTheme.stroke).frame(height: 3)
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(Color(hex: "FFB800"))
-                            .frame(width: g.size.width * CGFloat(vm.gridCoveragePercent) / 100, height: 3)
-                            .animation(.easeOut(duration: 0.15), value: vm.gridCoveragePercent)
+            // Live coverage bar — red when below threshold, amber when met
+            let belowThreshold = vm.coverageBelowThreshold
+            let barColor: Color = belowThreshold ? AppTheme.danger : Color(hex: "FFB800")
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    TechLabel(text: S.gridCoverage)
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 1).fill(AppTheme.stroke).frame(height: 3)
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(barColor)
+                                .frame(width: g.size.width * CGFloat(vm.gridCoveragePercent) / 100, height: 3)
+                                .animation(.easeOut(duration: 0.15), value: vm.gridCoveragePercent)
+                        }
                     }
+                    .frame(height: 3)
+                    TechLabel(text: "\(vm.gridCoveragePercent)%", color: barColor)
+                        .monospacedDigit()
+                        .animation(.easeInOut(duration: 0.15), value: vm.gridCoveragePercent)
                 }
-                .frame(height: 3)
-                TechLabel(text: "\(vm.gridCoveragePercent)%", color: Color(hex: "FFB800"))
-                    .monospacedDigit()
-                    .animation(.easeInOut(duration: 0.15), value: vm.gridCoveragePercent)
+                if belowThreshold {
+                    TechLabel(text: S.coverageMinHint, color: AppTheme.danger)
+                        .padding(.top, 2)
+                }
             }
             .padding(.top, 6)
+            .animation(.easeInOut(duration: 0.2), value: belowThreshold)
 
         case .energySaving:
             // Live waste counter
@@ -661,6 +702,7 @@ struct GameView: View {
                                     isHintTarget:     vm.hintEnabled && vm.hintTileRow == row && vm.hintTileCol == col,
                                     isHintPulsing:    vm.hintPulsing,
                                     isWrongTap:       vm.wrongTapRow == row && vm.wrongTapCol == col,
+                                    isIntroHint:      isIntro && vm.hintEnabled && vm.hintTileRow == row && vm.hintTileCol == col,
                                     onTap:            { vm.tap(row: row, col: col) }
                                 )
                             }
@@ -720,6 +762,11 @@ struct GameView: View {
                 .pulsingGlow(color: vm.networkOnline ? AppTheme.success : AppTheme.accentPrimary,
                              duration: vm.networkOnline ? 1.8 : 1.1)
                 .animation(.easeInOut(duration: 0.30), value: vm.networkOnline)
+                // Win flash — dramatic green scale+glow burst on mission complete
+                .scaleEffect(networkFlash ? 1.25 : 1.0)
+                .shadow(color: networkFlash ? AppTheme.success.opacity(0.85) : .clear,
+                        radius: networkFlash ? 15 : 0)
+                .animation(.spring(response: 0.20, dampingFraction: 0.55), value: networkFlash)
             }
             .padding(.vertical, 14)
             .background(AppTheme.backgroundSecondary.opacity(0.6))
@@ -819,6 +866,18 @@ struct MissionOverlay: View {
         ZStack {
             Color.black.opacity(won ? 0.80 : 0.72).ignoresSafeArea()
 
+            // ── Danger glow (loss only) ─────────────────────────────────
+            if !won {
+                RadialGradient(
+                    gradient: Gradient(colors: [AppTheme.danger.opacity(0.18), .clear]),
+                    center: .center,
+                    startRadius: 30,
+                    endRadius: 280
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+            }
+
             VStack(spacing: 0) {
                 // ── Status header ────────────────────────────────────────
                 HStack {
@@ -831,9 +890,9 @@ struct MissionOverlay: View {
                             .pulsingGlow(color: won ? AppTheme.success : AppTheme.danger,
                                          duration: 1.6)
                         Text(won ? S.networkRestored : S.signalLost)
-                            .font(AppTheme.mono(22, weight: .black))
+                            .font(AppTheme.mono(won ? 22 : 28, weight: .black))
                             .foregroundStyle(AppTheme.textPrimary)
-                            .kerning(1)
+                            .kerning(won ? 1 : 2)
                         if !won {
                             TechLabel(text: S.failureCauseLabel(vm.failureCause),
                                       color: AppTheme.danger.opacity(0.75))
@@ -935,11 +994,12 @@ struct MissionOverlay: View {
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.cardRadius)
                     .strokeBorder(
-                        won ? AppTheme.success.opacity(0.45) : AppTheme.strokeBright,
-                        lineWidth: won ? 1.0 : 0.5
+                        won ? AppTheme.success.opacity(0.45) : AppTheme.danger.opacity(0.40),
+                        lineWidth: won ? 1.0 : 1.0
                     )
             )
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+            .shadow(color: won ? .clear : AppTheme.danger.opacity(0.25), radius: 20, y: 0)
             .padding(.horizontal, 24)
         }
         .onAppear {
@@ -1048,6 +1108,142 @@ struct IntroWinOverlay: View {
             HapticsManager.success()
             withAnimation(.spring(response: 0.38, dampingFraction: 0.82).delay(0.20)) {
                 bodyRevealed = true
+            }
+        }
+    }
+}
+
+// MARK: - OnboardingTutorialOverlay
+/// Pre-game dialog explaining signal→target connection on first intro play.
+struct OnboardingTutorialOverlay: View {
+    let onDismiss: () -> Void
+
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+    @State private var contentRevealed = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.88).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // ── Title ────────────────────────────────────────────
+                VStack(spacing: 6) {
+                    TechLabel(text: S.tutorialTitle, color: AppTheme.accentPrimary)
+                        .pulsingGlow(color: AppTheme.accentPrimary, duration: 1.6)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(20)
+                .background(AppTheme.surface)
+
+                TechDivider()
+
+                // ── Source → Target diagram ──────────────────────────
+                VStack(spacing: 16) {
+                    HStack(spacing: 20) {
+                        // Signal source mock tile
+                        VStack(spacing: 6) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(AppTheme.backgroundSecondary)
+                                    .frame(width: 56, height: 56)
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(AppTheme.accentPrimary, lineWidth: 2)
+                                    .frame(width: 56, height: 56)
+                                Image(systemName: "bolt.fill")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundStyle(AppTheme.accentPrimary)
+                            }
+                            Text(S.tutorialSignalSource)
+                                .font(AppTheme.mono(9, weight: .bold))
+                                .foregroundStyle(AppTheme.accentPrimary)
+                                .kerning(0.5)
+                        }
+
+                        // Arrow
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(AppTheme.textSecondary)
+
+                        // Target relay mock tile
+                        VStack(spacing: 6) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(AppTheme.backgroundSecondary)
+                                    .frame(width: 56, height: 56)
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(AppTheme.success, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                                    .frame(width: 56, height: 56)
+                                Image(systemName: "scope")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundStyle(AppTheme.success)
+                            }
+                            Text(S.tutorialTargetRelay)
+                                .font(AppTheme.mono(9, weight: .bold))
+                                .foregroundStyle(AppTheme.success)
+                                .kerning(0.5)
+                        }
+                    }
+
+                    TechDivider()
+
+                    // Instruction text
+                    Text(S.tutorialBody)
+                        .font(AppTheme.mono(12, weight: .medium))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 8)
+
+                    // Tap hint
+                    HStack(spacing: 6) {
+                        Image(systemName: "hand.tap.fill")
+                            .font(.system(size: 12, weight: .medium))
+                        Text(S.tutorialTapHint)
+                            .font(AppTheme.mono(10, weight: .bold))
+                            .kerning(1)
+                    }
+                    .foregroundStyle(AppTheme.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 20)
+                .padding(.horizontal, 16)
+                .background(AppTheme.backgroundSecondary)
+                .opacity(contentRevealed ? 1 : 0)
+                .offset(y: contentRevealed ? 0 : 10)
+
+                TechDivider()
+
+                // ── CTA ──────────────────────────────────────────────
+                Button(action: onDismiss) {
+                    HStack(spacing: 10) {
+                        Text(S.tutorialBeginMission)
+                            .font(AppTheme.mono(12, weight: .bold))
+                            .kerning(2)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(AppTheme.accentPrimary)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                }
+                .breathingCTA()
+                .padding(20)
+                .background(AppTheme.surface)
+            }
+            .background(AppTheme.backgroundPrimary)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                    .strokeBorder(AppTheme.accentPrimary.opacity(0.40), lineWidth: 1.0)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+            .padding(.horizontal, 28)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.80).delay(0.25)) {
+                contentRevealed = true
             }
         }
     }
@@ -1360,8 +1556,9 @@ struct SectorCompleteView: View {
         .task {
             let p       = pass
             let profile = ProgressionStore.profile
+            let lang    = settings.language
             passImage   = await Task.detached(priority: .userInitiated) {
-                TicketRenderer.render(pass: p, profile: profile)
+                TicketRenderer.render(pass: p, profile: profile, language: lang)
             }.value
         }
     }

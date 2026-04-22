@@ -130,6 +130,35 @@ struct AppStrings {
             "J'ai atteint le niveau \(level) dans SIGNAL VOID 🚀\nPeux-tu aller plus loin ?"
         )
     }
+    // Ticket renderer labels (CGContext-rendered image)
+    var accessAuthorized:     String { t("ACCESS AUTHORIZED",             "ACCESO AUTORIZADO",             "ACCÈS AUTORISÉ") }
+    var inTraining:           String { t("IN TRAINING",                   "EN ENTRENAMIENTO",              "EN FORMATION") }
+    var missionEfficiency:    String { t("MISSION EFFICIENCY",            "EFICIENCIA DE MISIÓN",          "EFFICACITÉ DE MISSION") }
+    var rankLabel:            String { t("RANK",                          "RANGO",                         "RANG") }
+    var clearedStatus:        String { t("CLEARED",                       "COMPLETADO",                    "VALIDÉ") }
+    var inProgressStatus:     String { t("IN PROGRESS",                   "EN PROGRESO",                   "EN COURS") }
+    var sectorTransitPass:    String { t("SECTOR TRANSIT PASS",           "PASE DE TRÁNSITO",              "LAISSEZ-PASSER SECTEUR") }
+    var authorizedBearer:     String { t("AUTHORIZED BEARER",             "PORTADOR AUTORIZADO",           "PORTEUR AUTORISÉ") }
+
+    // MARK: - Onboarding tutorial
+    var tutorialTitle:        String { t("MISSION BRIEFING",              "INFORME DE MISIÓN",             "BRIEFING DE MISSION") }
+    var tutorialBody:         String { t("Connect the signal source to the target by tapping tiles to rotate them.",
+                                         "Conecta la fuente de señal al objetivo tocando los bloques para rotarlos.",
+                                         "Connectez la source du signal à la cible en touchant les tuiles pour les tourner.") }
+    var tutorialSignalSource: String { t("SIGNAL SOURCE",                 "FUENTE DE SEÑAL",               "SOURCE DU SIGNAL") }
+    var tutorialTargetRelay:  String { t("TARGET RELAY",                  "RELÉ OBJETIVO",                 "RELAIS CIBLE") }
+    var tutorialBeginMission: String { t("BEGIN MISSION",                 "INICIAR MISIÓN",                "COMMENCER LA MISSION") }
+    var tutorialTapHint:      String { t("TAP TILES TO ROTATE",           "TOCA BLOQUES PARA ROTAR",       "TOUCHEZ POUR TOURNER") }
+
+    func difficultyFullLabel(_ tier: DifficultyTier) -> String {
+        switch tier {
+        case .easy:   return t("EASY",   "FÁCIL",   "FACILE")
+        case .medium: return t("MEDIUM", "MEDIO",   "MOYEN")
+        case .hard:   return t("HARD",   "DIFÍCIL", "DIFFICILE")
+        case .expert: return t("EXPERT", "EXPERTO", "EXPERT")
+        }
+    }
+
     var renderingPass:        String { t("RENDERING PASS…",              "GENERANDO PASE…",               "GÉNÉRATION DU LAISSEZ-PASSER…") }
     var preparingPass:        String { t("PREPARING PLANET PASS",        "PREPARANDO PASE PLANETARIO",    "PRÉPARATION DU LAISSEZ-PASSER") }
     var generatingCredential: String { t("GENERATING MISSION CREDENTIAL","GENERANDO CREDENCIAL DE MISIÓN","GÉNÉRATION DES ACCRÉDITATIONS") }
@@ -189,6 +218,7 @@ struct AppStrings {
     var objectiveHUD:      String { t("OBJECTIVE",        "OBJETIVO",              "OBJECTIF") }
     var gridCoverage:      String { t("GRID COVERAGE",    "COBERTURA DE RED",      "COUVERTURE DU RÉSEAU") }
     var extraNodes:        String { t("EXTRA NODES",      "NODOS EXTRA",           "NŒUDS EN EXCÈS") }
+    var coverageMinHint:   String { t("· MIN 50% COVERAGE", "· COBERTURA MÍN 50%", "· COUVERTURE MIN 50%") }
     var reduceNetwork:     String { t("· REDUCE NETWORK", "· REDUCE LA RED",       "· RÉDUIRE LE RÉSEAU") }
     var targetsOnline:     String { t("TARGETS ONLINE",   "OBJETIVOS ACTIVOS",     "CIBLES ACTIVES") }
     var activeNodes:       String { t("ACTIVE NODES",     "NODOS ACTIVOS",         "NŒUDS ACTIFS") }
@@ -768,6 +798,9 @@ struct AppStrings {
     var missionDebrief:  String { t("MISSION\nDEBRIEF",  "INFORME\nDE MISIÓN",  "COMPTE-RENDU\nDE MISSION") }
     var missionQuality:  String { t("MISSION QUALITY",   "CALIDAD DE MISIÓN",   "QUALITÉ DE MISSION") }
     var usedMin:         String { t("USED / MIN",         "USADO / MÍN",         "UTILISÉ / MIN") }
+    var missionScore:    String { t("MISSION SCORE",      "PUNTUACIÓN MISIÓN",   "SCORE MISSION") }
+    var rankingTotal:    String { t("RANKING TOTAL",      "TOTAL RANKING",       "TOTAL CLASSEMENT") }
+    var maxLabel:        String { t("MAX",                "MÁX",                 "MAX") }
     var retryLabel:      String { t("RETRY",              "REINTENTAR",          "RÉESSAYER") }
     var shareLabel:      String { t("SHARE",              "COMPARTIR",           "PARTAGER") }
     var mapLabel:        String { t("MAP",                "MAPA",                "CARTE") }
@@ -830,17 +863,19 @@ struct AppStrings {
     // MARK: - Failure cause (loss overlay)
     func failureCauseLabel(_ cause: FailureCause) -> String {
         switch cause {
-        case .fragileTileDepleted:  return t("FRAGILE TILE BURNED OUT",   "NODO FRÁGIL AGOTADO",         "NŒUD FRAGILE ÉPUISÉ")
-        case .chargeGateIncomplete: return t("CHARGE GATE NOT ACTIVATED", "COMPUERTA DE CARGA INACTIVA", "PORTE DE CHARGE INACTIVE")
-        case .moveLimitExhausted:   return t("SIGNAL LOST IN VOID",       "SEÑAL PERDIDA EN EL VACÍO",   "SIGNAL PERDU DANS LE VIDE")
+        case .fragileTileDepleted:   return t("FRAGILE TILE BURNED OUT",   "NODO FRÁGIL AGOTADO",         "NŒUD FRAGILE ÉPUISÉ")
+        case .chargeGateIncomplete:  return t("CHARGE GATE NOT ACTIVATED", "COMPUERTA DE CARGA INACTIVA", "PORTE DE CHARGE INACTIVE")
+        case .coverageInsufficient:  return t("INSUFFICIENT COVERAGE",     "COBERTURA INSUFICIENTE",      "COUVERTURE INSUFFISANTE")
+        case .moveLimitExhausted:    return t("SIGNAL LOST IN VOID",       "SEÑAL PERDIDA EN EL VACÍO",   "SIGNAL PERDU DANS LE VIDE")
         }
     }
 
     func failureCauseHint(_ cause: FailureCause) -> String {
         switch cause {
-        case .fragileTileDepleted:  return t("Use this node last",           "Usa este nodo al final",      "Utilisez ce nœud en dernier")
-        case .chargeGateIncomplete: return t("Activate all gates first",     "Activa todas las compuertas", "Activez toutes les portes d'abord")
-        case .moveLimitExhausted:   return t("Plan your route before moving", "Planifica antes de mover",   "Planifiez avant de bouger")
+        case .fragileTileDepleted:   return t("Use this node last",                    "Usa este nodo al final",               "Utilisez ce nœud en dernier")
+        case .chargeGateIncomplete:  return t("Activate all gates first",              "Activa todas las compuertas",          "Activez toutes les portes d'abord")
+        case .coverageInsufficient:  return t("Activate more tiles before connecting", "Activa más bloques antes de conectar", "Activez plus de tuiles avant de connecter")
+        case .moveLimitExhausted:    return t("Plan your route before moving",         "Planifica antes de mover",            "Planifiez avant de bouger")
         }
     }
 }

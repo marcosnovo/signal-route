@@ -476,8 +476,8 @@ final class SelfQARunner: ObservableObject {
         // Cache round-trip
         if let firstPass = passes.first {
             let testImg = UIImage(systemName: "checkmark") ?? UIImage()
-            TicketCache.shared.cache(testImg, for: firstPass)
-            let hit = TicketCache.shared.image(for: firstPass)
+            TicketCache.shared.cache(testImg, for: firstPass, language: .en)
+            let hit = TicketCache.shared.image(for: firstPass, language: .en)
             r += pass("TicketCache round-trip", .tickets,
                       condition: hit != nil,
                       detail:    "cache hit=\(hit != nil)",
