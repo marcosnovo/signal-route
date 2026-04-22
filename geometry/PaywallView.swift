@@ -46,6 +46,8 @@ struct PaywallView: View {
     @State private var discountState: DiscountState = .idle
     @FocusState private var codeFieldFocused: Bool
 
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
     private let accent = AppTheme.accentPrimary
     private let sage   = AppTheme.sage
 
@@ -201,11 +203,13 @@ struct PaywallView: View {
 
     private var benefitsCard: some View {
         VStack(spacing: 0) {
-            benefitRow(icon: "infinity",         label: benefitUnlimited)
+            benefitRow(icon: "lock.open.fill",   label: S.paywallFeatureLevels)
             Rectangle().fill(sage.opacity(0.10)).frame(height: 0.5)
-            benefitRow(icon: "lock.open.fill",   label: benefitAccess)
+            benefitRow(icon: "infinity",         label: S.paywallFeatureNoLimit)
             Rectangle().fill(sage.opacity(0.10)).frame(height: 0.5)
-            benefitRow(icon: "arrow.up.forward", label: benefitProgress)
+            benefitRow(icon: "creditcard",       label: S.paywallFeatureOneTime)
+            Rectangle().fill(sage.opacity(0.10)).frame(height: 0.5)
+            benefitRow(icon: "person.2.fill",    label: S.paywallFeatureFamily)
         }
         .background(AppTheme.surface)
         .overlay(
@@ -596,30 +600,6 @@ struct PaywallView: View {
         }
     }
 
-    private var benefitUnlimited: String {
-        switch settings.language {
-        case .en: return "Play without daily limits"
-        case .es: return "Juega sin límites diarios"
-        case .fr: return "Jouez sans limites journalières"
-        }
-    }
-
-    private var benefitAccess: String {
-        switch settings.language {
-        case .en: return "Access all sectors"
-        case .es: return "Accede a todos los sectores"
-        case .fr: return "Accédez à tous les secteurs"
-        }
-    }
-
-    private var benefitProgress: String {
-        switch settings.language {
-        case .en: return "Progress without interruptions"
-        case .es: return "Avanza sin interrupciones"
-        case .fr: return "Avancez sans interruptions"
-        }
-    }
-
     private var upgradeLabel: String {
         switch settings.language {
         case .en: return "CONTINUE NOW"
@@ -628,13 +608,7 @@ struct PaywallView: View {
         }
     }
 
-    private var ctaSubtext: String {
-        switch settings.language {
-        case .en: return "Immediate access · No daily limits"
-        case .es: return "Acceso inmediato · Sin límites diarios"
-        case .fr: return "Accès immédiat · Sans limite journalière"
-        }
-    }
+    private var ctaSubtext: String { S.paywallLegal }
 
     private var unlimitedLabel: String {
         switch settings.language {
@@ -671,13 +645,7 @@ struct PaywallView: View {
         }
     }
 
-    private var restoreLabel: String {
-        switch settings.language {
-        case .en: return "Restore purchase"
-        case .es: return "Restaurar compra"
-        case .fr: return "Restaurer l'achat"
-        }
-    }
+    private var restoreLabel: String { S.paywallCtaRestore }
 
     private var discountPlaceholderLabel: String {
         switch settings.language {

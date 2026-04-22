@@ -466,6 +466,37 @@ struct AppStrings {
           "\(used)/\(limit) missions utilisées aujourd'hui")
     }
 
+    // MARK: - Paywall
+    var paywallTitle:           String { t("Unlock Signal Void",               "Desbloquea Signal Void",                "Débloquez Signal Void") }
+    var paywallSubtitle:        String { t("Play all 180 levels without limits","Juega sin límites los 180 niveles",     "Jouez aux 180 niveaux sans limite") }
+    var paywallFeatureLevels:   String { t("Full access to all 180 levels",    "Acceso completo a los 180 niveles",     "Accès complet aux 180 niveaux") }
+    var paywallFeatureNoLimit:  String { t("No daily mission limit",           "Sin límite diario de misiones",         "Aucune limite quotidienne de missions") }
+    var paywallFeatureOneTime:  String { t("One-time payment, forever",        "Pago único, para siempre",              "Paiement unique, pour toujours") }
+    var paywallFeatureFamily:   String { t("Family Sharing supported",         "Compatible con Compartir en familia",   "Compatible avec le Partage familial") }
+    func paywallCtaBuy(_ price: String) -> String { t("Unlock for \(price)", "Desbloquear por \(price)", "Débloquer pour \(price)") }
+    var paywallCtaRestore:      String { t("Restore Purchases",                "Restaurar compras",                     "Restaurer les achats") }
+    var paywallLegal:           String { t("One-time payment. No subscriptions.", "Pago único. Sin suscripciones.",     "Paiement unique. Sans abonnement.") }
+    var paywallLoading:         String { t("Loading…",                         "Cargando…",                             "Chargement…") }
+
+    // MARK: - Daily limit screen
+    var limitTitle:             String { t("Missions exhausted",                       "Misiones agotadas",                        "Missions épuisées") }
+    var limitSubtitle:          String { t("You've completed your 3 missions for today","Has completado tus 3 misiones de hoy",     "Vous avez terminé vos 3 missions du jour") }
+    func limitCountdown(_ time: String) -> String { t("New missions in \(time)", "Nuevas misiones en \(time)", "Nouvelles missions dans \(time)") }
+    var limitCtaUnlock:         String { t("Unlock full game",                 "Desbloquear juego completo",            "Débloquer le jeu complet") }
+    var limitCtaWait:           String { t("Wait until tomorrow",              "Esperar a mañana",                      "Attendre demain") }
+
+    // MARK: - Purchase states
+    var purchaseSuccessTitle:   String { t("Game unlocked!",                   "¡Juego desbloqueado!",                  "Jeu débloqué !") }
+    var purchaseSuccessMessage: String { t("Enjoy all 180 levels without limits.","Disfruta de los 180 niveles sin límites.","Profitez des 180 niveaux sans limite.") }
+    var purchaseRestoredTitle:  String { t("Purchase restored",                "Compra restaurada",                     "Achat restauré") }
+    var purchaseRestoredMessage: String { t("Your full access has been restored.","Tu acceso completo ha sido restaurado.","Votre accès complet a été restauré.") }
+    var purchaseErrorTitle:     String { t("Purchase failed",                  "No se pudo completar la compra",        "Échec de l'achat") }
+    var purchaseErrorGeneric:   String { t("Please try again later.",          "Inténtalo de nuevo más tarde.",         "Veuillez réessayer plus tard.") }
+    var purchaseErrorCancelled: String { t("Purchase cancelled.",              "Compra cancelada.",                     "Achat annulé.") }
+    var purchaseErrorNetwork:   String { t("No connection. Check your network.","Sin conexión. Revisa tu red.",         "Pas de connexion. Vérifiez votre réseau.") }
+    var purchaseErrorNotAllowed: String { t("In-app purchases are restricted on this device.","Las compras están restringidas en este dispositivo.","Les achats intégrés sont restreints sur cet appareil.") }
+    var purchaseAlreadyOwned:   String { t("You already own the full game.",   "Ya tienes el juego completo.",          "Vous possédez déjà le jeu complet.") }
+
     // MARK: - Discount codes
     var discountCodePlaceholder: String { t("Discount code",     "Código de descuento", "Code de réduction") }
     var applyCode:               String { t("APPLY",             "APLICAR",             "APPLIQUER") }
