@@ -324,9 +324,10 @@ struct VictoryTelemetryView: View {
                                 .foregroundStyle(sageFaint)
                                 .monospacedDigit()
                         }
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                     }
-
-                    Spacer(minLength: 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     // Cumulative ranking total
                     VStack(alignment: .trailing, spacing: 3) {
@@ -338,7 +339,10 @@ struct VictoryTelemetryView: View {
                             .font(.system(size: 18, weight: .black))
                             .foregroundStyle(sageInk)
                             .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
                     }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -351,17 +355,39 @@ struct VictoryTelemetryView: View {
             VStack(spacing: 0) {
                 Rectangle().fill(sageDivider).frame(height: 0.5)
 
-                HStack(spacing: 0) {
-                    SageMetric(
-                        icon:  "waveform",
-                        label: S.usedMin,
-                        value: "\(vm.movesUsed)/\(vm.currentLevel.minimumRequiredMoves)",
-                        ink:   sageInk,
-                        sub:   sageFaint
-                    )
-                    Rectangle().fill(sageDivider).frame(width: 0.5)
-                    objectiveMetric
+                HStack(alignment: .top, spacing: 0) {
+                    // Moves used / minimum
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(S.usedMin)
+                            .font(.system(size: 8, weight: .semibold))
+                            .tracking(1.2)
+                            .foregroundStyle(sageMid)
+                        Text("\(vm.movesUsed)/\(vm.currentLevel.minimumRequiredMoves)")
+                            .font(.system(size: 18, weight: .black))
+                            .foregroundStyle(sageInk)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    // Objective-specific metric
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text(objectiveLabel)
+                            .font(.system(size: 8, weight: .semibold))
+                            .tracking(1.2)
+                            .foregroundStyle(sageMid)
+                        Text(objectiveValue)
+                            .font(.system(size: 18, weight: .black))
+                            .foregroundStyle(sageInk)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
             }
             .opacity(metricsVisible ? 1 : 0)
             .offset(y: metricsVisible ? 0 : 10)
@@ -371,35 +397,21 @@ struct VictoryTelemetryView: View {
         .background(sageBg)
     }
 
-    // ── Objective-specific third metric ─────────────────────────────────
+    // ── Objective-specific metric helpers ────────────────────────────────
 
-    @ViewBuilder
-    private var objectiveMetric: some View {
+    private var objectiveLabel: String {
         switch vm.currentLevel.objectiveType {
-        case .maxCoverage:
-            SageMetric(
-                icon:  "bolt.fill",
-                label: S.coverage,
-                value: "\(vm.gridCoveragePercent)%",
-                ink:   sageInk,
-                sub:   sageFaint
-            )
-        case .energySaving:
-            SageMetric(
-                icon:  "leaf.fill",
-                label: S.waste,
-                value: "\(vm.energyWaste)",
-                ink:   sageInk,
-                sub:   sageFaint
-            )
-        case .normal:
-            SageMetric(
-                icon:  "cpu",
-                label: S.activeNodes,
-                value: "\(vm.activeNodes)",
-                ink:   sageInk,
-                sub:   sageFaint
-            )
+        case .maxCoverage:  return S.coverage
+        case .energySaving: return S.waste
+        case .normal:       return S.activeNodes
+        }
+    }
+
+    private var objectiveValue: String {
+        switch vm.currentLevel.objectiveType {
+        case .maxCoverage:  return "\(vm.gridCoveragePercent)%"
+        case .energySaving: return "\(vm.energyWaste)"
+        case .normal:       return "\(vm.activeNodes)"
         }
     }
 

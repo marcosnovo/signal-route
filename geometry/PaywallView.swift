@@ -616,12 +616,16 @@ struct PaywallView: View {
         }
     }
 
+    /// Known fallback price shown when StoreKit can't fetch the real product
+    /// (e.g. sandbox not ready, network issue). Always prefer product.displayPrice.
+    private static let fallbackPrice = "$1.99"
+
     private var upgradeLabel: String {
         if let product = storeKit.product {
             return S.paywallCtaBuy(product.displayPrice).uppercased()
         }
         if case .failed = storeKit.purchaseState {
-            return S.paywallCtaBuy("--").uppercased()
+            return S.paywallCtaBuy(Self.fallbackPrice).uppercased()
         }
         return S.paywallLoading.uppercased()
     }

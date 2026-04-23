@@ -48,30 +48,40 @@ final class StoreKitManager: ObservableObject {
 
     // MARK: - Public API
 
-    /// Fetch the product from App Store Connect. Safe to call multiple times.
+    /// Fetch the product from App Store Connect. Retries up to 3 times with
+    /// exponential backoff (2s, 4s, 8s) to handle sandbox/TestFlight delays.
     func loadProduct() async {
         guard product == nil else { return }
         purchaseState = .loading
-        do {
-            #if DEBUG
-            print("[StoreKit] Requesting product: \(Self.productID)")
-            #endif
-            let products = try await Product.products(for: [Self.productID])
-            #if DEBUG
-            print("[StoreKit] Received \(products.count) product(s): \(products.map(\.id))")
-            #endif
-            if let found = products.first {
-                product       = found
-                purchaseState = .idle
-            } else {
-                purchaseState = .failed(S.purchaseProductMissing)
+
+        let maxRetries = 3
+        for attempt in 1...maxRetries {
+            do {
+                #if DEBUG
+                print("[StoreKit] Requesting product: \(Self.productID) (attempt \(attempt)/\(maxRetries))")
+                #endif
+                let products = try await Product.products(for: [Self.productID])
+                #if DEBUG
+                print("[StoreKit] Received \(products.count) product(s): \(products.map(\.id))")
+                #endif
+                if let found = products.first {
+                    product       = found
+                    purchaseState = .idle
+                    return
+                }
+            } catch {
+                #if DEBUG
+                print("[StoreKit] ✗ loadProduct error (attempt \(attempt)): \(error)")
+                #endif
+                if attempt == maxRetries {
+                    purchaseState = .failed(S.purchaseProductMissing)
+                    return
+                }
             }
-        } catch {
-            #if DEBUG
-            print("[StoreKit] ✗ loadProduct error: \(error)")
-            #endif
-            purchaseState = .failed(error.localizedDescription)
+            // Exponential backoff before retry
+            try? await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt))) * 1_000_000_000)
         }
+        purchaseState = .failed(S.purchaseProductMissing)
     }
 
     /// Walk `Transaction.currentEntitlements` and activate premium if a valid
