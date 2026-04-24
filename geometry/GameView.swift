@@ -114,7 +114,7 @@ struct GameView: View {
                     .transition(.opacity)
             } else if !isIntro && overlayVisible && vm.status == .lost {
                 MissionOverlay(vm: vm,
-                               onRestart: {
+                               onRestart: vm.currentLevel.isDailyChallenge ? nil : {
                                    // Gate every retry: daily limit may have armed during this session
                                    if EntitlementStore.shared.canPlay(vm.currentLevel) {
                                        vm.setupLevel()
@@ -852,7 +852,7 @@ private struct HUDMetric: View {
 // MARK: - MissionOverlay  (win / lose)
 struct MissionOverlay: View {
     @ObservedObject var vm: GameViewModel
-    let onRestart: () -> Void
+    var onRestart: (() -> Void)? = nil
     let onDismiss: () -> Void
     @EnvironmentObject private var settings: SettingsStore
     private var S: AppStrings { AppStrings(lang: settings.language) }
@@ -945,22 +945,24 @@ struct MissionOverlay: View {
 
                 // ── Actions ──────────────────────────────────────────────
                 VStack(spacing: 0) {
-                    Button(action: onRestart) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 11, weight: .bold))
-                            Text(won ? S.retryLevel : S.retryLabel)
-                                .font(AppTheme.mono(won ? 12 : 14, weight: .bold))
-                                .kerning(1.5)
+                    if let onRestart {
+                        Button(action: onRestart) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(won ? S.retryLevel : S.retryLabel)
+                                    .font(AppTheme.mono(won ? 12 : 14, weight: .bold))
+                                    .kerning(1.5)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .frame(height: won ? 48 : 64)
+                            .background(won ? AppTheme.success : AppTheme.accentPrimary)
+                            .foregroundStyle(.white)
                         }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: won ? 48 : 64)
-                        .background(won ? AppTheme.success : AppTheme.accentPrimary)
-                        .foregroundStyle(.white)
-                    }
-                    .breathingCTA()
+                        .breathingCTA()
 
-                    TechDivider()
+                        TechDivider()
+                    }
 
                     if won, let result = vm.gameResult {
                         ShareLink(item: result.shareText) {

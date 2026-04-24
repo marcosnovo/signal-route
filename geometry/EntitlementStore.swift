@@ -243,8 +243,9 @@ final class EntitlementStore: ObservableObject {
 
     /// Call when a game session ends (WON or FAILED) and the player made ≥1 tap.
     ///
-    /// - During intro phase: both WON and FAILED increment `freeIntroCompleted`.
-    ///   When the last intro session is played the 24h cooldown is armed immediately.
+    /// - During intro phase: only WINS increment `freeIntroCompleted` so the
+    ///   player can retry freely and the first 8 missions are always playable.
+    ///   When the 8th win is recorded the 24h cooldown is armed immediately.
     /// - After intro phase: both WON and FAILED consume a daily play.
     ///   When `dailyLimit` plays are consumed a 24h cooldown is armed.
     func recordAttempt(_ level: Level, didWin: Bool) {
@@ -255,7 +256,13 @@ final class EntitlementStore: ObservableObject {
             return
         }
         if isInIntroPhase {
-            // Both wins and fails consume an intro slot (player had ≥1 tap — caller contract).
+            // Only wins consume an intro slot — failures are free retries.
+            guard didWin else {
+                #if DEBUG
+                print("[ENTITLEMENT] recordAttempt(id=\(level.id), win=false) → intro loss, no slot consumed")
+                #endif
+                return
+            }
             freeIntroCompleted = min(freeIntroCompleted + 1, Self.freeIntroLimit)
             #if DEBUG
             print("[ENTITLEMENT] recordAttempt(id=\(level.id), win=\(didWin)) → intro consumed: \(freeIntroCompleted)/\(Self.freeIntroLimit)")

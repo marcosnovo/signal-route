@@ -8,12 +8,16 @@ import Foundation
 enum VersusMessage: Codable {
     /// Host → Guest: shared seed + level configuration.
     case ready(payload: VersusReadyPayload)
+    /// Both → Both: local board generation complete. Game starts when both received.
+    case boardReady
     /// Either → Either: a tile tap the local player just performed.
     case action(payload: VersusAction)
     /// Either → Either: periodic snapshot of the sender's board state.
     case state(payload: VersusPlayerSnapshot)
     /// Either → Either: the sender's game just ended.
     case result(payload: VersusOutcome)
+    /// Either → Either: request a same-opponent rematch after the game ends.
+    case rematch
 }
 
 // MARK: - Ready Payload
@@ -34,6 +38,30 @@ struct VersusLevelConfig: Codable {
     let numTargets:     Int
     let objectiveType:  String   // LevelObjectiveType.rawValue ("normal", etc.)
     let levelType:      String   // LevelType.rawValue ("LINEAR", etc.)
+    let isV3:           Bool     // true = split-board versus mode
+
+    // Safe Codable: old configs without isV3 default to false
+    init(gridSize: Int, difficultyRaw: Int, maxMoves: Int, numTargets: Int,
+         objectiveType: String, levelType: String, isV3: Bool = false) {
+        self.gridSize = gridSize
+        self.difficultyRaw = difficultyRaw
+        self.maxMoves = maxMoves
+        self.numTargets = numTargets
+        self.objectiveType = objectiveType
+        self.levelType = levelType
+        self.isV3 = isV3
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        gridSize = try c.decode(Int.self, forKey: .gridSize)
+        difficultyRaw = try c.decode(Int.self, forKey: .difficultyRaw)
+        maxMoves = try c.decode(Int.self, forKey: .maxMoves)
+        numTargets = try c.decode(Int.self, forKey: .numTargets)
+        objectiveType = try c.decode(String.self, forKey: .objectiveType)
+        levelType = try c.decode(String.self, forKey: .levelType)
+        isV3 = try c.decodeIfPresent(Bool.self, forKey: .isV3) ?? false
+    }
 }
 
 // MARK: - Action

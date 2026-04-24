@@ -6,7 +6,7 @@ import GameKit
 /// Manages Game Center real-time matchmaking and data exchange for 1v1 Versus mode.
 ///
 /// ## Lifecycle
-///   1. `findMatch()` — presents GKMatchmakerViewController or starts auto-match
+///   1. `findMatch()` — programmatic auto-match via `GKMatchmaker.findMatch(for:)`
 ///   2. On match found → elect host (lowest gamePlayerID), host sends `.ready` with seed
 ///   3. Both players generate identical boards from the shared seed
 ///   4. Taps and state snapshots flow via `.action` / `.state` messages
@@ -24,11 +24,15 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
 
     // ── GK objects ───────────────────────────────────────────────────────
     private var currentMatch: GKMatch?
-    private var matchmakerVC: GKMatchmakerViewController?
+    private var searchTask: Task<Void, Never>?
 
-    /// Callback fired when the shared level is ready (seed received/sent).
-    /// VersusViewModel listens to this to start the game.
+    /// Callback fired when the shared level is ready (seed exchanged).
+    /// VM builds the board in response, then calls `sendBoardReady()`.
     var onLevelReady: ((UInt64, VersusLevelConfig) -> Void)?
+
+    /// Callback fired when both boards are ready and gameplay begins.
+    /// VM starts the 30s timer in response.
+    var onGameStart: (() -> Void)?
 
     /// Callback fired when a remote action arrives.
     var onRemoteAction: ((VersusAction) -> Void)?
@@ -39,15 +43,42 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
     /// Callback fired when the remote player reports their outcome.
     var onRemoteResult: ((VersusOutcome) -> Void)?
 
+    /// Callback fired when the remote player's board-ready signal arrives.
+    var onRemoteBoardReady: (() -> Void)?
+
+    /// Callback fired when the remote player requests a rematch.
+    var onRemoteRematch: (() -> Void)?
+
     private override init() {
         super.init()
+        loadLocalPlayerInfo()
     }
 
     // MARK: - Public API
 
-    /// Start searching for an opponent. Requires GC authentication.
+    /// Refresh local player info (call after GC auth changes).
+    func loadLocalPlayerInfo() {
+        let player = GKLocalPlayer.local
+        guard player.isAuthenticated else { return }
+        matchState.localPlayerName = player.displayName
+        Task {
+            if let image = try? await player.loadPhoto(for: .small) {
+                matchState.localPlayerAvatar = image
+            }
+        }
+    }
+
+    /// Start searching for an opponent via programmatic auto-match.
+    /// Uses `GKMatchmaker.findMatch(for:)` — no Game Center UI presented.
     func findMatch() {
+        guard VersusFeatureFlag.isMatchmakingAllowed else {
+            #if DEBUG
+            print("[VersusFlag] matchmaking blocked — isMatchmakingAllowed=false")
+            #endif
+            return
+        }
         guard GKLocalPlayer.local.isAuthenticated else {
+            matchState.error = "Game Center not authenticated"
             #if DEBUG
             print("[Versus] Cannot match — Game Center not authenticated")
             #endif
@@ -57,27 +88,43 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
 
         matchState.reset()
         matchState.phase = .searching
+        VersusAnalytics.shared.trackMatchmakingStarted()
+        VersusTestHarness.shared.startSession()
+        VersusTestHarness.shared.logSearchStarted()
+        #if DEBUG
+        print("[Versus] matchmaking started — searching for opponent")
+        #endif
 
         let request = GKMatchRequest()
         request.minPlayers = 2
         request.maxPlayers = 2
 
-        // Present the standard matchmaker UI
-        guard let vc = GKMatchmakerViewController(matchRequest: request) else {
-            matchState.phase = .idle
-            return
+        searchTask = Task {
+            do {
+                let match = try await GKMatchmaker.shared().findMatch(for: request)
+                guard !Task.isCancelled else { return }
+                GKMatchmaker.shared().finishMatchmaking(for: match)
+                handleMatchReady(match)
+            } catch {
+                guard !Task.isCancelled else { return }
+                matchState.phase = .idle
+                matchState.error = error.localizedDescription
+                #if DEBUG
+                print("[Versus] Matchmaking error: \(error.localizedDescription)")
+                #endif
+            }
         }
-        vc.matchmakerDelegate = self
-        matchmakerVC = vc
-        presentViewController(vc)
     }
 
     /// Cancel an in-progress search.
     func cancelSearch() {
-        matchmakerVC?.dismiss(animated: true)
-        matchmakerVC = nil
+        searchTask?.cancel()
+        searchTask = nil
         GKMatchmaker.shared().cancel()
+        VersusAnalytics.shared.trackMatchmakingCancelled()
+        VersusTestHarness.shared.logSearchCancelled()
         matchState.phase = .idle
+        matchState.error = nil
         #if DEBUG
         print("[Versus] Search cancelled")
         #endif
@@ -101,12 +148,33 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
         checkMatchResolution()
     }
 
+    /// Signal that the local board has been generated and is ready for play.
+    func sendBoardReady() {
+        matchState.localBoardReady = true
+        send(.boardReady)
+        VersusTestHarness.shared.logLocalBoardReady()
+        #if DEBUG
+        print("[Versus] Sent boardReady (remote=\(matchState.remoteBoardReady))")
+        #endif
+        if matchState.bothBoardReady { handleBothBoardReady() }
+    }
+
+    /// Request a same-opponent rematch after a game ends.
+    func sendRematch() {
+        matchState.localWantsRematch = true
+        send(.rematch)
+        #if DEBUG
+        print("[Versus] Sent rematch request (remote=\(matchState.remoteWantsRematch))")
+        #endif
+        if matchState.bothWantRematch { handleBothWantRematch() }
+    }
+
     /// Tear down the current match and reset state.
     func disconnect() {
+        searchTask?.cancel()
+        searchTask = nil
         currentMatch?.disconnect()
         currentMatch = nil
-        matchmakerVC?.dismiss(animated: true)
-        matchmakerVC = nil
         matchState.reset()
     }
 
@@ -115,13 +183,28 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
     private func handleMatchReady(_ match: GKMatch) {
         currentMatch = match
         match.delegate = self
-        matchmakerVC?.dismiss(animated: true)
-        matchmakerVC = nil
         matchState.phase = .matched
+        #if DEBUG
+        print("[Versus] match found — \(match.players.count) player(s)")
+        #endif
+        VersusAnalytics.shared.trackMatchFound(
+            seed: 0,  // seed not yet exchanged
+            isHost: false,  // not yet elected
+            opponent: match.players.first?.displayName ?? "unknown"
+        )
+        VersusTestHarness.shared.logMatchFound(
+            opponent: match.players.first?.displayName ?? "unknown",
+            isHost: false  // updated below after election
+        )
 
-        // Resolve opponent display name
+        // Resolve opponent display name and avatar
         if let opponent = match.players.first {
             matchState.opponentDisplayName = opponent.displayName
+            Task {
+                if let image = try? await opponent.loadPhoto(for: .small) {
+                    matchState.opponentAvatar = image
+                }
+            }
         }
 
         // Host election: lexicographically lower gamePlayerID is host
@@ -141,24 +224,64 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
         if isHost {
             // Generate seed and send .ready to guest
             let seed = UInt64.random(in: 1...UInt64.max)
-            let config = VersusLevelConfig.defaultV1
+            let config = VersusLevelConfig.defaultV3
             matchState.sharedSeed   = seed
             matchState.sharedConfig = config
             send(.ready(payload: VersusReadyPayload(seed: seed, config: config)))
-            beginCountdown()
+            VersusTestHarness.shared.logSeedSent(seed)
+            // Host builds board immediately — VM will call sendBoardReady() when done
+            onLevelReady?(seed, config)
         }
-        // Guest waits for .ready message
+        // Guest waits for .ready message → onLevelReady fires there
     }
 
-    private func beginCountdown() {
+    // MARK: - Private — Board-ready sync
+
+    /// Called when both sides have confirmed board generation.
+    /// Starts the countdown, then transitions to .playing and fires onGameStart.
+    private func handleBothBoardReady() {
+        guard matchState.phase == .matched else { return }
         matchState.phase = .countdown
-        // Short delay before gameplay starts — gives both sides time to build the board
+        VersusTestHarness.shared.logCountdownStarted()
         Task {
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(for: .seconds(3.5))
             guard matchState.phase == .countdown else { return }
             matchState.phase = .playing
-            onLevelReady?(matchState.sharedSeed, matchState.sharedConfig ?? .defaultV1)
+            VersusTestHarness.shared.logGameStarted()
+            onGameStart?()
         }
+    }
+
+    // MARK: - Private — Rematch
+
+    /// Called when both sides agree to rematch. Resets game state and starts a new round.
+    private func handleBothWantRematch() {
+        VersusAnalytics.shared.trackRematchAccepted()
+        VersusTestHarness.shared.logRematchAccepted()
+        #if DEBUG
+        print("[Versus] Both want rematch — starting new round")
+        #endif
+        // Reset game state but keep match + player info alive
+        matchState.localSnapshot      = .idle
+        matchState.remoteSnapshot     = .idle
+        matchState.localOutcome       = nil
+        matchState.remoteOutcome      = nil
+        matchState.localBoardReady    = false
+        matchState.remoteBoardReady   = false
+        matchState.localWantsRematch  = false
+        matchState.remoteWantsRematch = false
+        matchState.phase              = .matched
+
+        if matchState.isHost {
+            // Host generates a new seed
+            let seed = UInt64.random(in: 1...UInt64.max)
+            let config = matchState.sharedConfig ?? .defaultV3
+            matchState.sharedSeed = seed
+            send(.ready(payload: VersusReadyPayload(seed: seed, config: config)))
+            VersusTestHarness.shared.logSeedSent(seed)
+            onLevelReady?(seed, config)
+        }
+        // Guest waits for .ready → builds board → sendBoardReady
     }
 
     private func checkMatchResolution() {
@@ -177,59 +300,6 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
             #if DEBUG
             print("[Versus] Send failed: \(error.localizedDescription)")
             #endif
-        }
-    }
-
-    // MARK: - Private — Present VC
-
-    private func presentViewController(_ vc: UIViewController) {
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene }).first,
-              var presenter = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
-        else { return }
-        // Walk to topmost presented VC
-        while let next = presenter.presentedViewController, !next.isBeingDismissed {
-            presenter = next
-        }
-        presenter.present(vc, animated: true)
-    }
-}
-
-// MARK: - GKMatchmakerViewControllerDelegate
-
-extension VersusMatchmakingManager: GKMatchmakerViewControllerDelegate {
-
-    nonisolated func matchmakerViewControllerWasCancelled(
-        _ viewController: GKMatchmakerViewController
-    ) {
-        Task { @MainActor in
-            matchmakerVC = nil
-            matchState.phase = .idle
-            #if DEBUG
-            print("[Versus] Matchmaker cancelled by user")
-            #endif
-        }
-    }
-
-    nonisolated func matchmakerViewController(
-        _ viewController: GKMatchmakerViewController,
-        didFailWithError error: Error
-    ) {
-        Task { @MainActor in
-            matchmakerVC = nil
-            matchState.phase = .idle
-            #if DEBUG
-            print("[Versus] Matchmaker error: \(error.localizedDescription)")
-            #endif
-        }
-    }
-
-    nonisolated func matchmakerViewController(
-        _ viewController: GKMatchmakerViewController,
-        didFind match: GKMatch
-    ) {
-        Task { @MainActor in
-            handleMatchReady(match)
         }
     }
 }
@@ -253,14 +323,27 @@ extension VersusMatchmakingManager: GKMatchDelegate {
                 print("[Versus] Opponent disconnected: \(player.displayName)")
                 #endif
                 matchState.remoteOutcome = .disconnected
+                VersusAnalytics.shared.trackMatchDisconnected(
+                    phase: "\(matchState.phase)",
+                    seed: matchState.sharedSeed
+                )
+                VersusTestHarness.shared.logDisconnect(phase: "\(matchState.phase)")
+                onRemoteResult?(.disconnected)  // Notify VM so it can freeze + award forfeit
                 checkMatchResolution()
-                if matchState.phase == .playing || matchState.phase == .countdown {
+                // Handle disconnect in ALL active phases
+                if matchState.phase == .matched || matchState.phase == .countdown || matchState.phase == .playing {
                     matchState.phase = .finished
                 }
             case .connected:
                 #if DEBUG
                 print("[Versus] Player connected: \(player.displayName)")
                 #endif
+                matchState.opponentDisplayName = player.displayName
+                Task {
+                    if let image = try? await player.loadPhoto(for: .small) {
+                        matchState.opponentAvatar = image
+                    }
+                }
             default:
                 break
             }
@@ -272,14 +355,25 @@ extension VersusMatchmakingManager: GKMatchDelegate {
     private func handleReceivedMessage(_ message: VersusMessage) {
         switch message {
         case .ready(let payload):
-            // Guest receives seed from host
+            // Guest receives seed from host (also fires on rematch round)
             guard !matchState.isHost else { return }  // host ignores .ready
             matchState.sharedSeed   = payload.seed
             matchState.sharedConfig = payload.config
+            VersusTestHarness.shared.logSeedReceived(payload.seed)
             #if DEBUG
             print("[Versus] Received seed=\(payload.seed) from host")
             #endif
-            beginCountdown()
+            // Guest builds board — VM calls sendBoardReady() when done
+            onLevelReady?(payload.seed, payload.config)
+
+        case .boardReady:
+            matchState.remoteBoardReady = true
+            VersusTestHarness.shared.logRemoteBoardReady()
+            onRemoteBoardReady?()
+            #if DEBUG
+            print("[Versus] Remote board ready (local=\(matchState.localBoardReady))")
+            #endif
+            if matchState.bothBoardReady { handleBothBoardReady() }
 
         case .action(let action):
             onRemoteAction?(action)
@@ -292,6 +386,14 @@ extension VersusMatchmakingManager: GKMatchDelegate {
             matchState.remoteOutcome = outcome
             onRemoteResult?(outcome)
             checkMatchResolution()
+
+        case .rematch:
+            matchState.remoteWantsRematch = true
+            onRemoteRematch?()
+            #if DEBUG
+            print("[Versus] Remote wants rematch (local=\(matchState.localWantsRematch))")
+            #endif
+            if matchState.bothWantRematch { handleBothWantRematch() }
         }
     }
 }
@@ -307,5 +409,16 @@ extension VersusLevelConfig {
         numTargets:    2,
         objectiveType: LevelObjectiveType.normal.rawValue,
         levelType:     LevelType.branching.rawValue
+    )
+
+    /// V3 default: 5×9 split-board, medium difficulty, no move limit, 5 center beacons.
+    static let defaultV3 = VersusLevelConfig(
+        gridSize:      5,
+        difficultyRaw: DifficultyTier.medium.rawValue,
+        maxMoves:      999,
+        numTargets:    5,
+        objectiveType: LevelObjectiveType.normal.rawValue,
+        levelType:     LevelType.singlePath.rawValue,
+        isV3:          true
     )
 }

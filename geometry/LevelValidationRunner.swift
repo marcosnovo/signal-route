@@ -231,8 +231,10 @@ enum LevelValidationRunner {
         // ── Solver (optional) ─────────────────────────────────────────────
         var solverResult: SolverResult? = nil
         if useSolver {
-            // Budget capped at 20 K nodes so 150-level audit stays under ~500 ms total
-            let result = LevelSolver.solve(board: board, level: level, nodeBudget: 20_000)
+            // Normal levels: 20K budget. Objective-constrained levels (maxCoverage, energySaving)
+            // search a wider cost range, so give them a larger budget.
+            let budget = level.objectiveType == .normal ? 20_000 : 80_000
+            let result = LevelSolver.solve(board: board, level: level, nodeBudget: budget)
             solverResult = result
 
             if !result.isSolvable {

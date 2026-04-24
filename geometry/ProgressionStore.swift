@@ -1,4 +1,5 @@
 import Foundation
+import WidgetKit
 
 // MARK: - ProgressionStore
 /// Persists and manages the player's AstronautProfile.
@@ -104,6 +105,53 @@ enum ProgressionStore {
         UserDefaults.standard.set(data, forKey: key)
         // Write backup on every save — independent key survives primary corruption
         UserDefaults.standard.set(data, forKey: backupKey)
+
+        // Push fresh data to widgets
+        pushWidgetSnapshot(profile)
+    }
+
+    // MARK: - Widget data bridge
+
+    /// Build a WidgetDataSnapshot from the current profile and write it to the App Group container.
+    /// Called automatically on every save() so widgets always have fresh data.
+    static func pushWidgetSnapshot(_ profile: AstronautProfile) {
+        let progression = profile.progression
+        let passes = PassStore.all
+
+        let snapshot = WidgetDataSnapshot(
+            playerLevel:              profile.level,
+            rankTitle:                profile.rankTitle,
+            completedMissions:        profile.completedMissions,
+            totalMissions:            LevelGenerator.levels.count,
+            averageEfficiencyPercent: profile.averageEfficiencyPercent,
+            leaderboardScore:         profile.leaderboardScore,
+            currentPlanetName:        progression.currentPlanet.name,
+            currentSectorName:        progression.currentSector.name,
+            levelProgress:            profile.levelProgress,
+            missionsRemaining:        profile.missionsRemaining,
+            isPremium:                EntitlementStore.shared.isPremium,
+            leaderboardEntries:       LeaderboardCache.entries,
+            playerRank:               LeaderboardCache.playerRank,
+            totalPlayers:             LeaderboardCache.totalPlayers,
+            passes:                   passes.map { pass in
+                PassSnapshot(
+                    id: pass.id,
+                    planetName: pass.planetName,
+                    planetIndex: pass.planetIndex,
+                    efficiencyPercent: Int(pass.efficiencyScore * 100),
+                    serialCode: pass.serialCode,
+                    missionCount: pass.missionCount,
+                    timestamp: pass.timestamp,
+                    planetColorHex: PlanetColors.hexByIndex[pass.planetIndex] ?? "FF6A3D"
+                )
+            },
+            streak: nil,
+            weeklyRankChange: nil,
+            language: SettingsStore.shared.language.rawValue,
+            updatedAt: Date()
+        )
+
+        WidgetDataBridge.write(snapshot)
     }
 
     /// Flag to allow dev resets to bypass the regression guard.

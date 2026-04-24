@@ -109,6 +109,8 @@ class GameViewModel: ObservableObject {
     /// True when hint conditions are met (low skill or 3+ attempts).
     /// Always true on the intro level — invisible learning relies on the glow, not text.
     var hintEnabled: Bool {
+        // Daily challenges must look identical for every player — no skill-based hints.
+        if currentLevel.isDailyChallenge { return false }
         if currentLevel.id == 0 { return true }
         return HintEngine.isActive(skillScore: PlayerSkillTracker.shared.skillScore,
                                    attemptCount: attemptCount)
@@ -133,8 +135,12 @@ class GameViewModel: ObservableObject {
     // MARK: - Public API
 
     func setupLevel() {
-        // Lock in difficulty adjustments once per session — stable across retries
-        if attemptCount == 0 {
+        // Lock in difficulty adjustments once per session — stable across retries.
+        // Daily challenges bypass adaptive difficulty entirely — all players worldwide
+        // must have the exact same moves, time, and visuals for fair leaderboard ranking.
+        if currentLevel.isDailyChallenge {
+            activeAdjustments = .none
+        } else if attemptCount == 0 {
             activeAdjustments = AdaptiveDifficultyManager.adjustments(
                 for: PlayerSkillTracker.shared.skillScore
             )
@@ -150,7 +156,8 @@ class GameViewModel: ObservableObject {
         // Cache target count once — it never changes during play
         targetsTotal = board.flatMap { $0 }.filter { $0.role == .target }.count
         tiles = board
-        let frustrationBoost = pendingFrustrationBoost ? 2 : 0
+        // Daily challenges never get frustration boost — identical moves for all players.
+        let frustrationBoost = (pendingFrustrationBoost && !currentLevel.isDailyChallenge) ? 2 : 0
         pendingFrustrationBoost = false   // consume — valid for one attempt only
         let rawMoves = currentLevel.maxMoves + activeAdjustments.extraMoves + frustrationBoost
         // Clamp: hard mode tightens the limit but never below the theoretical minimum
@@ -182,8 +189,11 @@ class GameViewModel: ObservableObject {
             startCountdown(seconds: tr)
         }
 
-        // Show mechanic unlock message if this is the player's first encounter
-        checkMechanicAnnouncements(for: board)
+        // Show mechanic unlock message if this is the player's first encounter.
+        // Daily challenges are separate from the campaign — never show mechanic announcements.
+        if !currentLevel.isDailyChallenge {
+            checkMechanicAnnouncements(for: board)
+        }
 
         // Invisible learning: show hint glow immediately from board load (no wait required).
         // For the intro level this also starts the pulsing animation straight away.
@@ -258,10 +268,14 @@ class GameViewModel: ObservableObject {
             countdownTask?.cancel()
             saveResultIfDaily(success: true)
             if let result = gameResult {
-                let event = ProgressionStore.record(result)
-                lastLevelUpEvent = event
-                if let newPass = event?.newPass {
-                    pendingPassGrant = newPass
+                if currentLevel.id > 0 {
+                    let event = ProgressionStore.record(result)
+                    lastLevelUpEvent = event
+                    if let newPass = event?.newPass {
+                        pendingPassGrant = newPass
+                    }
+                } else if currentLevel.isDailyChallenge {
+                    handleDailyWin(score: result.score)
                 }
                 PlayerSkillTracker.shared.recordWin(
                     efficiency:   result.efficiency,
@@ -378,7 +392,20 @@ class GameViewModel: ObservableObject {
             quality = objectiveQuality
         }
 
-        let computedScore = status == .won ? LevelScoring.computeScore(level: currentLevel, quality: quality) : 0
+        let computedScore: Int
+        if status != .won {
+            computedScore = 0
+        } else if currentLevel.isDailyChallenge {
+            computedScore = DailyScoring.computeScore(
+                difficulty:    currentLevel.difficulty,
+                timeRemaining: timeRemaining ?? 0,
+                movesLeft:     movesLeft,
+                objectiveType: currentLevel.objectiveType,
+                energyRating:  energyRating
+            )
+        } else {
+            computedScore = LevelScoring.computeScore(level: currentLevel, quality: quality)
+        }
 
         return GameResult(
             levelId:        currentLevel.id,
@@ -530,10 +557,14 @@ class GameViewModel: ObservableObject {
                 countdownTask?.cancel()
                 saveResultIfDaily(success: true)
                 if let result = gameResult {
-                    let event = ProgressionStore.record(result)
-                    lastLevelUpEvent = event
-                    if let newPass = event?.newPass {
-                        pendingPassGrant = newPass
+                    if currentLevel.id > 0 {
+                        let event = ProgressionStore.record(result)
+                        lastLevelUpEvent = event
+                        if let newPass = event?.newPass {
+                            pendingPassGrant = newPass
+                        }
+                    } else if currentLevel.isDailyChallenge {
+                        handleDailyWin(score: result.score)
                     }
                 }
             }
@@ -774,7 +805,7 @@ class GameViewModel: ObservableObject {
 
     /// Saves the result only when playing the current daily level.
     private func saveResultIfDaily(success: Bool) {
-        guard currentLevel.id == LevelGenerator.dailyLevel.id else { return }
+        guard currentLevel.isDailyChallenge else { return }
         // Use the computed gameResult when available; fall back to a minimal record on loss.
         let result = gameResult ?? GameResult(
             levelId:        currentLevel.id,
@@ -790,6 +821,21 @@ class GameViewModel: ObservableObject {
             attemptCount:   attemptCount
         )
         DailyStore.save(result)
+    }
+
+    /// Accumulates the daily win score into profile + submits to Game Center.
+    private func handleDailyWin(score: Int) {
+        var profile = ProgressionStore.profile
+        profile.dailyCumulativeScore += score
+        ProgressionStore.save(profile)
+        let cumulative = DailyStore.cumulativeScore
+        Task {
+            await GameCenterManager.shared.submitDailyScores(
+                dailyScore: score,
+                cumulativeDaily: cumulative,
+                profile: profile
+            )
+        }
     }
 
     // MARK: - Private: Fragile tile decay

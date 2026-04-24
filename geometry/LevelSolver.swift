@@ -29,8 +29,9 @@ struct SolverResult {
 ///
 /// Pruning rules:
 ///   • Never rotate source, target, or cross tiles (no-op or sub-optimal)
-///   • Never explore paths whose total cost exceeds generatorEstimate
-///     (we only care about confirming or improving on the generator)
+///   • Normal levels: cost bound = generatorEstimate (just confirm connectivity)
+///   • maxCoverage / energySaving: cost bound = maxMoves (coverage/energy
+///     constraints may require more moves than the path-only estimate)
 ///
 /// Budget control: set nodeBudget low for batch audit runs (≈20 K per level)
 /// and higher for interactive/single-level calls (≈100 K).
@@ -43,6 +44,14 @@ enum LevelSolver {
         let gs          = level.gridSize
         let genEstimate = level.minimumRequiredMoves
         let initial     = encodeState(board: board, gs: gs)
+
+        // For non-normal objectives the actual minimum to WIN can exceed the
+        // generator's path-only estimate, so search up to the full move limit.
+        let costBound: Int
+        switch level.objectiveType {
+        case .maxCoverage, .energySaving: costBound = level.maxMoves
+        case .normal:                     costBound = genEstimate
+        }
 
         // Trivial case: board already in a winning configuration
         if checkWin(state: initial, board: board, gs: gs, level: level) {
@@ -86,8 +95,7 @@ enum LevelSolver {
 
                     let tapCost  = tile.isOverloaded ? 2 : 1
                     let newCost  = cost + tapCost
-                    // Prune: no path longer than the known achievable solution is useful
-                    guard newCost <= genEstimate else { continue }
+                    guard newCost <= costBound else { continue }
 
                     let newState = rotateState(state, tileIndex: r * gs + c)
                     guard (bestCost[newState] ?? Int.max) > newCost else { continue }
@@ -174,11 +182,17 @@ enum LevelSolver {
         }
         guard totalTargets > 0 && onlineTargets == totalTargets else { return false }
 
-        // energySaving levels also require total active nodes within the cap
-        if level.objectiveType == .energySaving {
+        switch level.objectiveType {
+        case .energySaving:
+            // Must keep active nodes within the cap
             return activeNodes <= level.energySavingLimit
+        case .maxCoverage:
+            // Must energize ≥50% of the grid
+            let totalTiles = gs * gs
+            return activeNodes >= (totalTiles + 1) / 2
+        case .normal:
+            return true
         }
-        return true
     }
 
     /// Computes connections for `tile` using its type from the board and rotation from `state`.

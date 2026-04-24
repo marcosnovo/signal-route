@@ -408,6 +408,7 @@ final class CloudSaveManager: ObservableObject {
         }
         // Scalar counters: always take the higher value
         cloud.totalScore = max(local.totalScore, cloud.totalScore)
+        cloud.dailyCumulativeScore = max(local.dailyCumulativeScore, cloud.dailyCumulativeScore)
         // Level: cascade from merged data, then take the higher of cascaded vs local
         while cloud.canLevelUp { cloud.level += 1 }
         cloud.level = max(local.level, cloud.level)

@@ -209,6 +209,8 @@ struct PaywallView: View {
             Rectangle().fill(sage.opacity(0.10)).frame(height: 0.5)
             benefitRow(icon: "infinity",         label: S.paywallFeatureNoLimit)
             Rectangle().fill(sage.opacity(0.10)).frame(height: 0.5)
+            benefitRow(icon: "calendar.badge.clock", label: S.paywallFeatureDaily)
+            Rectangle().fill(sage.opacity(0.10)).frame(height: 0.5)
             benefitRow(icon: "creditcard",       label: S.paywallFeatureOneTime)
             Rectangle().fill(sage.opacity(0.10)).frame(height: 0.5)
             benefitRow(icon: "person.2.fill",    label: S.paywallFeatureFamily)

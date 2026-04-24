@@ -23,12 +23,11 @@ struct VictoryTelemetryView: View {
     // ── Animation state ────────────────────────────────────────────────────
     @State private var panelVisible   = false
     @State private var displayedPct   = 0
-    @State private var barHeights: [CGFloat] = Array(repeating: 0, count: 8)
+    @State private var barHeights: [CGFloat] = Array(repeating: 0, count: 8) // resized on appear
     @State private var metricsVisible = false
     @State private var ctaVisible     = false
 
     // ── Constants ──────────────────────────────────────────────────────────
-    private static let mockFractions: [CGFloat] = [0.52, 0.38, 0.78, 0.45, 0.68, 0.31, 0.62]
     private static let chartH: CGFloat = 240
 
     // ── Sage-panel colour tokens ───────────────────────────────────────────
@@ -41,9 +40,40 @@ struct VictoryTelemetryView: View {
     // ── Derived ────────────────────────────────────────────────────────────
     private var efficiency: Int { vm.gameResult?.efficiencyPercent ?? 0 }
 
+    /// The 7 missions immediately before the current one, with their real efficiency.
+    /// Returns an array of (missionID, fractionEff) tuples, oldest first.
+    private var previousMissionData: [(id: Int, eff: CGFloat)] {
+        let currentID = vm.currentLevel.id
+        let profile = ProgressionStore.profile
+        let levels = LevelGenerator.levels
+        // Find the index of the current level in the catalog
+        guard let curIdx = levels.firstIndex(where: { $0.id == currentID }) else {
+            return []
+        }
+        // Take up to 7 missions before this one in catalog order
+        let startIdx = max(0, curIdx - 7)
+        return levels[startIdx..<curIdx].map { level in
+            let best = profile.bestEfficiencyByLevel["\(level.id)"] ?? 0
+            return (id: level.id, eff: CGFloat(best))
+        }
+    }
+
+    /// Bar fractions (0…1) for up to 7 previous missions + the current one.
+    private var chartFractions: [CGFloat] {
+        let prev = previousMissionData.map(\.eff)
+        return prev + [CGFloat(efficiency) / 100]
+    }
+
+    /// X-axis labels: mission IDs for previous + "NOW" for current.
+    private var chartLabels: [String] {
+        let prev = previousMissionData.map { "#\($0.id)" }
+        return prev + ["NOW"]
+    }
+
+    private var chartBarCount: Int { chartFractions.count }
+
     private var targetBarHeights: [CGFloat] {
-        (Self.mockFractions + [CGFloat(efficiency) / 100])
-            .map { $0 * Self.chartH }
+        chartFractions.map { $0 * Self.chartH }
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -96,8 +126,15 @@ struct VictoryTelemetryView: View {
                 .foregroundStyle(AppTheme.sage)
             }
             Spacer()
-            TechLabel(text: vm.currentLevel.displayName,
-                      color: AppTheme.sage.opacity(0.75))
+            HStack(spacing: 5) {
+                if vm.currentLevel.isDailyChallenge {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AppTheme.accentSecondary.opacity(0.75))
+                }
+                TechLabel(text: vm.currentLevel.displayName,
+                          color: AppTheme.sage.opacity(0.75))
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -145,14 +182,14 @@ struct VictoryTelemetryView: View {
 
                     // Bars — anchored to bottom, grow upward
                     HStack(alignment: .bottom, spacing: 4) {
-                        ForEach(0..<8, id: \.self) { i in
-                            let isNow = i == 7
+                        ForEach(0..<chartBarCount, id: \.self) { i in
+                            let isNow = i == chartBarCount - 1
                             Rectangle()
                                 .fill(isNow
                                       ? AppTheme.accentPrimary
                                       : Color.white.opacity(0.19))
                                 .frame(maxWidth: .infinity)
-                                .frame(height: max(2, barHeights[i]))
+                                .frame(height: max(2, i < barHeights.count ? barHeights[i] : 0))
                                 .shadow(color: isNow
                                         ? AppTheme.accentPrimary.opacity(0.45) : .clear,
                                         radius: 7)
@@ -176,13 +213,12 @@ struct VictoryTelemetryView: View {
             }
             .padding(.horizontal, 10)
 
-            // X-axis labels
-            let xLabels = ["M1","M2","M3","M4","M5","M6","M7","NOW"]
+            // X-axis labels — real mission IDs
             HStack(spacing: 4) {
-                ForEach(Array(xLabels.enumerated()), id: \.offset) { idx, lbl in
+                ForEach(Array(chartLabels.enumerated()), id: \.offset) { idx, lbl in
                     Text(lbl)
-                        .font(AppTheme.mono(6, weight: idx == 7 ? .bold : .regular))
-                        .foregroundStyle(idx == 7 ? AppTheme.accentPrimary : AppTheme.sage.opacity(0.55))
+                        .font(AppTheme.mono(6, weight: idx == chartBarCount - 1 ? .bold : .regular))
+                        .foregroundStyle(idx == chartBarCount - 1 ? AppTheme.accentPrimary : AppTheme.sage.opacity(0.55))
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -310,32 +346,34 @@ struct VictoryTelemetryView: View {
                 HStack(alignment: .top, spacing: 0) {
                     // Level score / max
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(S.missionScore)
+                        Text(vm.currentLevel.isDailyChallenge ? S.dailyScore : S.missionScore)
                             .font(.system(size: 8, weight: .semibold))
                             .tracking(1.2)
                             .foregroundStyle(sageMid)
                         HStack(alignment: .firstTextBaseline, spacing: 3) {
-                            Text("\(vm.score)")
+                            Text(vm.score.formatted())
                                 .font(.system(size: 18, weight: .black))
                                 .foregroundStyle(sageInk)
                                 .monospacedDigit()
-                            Text("/ \(Int(LevelScoring.basePoints(for: vm.currentLevel)))")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(sageFaint)
-                                .monospacedDigit()
+                            if !vm.currentLevel.isDailyChallenge {
+                                Text("/ \(Int(LevelScoring.basePoints(for: vm.currentLevel)))")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(sageFaint)
+                                    .monospacedDigit()
+                            }
                         }
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    // Cumulative ranking total
+                    // Cumulative ranking total (or daily cumulative)
                     VStack(alignment: .trailing, spacing: 3) {
-                        Text(S.rankingTotal)
+                        Text(vm.currentLevel.isDailyChallenge ? S.dailyCumulative : S.rankingTotal)
                             .font(.system(size: 8, weight: .semibold))
                             .tracking(1.2)
                             .foregroundStyle(sageMid)
-                        Text(ProgressionStore.profile.leaderboardScore.formatted())
+                        Text(dailyOrTotalScore.formatted())
                             .font(.system(size: 18, weight: .black))
                             .foregroundStyle(sageInk)
                             .monospacedDigit()
@@ -436,6 +474,14 @@ struct VictoryTelemetryView: View {
     /// True when the player may immediately start the next mission.
     /// False when the daily limit has been reached — tapping the primary CTA opens the paywall.
     /// Reads published EntitlementStore properties directly to avoid side-effectful canPlay(_:).
+    /// Shows daily cumulative score for daily challenges, total leaderboard score otherwise.
+    private var dailyOrTotalScore: Int {
+        if vm.currentLevel.isDailyChallenge {
+            return DailyStore.cumulativeScore
+        }
+        return ProgressionStore.profile.leaderboardScore
+    }
+
     private var canContinue: Bool {
         guard nextMission != nil else { return false }
         return !entitlement.dailyLimitReached
@@ -534,12 +580,14 @@ struct VictoryTelemetryView: View {
 
             // ── Secondary row: RETRY / SHARE / MAP / HOME ──────────────
             HStack(spacing: 0) {
-                Button(action: { SoundManager.play(.tapSecondary); onRestart() }) {
-                    secondaryButton(icon: "arrow.counterclockwise", label: S.retryLabel,
-                                    color: AppTheme.textPrimary)
-                }
+                if !vm.currentLevel.isDailyChallenge {
+                    Button(action: { SoundManager.play(.tapSecondary); onRestart() }) {
+                        secondaryButton(icon: "arrow.counterclockwise", label: S.retryLabel,
+                                        color: AppTheme.textPrimary)
+                    }
 
-                Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
+                    Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
+                }
 
                 Button(action: { SoundManager.play(.tapSecondary); shareTicket() }) {
                     secondaryButton(icon: "square.and.arrow.up", label: S.shareLabel,
@@ -618,6 +666,12 @@ struct VictoryTelemetryView: View {
     // ══════════════════════════════════════════════════════════════════════
 
     private func runEntrance() async {
+        // Resize barHeights to match dynamic bar count
+        let count = chartBarCount
+        if barHeights.count != count {
+            barHeights = Array(repeating: 0, count: count)
+        }
+
         // ── 1. Panel scales / fades in ───────────────────────────────────
         panelVisible = true
         HapticsManager.medium()

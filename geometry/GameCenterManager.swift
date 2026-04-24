@@ -17,6 +17,8 @@ final class GameCenterManager: ObservableObject {
     static let leaderboardTierMedium = "\(prefix).tier_medium"
     static let leaderboardTierHard   = "\(prefix).tier_hard"
     static let leaderboardTierExpert = "\(prefix).tier_expert"
+    static let leaderboardDailyChallenge  = "\(prefix).daily_challenge"
+    static let leaderboardDailyCumulative = "\(prefix).daily_cumulative"
 
     // MARK: Published state
     @Published private(set) var isAuthenticated: Bool = false
@@ -68,6 +70,11 @@ final class GameCenterManager: ObservableObject {
                     let profile = ProgressionStore.profile
                     guard profile.leaderboardScore > 0 else { return }
                     await self.submitAllScores(profile: profile)
+                    // Catch up daily cumulative leaderboard
+                    let cumulative = DailyStore.cumulativeScore
+                    if cumulative > 0 {
+                        await self.submitDailyScores(dailyScore: 0, cumulativeDaily: cumulative, profile: profile)
+                    }
                 }
             } else {
                 self.isAuthenticated = false
@@ -151,6 +158,38 @@ final class GameCenterManager: ObservableObject {
         await loadRankFeedback()
     }
 
+    /// Submit daily challenge scores: today's score, cumulative daily total, and updated total score.
+    /// Called after a daily challenge win.
+    func submitDailyScores(dailyScore: Int, cumulativeDaily: Int, profile: AstronautProfile) async {
+        guard isAuthenticated else { return }
+
+        let submissions: [(Int, [String])] = [
+            (dailyScore,               [Self.leaderboardDailyChallenge]),
+            (cumulativeDaily,          [Self.leaderboardDailyCumulative]),
+            (profile.leaderboardScore, [Self.leaderboardTotalScore]),
+        ]
+
+        for (score, ids) in submissions where score > 0 {
+            do {
+                try await GKLeaderboard.submitScore(
+                    score,
+                    context: 0,
+                    player: GKLocalPlayer.local,
+                    leaderboardIDs: ids
+                )
+                #if DEBUG
+                print("[GameCenter] ✓ Daily submitted \(score) → \(ids.first ?? "?")")
+                #endif
+            } catch {
+                #if DEBUG
+                print("[GameCenter] ✗ Daily score submit failed for \(ids): \(error.localizedDescription)")
+                #endif
+            }
+        }
+
+        await loadRankFeedback()
+    }
+
     /// Clear stale rank feedback (call when a new game session starts).
     func clearRankFeedback() { rankFeedback = nil }
 
@@ -209,8 +248,9 @@ final class GameCenterManager: ObservableObject {
             guard let lb = boards.first else { return }
 
             // loadEntries(for:timeScope:range:) returns (localPlayerEntry, rangeEntries, totalCount)
-            let (localEntry, _, total) = try await lb.loadEntries(
-                for: .global, timeScope: .allTime, range: NSRange(1...1)
+            // Fetch top 5 for widget leaderboard display
+            let (localEntry, topEntries, total) = try await lb.loadEntries(
+                for: .global, timeScope: .allTime, range: NSRange(1...5)
             )
 
             guard let entry = localEntry, total > 0 else { return }
@@ -231,6 +271,18 @@ final class GameCenterManager: ObservableObject {
             } else {
                 rankFeedback = .ranked(rank)
             }
+
+            // Cache top-5 entries + rank for widget leaderboard
+            let localID = GKLocalPlayer.local.gamePlayerID
+            let cached = topEntries.map { e in
+                LeaderboardEntrySnapshot(
+                    rank: e.rank,
+                    displayName: e.player.displayName,
+                    score: e.score,
+                    isLocalPlayer: e.player.gamePlayerID == localID
+                )
+            }
+            LeaderboardCache.update(entries: cached, playerRank: rank, totalPlayers: total)
         } catch {
             // Rank loading is best-effort — failure is silent
             #if DEBUG

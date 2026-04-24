@@ -7,6 +7,7 @@ struct HomeView: View {
     let onMissions: () -> Void
     var onUpgrade: (() -> Void)? = nil
     var onVersus:  (() -> Void)? = nil
+    var onDailyChallenge: (() -> Void)? = nil
 
     @EnvironmentObject private var gcManager: GameCenterManager
     @EnvironmentObject private var settings: SettingsStore
@@ -22,6 +23,7 @@ struct HomeView: View {
     @State private var heroOffset: CGFloat    = 18
     @State private var fabPulsing             = false
     @State private var rankPulsing            = false
+    @State private var dailyPulsing           = false
 
     var body: some View {
         ZStack {
@@ -93,6 +95,9 @@ struct HomeView: View {
         }
         .onAppear {
             entitlement.checkExpiry()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openPlanetPass)) { _ in
+            showingPlanetTicket = true
         }
     }
 
@@ -305,8 +310,13 @@ struct HomeView: View {
             }
             leaderboardSecondaryButton
 
-            // Versus CTA — only visible when feature flag is active + GC authenticated
-            if VersusFeatureFlag.isEnabled, gcManager.isAuthenticated {
+            // Daily challenge CTA — premium only
+            if entitlement.isPremium {
+                dailyChallengeCTA
+            }
+
+            // Versus CTA — only visible when feature flag allows Home visibility + GC authenticated
+            if VersusFeatureFlag.isVisibleInHome, gcManager.isAuthenticated {
                 Button(action: { onVersus?() }) {
                     HStack(spacing: 6) {
                         Image(systemName: "person.2.fill")
@@ -424,6 +434,88 @@ struct HomeView: View {
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
                 rankPulsing = true
+            }
+        }
+    }
+
+    /// Daily challenge CTA — two distinct states:
+    ///   • Available: prominent filled button with glow (clearly tappable)
+    ///   • Played:    muted countdown text (just informational)
+    @ViewBuilder
+    private var dailyChallengeCTA: some View {
+        let played = DailyStore.hasPlayedToday
+
+        if played {
+            // ── Countdown only — compact, muted, non-interactive ──────────
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                Text(S.dailyChallengeCompleted)
+                    .font(AppTheme.mono(8, weight: .bold))
+                    .kerning(0.8)
+                Text("·")
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    let secs = max(0, DailyChallengeConfig.secondsUntilNext)
+                    let h = Int(secs) / 3600
+                    let m = (Int(secs) % 3600) / 60
+                    let s = Int(secs) % 60
+                    Text(S.nextIn(String(format: "%02d:%02d:%02d", h, m, s)))
+                        .font(AppTheme.mono(8))
+                        .kerning(0.6)
+                }
+            }
+            .foregroundStyle(AppTheme.sage.opacity(0.38))
+        } else {
+            // ── Available: prominent secondary button ─────────────────────
+            Button(action: {
+                SoundManager.play(.tapPrimary)
+                HapticsManager.medium()
+                onDailyChallenge?()
+            }) {
+                HStack(spacing: 0) {
+                    // Left accent stripe
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(AppTheme.accentPrimary)
+                        .frame(width: 4, height: 28)
+                        .padding(.leading, 14)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(S.dailyChallenge)
+                            .font(AppTheme.mono(12, weight: .black))
+                            .kerning(1.5)
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Text(S.dailyChallengeSubtitle)
+                            .font(AppTheme.mono(7, weight: .medium))
+                            .kerning(0.8)
+                            .foregroundStyle(AppTheme.sage.opacity(0.6))
+                    }
+                    .padding(.leading, 10)
+
+                    Spacer()
+
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(AppTheme.accentPrimary)
+                        .padding(.trailing, 16)
+                }
+                .frame(width: 260, height: 52)
+                .background(AppTheme.surfaceElevated)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .strokeBorder(AppTheme.accentPrimary.opacity(0.30), lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlayPressStyle(onPress: {
+                HapticsManager.medium()
+                SoundManager.play(.tapPrimary)
+            }))
+            .shadow(color: AppTheme.accentPrimary.opacity(dailyPulsing ? 0.22 : 0.06),
+                    radius: 10, y: 2)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
+                    dailyPulsing = true
+                }
             }
         }
     }

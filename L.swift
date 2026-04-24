@@ -473,6 +473,15 @@ struct AppStrings {
     var paywallFeatureNoLimit:  String { t("No daily mission limit",           "Sin límite diario de misiones",         "Aucune limite quotidienne de missions") }
     var paywallFeatureOneTime:  String { t("One-time payment, forever",        "Pago único, para siempre",              "Paiement unique, pour toujours") }
     var paywallFeatureFamily:   String { t("Family Sharing supported",         "Compatible con Compartir en familia",   "Compatible avec le Partage familial") }
+    var paywallFeatureDaily:   String { t("Exclusive Daily Challenge mode",    "Modo Desafío Diario exclusivo",         "Mode Défi Quotidien exclusif") }
+
+    // MARK: Daily Challenge
+    var dailyChallenge:          String { t("DAILY CHALLENGE",                 "DESAFÍO DIARIO",                        "DÉFI QUOTIDIEN") }
+    var dailyChallengeSubtitle:  String { t("ONE ATTEMPT. ONE CHANCE.",        "UN INTENTO. UNA OPORTUNIDAD.",          "UN ESSAI. UNE CHANCE.") }
+    var dailyChallengeCompleted: String { t("COMPLETED",                       "COMPLETADO",                            "TERMINÉ") }
+    func nextIn(_ time: String) -> String { t("NEXT IN \(time)",              "SIGUIENTE EN \(time)",                  "PROCHAIN DANS \(time)") }
+    var dailyScore:              String { t("DAILY SCORE",                   "PUNTUACIÓN DIARIA",                     "SCORE QUOTIDIEN") }
+    var dailyCumulative:         String { t("DAILY CUMULATIVE",              "ACUMULADO DIARIO",                      "CUMUL QUOTIDIEN") }
     func paywallCtaBuy(_ price: String) -> String { t("Unlock for \(price)", "Desbloquear por \(price)", "Débloquer pour \(price)") }
     var paywallCtaRestore:      String { t("Restore Purchases",                "Restaurar compras",                     "Restaurer les achats") }
     var paywallLegal:           String { t("One-time payment. No subscriptions.", "Pago único. Sin suscripciones.",     "Paiement unique. Sans abonnement.") }
@@ -911,4 +920,53 @@ struct AppStrings {
         case .moveLimitExhausted:    return t("Plan your route before moving",         "Planifica antes de mover",            "Planifiez avant de bouger")
         }
     }
+
+    // MARK: - Versus
+
+    // Lobby
+    var versus: String             { t("VERSUS",                    "VERSUS",                      "VERSUS") }
+    var versusSubtitle: String     { t("1 v 1  REAL-TIME",          "1 v 1  EN TIEMPO REAL",       "1 v 1  EN TEMPS RÉEL") }
+    var findMatch: String          { t("FIND MATCH",                "BUSCAR RIVAL",                "TROUVER UN MATCH") }
+    var gameCenterConnected: String { t("GAME CENTER CONNECTED",    "GAME CENTER CONECTADO",       "GAME CENTER CONNECTÉ") }
+    var gameCenterRequired: String { t("GAME CENTER REQUIRED",      "GAME CENTER REQUERIDO",       "GAME CENTER REQUIS") }
+    var versusExit: String         { t("EXIT",                      "SALIR",                       "QUITTER") }
+
+    // Search
+    var searchingForOpponent: String { t("SEARCHING FOR OPPONENT",  "BUSCANDO RIVAL",              "RECHERCHE D'ADVERSAIRE") }
+    var versusCancel: String       { t("CANCEL",                    "CANCELAR",                    "ANNULER") }
+
+    // Countdown
+    var matchFound: String         { t("MATCH FOUND",               "RIVAL ENCONTRADO",            "MATCH TROUVÉ") }
+    var secondRace: String         { t("30 SECOND RACE",            "CARRERA DE 30 SEGUNDOS",      "COURSE DE 30 SECONDES") }
+    var generatingBoard: String    { t("GENERATING BOARD...",       "GENERANDO TABLERO...",        "GÉNÉRATION DU PLATEAU...") }
+    var versusGo: String           { t("GO!",                       "¡YA!",                        "C'EST PARTI !") }
+
+    // Gameplay HUD
+    func tapsCount(_ n: Int) -> String { t("TAPS: \(n)",            "TOQUES: \(n)",                "TAPS : \(n)") }
+    var yourSide: String           { t("YOU",                       "TÚ",                          "VOUS") }
+    var rivalSide: String          { t("RIVAL",                     "RIVAL",                       "RIVAL") }
+    var versusTarget: String       { t("TARGET",                    "OBJETIVO",                    "CIBLE") }
+
+    // Result titles
+    var victory: String            { t("VICTORY",                   "VICTORIA",                    "VICTOIRE") }
+    var defeat: String             { t("DEFEAT",                    "DERROTA",                     "DÉFAITE") }
+    var versusDraw: String         { t("DRAW",                      "EMPATE",                      "MATCH NUL") }
+    var opponentDisconnected: String { t("OPPONENT DISCONNECTED",   "RIVAL DESCONECTADO",          "ADVERSAIRE DÉCONNECTÉ") }
+    var connectionLost: String     { t("CONNECTION LOST",           "CONEXIÓN PERDIDA",            "CONNEXION PERDUE") }
+    var resolving: String          { t("RESOLVING...",              "RESOLVIENDO...",              "RÉSOLUTION...") }
+
+    // Result reasons
+    var reasonConnectedFirst: String { t("SIGNAL CONNECTED FIRST",  "SEÑAL CONECTADA PRIMERO",     "SIGNAL CONNECTÉ EN PREMIER") }
+    var reasonRivalConnected: String { t("RIVAL CONNECTED FIRST",   "EL RIVAL CONECTÓ PRIMERO",    "L'ADVERSAIRE A CONNECTÉ EN PREMIER") }
+    var reasonMoreProgress: String { t("MORE PROGRESS AT TIMEOUT",  "MÁS PROGRESO AL TERMINAR",   "PLUS DE PROGRESSION AU TEMPS IMPARTI") }
+    var reasonLessProgress: String { t("RIVAL HAD MORE PROGRESS",   "EL RIVAL TENÍA MÁS PROGRESO", "L'ADVERSAIRE AVAIT PLUS DE PROGRESSION") }
+    var reasonEvenProgress: String { t("EQUAL PROGRESS — RARE DRAW", "PROGRESO IGUAL — EMPATE RARO", "PROGRESSION ÉGALE — MATCH NUL RARE") }
+    var reasonRivalLeft: String    { t("RIVAL LEFT THE MATCH",      "EL RIVAL ABANDONÓ",           "L'ADVERSAIRE A QUITTÉ") }
+    var reasonYouLeft: String      { t("LOST CONNECTION",           "CONEXIÓN PERDIDA",            "CONNEXION PERDUE") }
+
+    // Result actions
+    var versusRematch: String      { t("REMATCH",                   "REVANCHA",                    "REVANCHE") }
+    var waitingForOpponent: String { t("WAITING FOR OPPONENT...",    "ESPERANDO AL RIVAL...",       "EN ATTENTE DE L'ADVERSAIRE...") }
+    var backToHome: String         { t("BACK TO HOME",              "VOLVER AL INICIO",            "RETOUR À L'ACCUEIL") }
+    func vsLabel(_ name: String) -> String { t("vs \(name)",        "vs \(name)",                  "vs \(name)") }
 }

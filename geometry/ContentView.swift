@@ -3,6 +3,8 @@ import SwiftUI
 // Posted by DevMenuView to replay the intro without touching main game progress.
 extension Notification.Name {
     static let devReplayOnboarding = Notification.Name("geometry.devReplayOnboarding")
+    static let widgetDeepLink = Notification.Name("geometry.widgetDeepLink")
+    static let openPlanetPass = Notification.Name("geometry.openPlanetPass")
 }
 
 struct ContentView: View {
@@ -191,16 +193,24 @@ struct ContentView: View {
                     onMissions: { activeLevel = nil; showingLevelSelect = true },
                     onWin: { wonLevel, event in
                         lastWinEvent = event
-                        EntitlementStore.shared.recordAttempt(wonLevel, didWin: true)
-                        Task { await CloudSaveManager.shared.save() }
-                        collectStoryBeats(for: wonLevel, event: event)
-                        // Arm post-win paywall — fires when player returns to Home
-                        // (either by dismissing the game or after story beats clear).
-                        pendingPaywallContext = PaywallMomentSelector.contextAfterWin(
-                            event: event, entitlement: EntitlementStore.shared)
+                        if wonLevel.isDailyChallenge {
+                            // Daily wins: cloud save only — no entitlement, no story beats, no paywall
+                            Task { await CloudSaveManager.shared.save() }
+                        } else {
+                            EntitlementStore.shared.recordAttempt(wonLevel, didWin: true)
+                            Task { await CloudSaveManager.shared.save() }
+                            collectStoryBeats(for: wonLevel, event: event)
+                            pendingPaywallContext = PaywallMomentSelector.contextAfterWin(
+                                event: event, entitlement: EntitlementStore.shared)
+                        }
                     },
                     onFail: { failedLevel in
-                        EntitlementStore.shared.recordAttempt(failedLevel, didWin: false)
+                        if failedLevel.isDailyChallenge {
+                            // One attempt only — dismiss to home, no entitlement tracking
+                            activeLevel = nil
+                        } else {
+                            EntitlementStore.shared.recordAttempt(failedLevel, didWin: false)
+                        }
                     },
                     onUpgrade: {
                         activeLevel    = nil
@@ -221,7 +231,11 @@ struct ContentView: View {
                     onPlay:     { level in tryPlay(level) },
                     onMissions: { showingLevelSelect = true },
                     onUpgrade:  { showPaywall(.homeSoftCTA) },
-                    onVersus:   { showingVersus = true }
+                    onVersus:   { showingVersus = true },
+                    onDailyChallenge: {
+                        DailyStore.markStarted()
+                        activeLevel = DailyLevelFactory.todayLevel
+                    }
                 )
                 .transition(.asymmetric(
                     insertion: .move(edge: .leading),
@@ -349,6 +363,38 @@ struct ContentView: View {
             // Instant-play replay: jump straight to the intro mission
             withAnimation(.easeIn(duration: 0.35)) { introStep = .gameplay }
         }
+        // Widget deep link handler
+        .onReceive(NotificationCenter.default.publisher(for: .widgetDeepLink)) { note in
+            guard introStep == nil,
+                  let route = note.userInfo?["route"] as? DeepLinkRoute else { return }
+            switch route {
+            case .home:
+                activeLevel = nil
+                showingLevelSelect = false
+            case .missions:
+                activeLevel = nil
+                showingLevelSelect = true
+            case .leaderboards:
+                activeLevel = nil
+                showingLevelSelect = false
+                GameCenterManager.shared.openLeaderboards()
+            case .pass:
+                activeLevel = nil
+                showingLevelSelect = false
+                // Navigate to home and open the PlanetTicketView sheet
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    NotificationCenter.default.post(name: .openPlanetPass, object: nil)
+                }
+            case .dailyChallenge:
+                guard EntitlementStore.shared.isPremium,
+                      !DailyStore.hasPlayedToday else { return }
+                activeLevel = nil
+                showingLevelSelect = false
+                DailyStore.markStarted()
+                activeLevel = DailyLevelFactory.todayLevel
+            }
+        }
     }
 
     // MARK: - Entitlement gate
@@ -358,7 +404,7 @@ struct ContentView: View {
     /// When no context is supplied, PaywallMomentSelector determines the right framing
     /// based on the level being accessed (sector entry vs mid-sector continuation).
     private func tryPlay(_ level: Level, context: PaywallContext? = nil) {
-        if EntitlementStore.shared.canPlay(level) {
+        if level.isDailyChallenge || EntitlementStore.shared.canPlay(level) {
             activeLevel                = level
             pendingPaywallContext      = nil
             pendingPaywallBypassesHook = false

@@ -58,6 +58,13 @@ enum NodeRole {
     case none     // inert / blocked (reserved)
 }
 
+// MARK: - VersusPlayer
+/// Identifies which player owns a tile in the versus split-board layout.
+enum VersusPlayer: Codable {
+    case p1   // host — cols 0-3
+    case p2   // guest — cols 5-8
+}
+
 // MARK: - Tile
 struct Tile: Identifiable {
     let id = UUID()
@@ -65,6 +72,9 @@ struct Tile: Identifiable {
     var rotation: Int = 0      // 0–3, each step = 90° clockwise
     var role: NodeRole = .relay
     var isEnergized: Bool = false
+
+    /// Which player owns this tile in versus mode. nil for campaign/daily.
+    var owner: VersusPlayer? = nil
 
     // MARK: — Gameplay Mechanics
     /// Non-nil = rotation is capped at this many player-initiated rotations.
@@ -261,6 +271,65 @@ enum LevelScoring {
     }
 }
 
+// MARK: - DailyScoring
+/// Fine-grained scoring for daily challenges. Produces high-resolution scores
+/// so players on the same daily board can be meaningfully ranked.
+///
+/// Score = difficultyBase + timeBonus + moveBonus + objectiveBonus + coverageBonus
+///
+/// Hierarchy (no overlap between tiers):
+///   Expert: 4,000,000+ | Hard: 3,000,000–3,999,999
+enum DailyScoring {
+
+    /// Difficulty base — ensures expert always outranks hard.
+    private static func difficultyBase(for tier: DifficultyTier) -> Int {
+        switch tier {
+        case .hard:   return 3_000_000
+        case .expert: return 4_000_000
+        default:      return 2_000_000   // shouldn't happen for daily
+        }
+    }
+
+    /// Time remaining (whole seconds) → 0–900,000.
+    /// 10,000 points per second makes time the primary differentiator.
+    private static func timeBonus(secondsLeft: Int) -> Int {
+        max(0, secondsLeft) * 10_000
+    }
+
+    /// Moves remaining → 0–~15,000. 1,000 per move as secondary differentiator.
+    private static func moveBonus(movesLeft: Int) -> Int {
+        max(0, movesLeft) * 1_000
+    }
+
+    /// Special objective quality bonus (0–250). Tertiary differentiator.
+    private static func objectiveBonus(type: LevelObjectiveType, energyRating: Float) -> Int {
+        switch type {
+        case .normal:       return 0
+        case .maxCoverage:  return Int((energyRating * 250).rounded())
+        case .energySaving: return Int((energyRating * 250).rounded())
+        }
+    }
+
+    /// Compute the daily challenge score.
+    static func computeScore(
+        difficulty: DifficultyTier,
+        timeRemaining: Int,
+        movesLeft: Int,
+        objectiveType: LevelObjectiveType,
+        energyRating: Float
+    ) -> Int {
+        difficultyBase(for: difficulty)
+            + timeBonus(secondsLeft: timeRemaining)
+            + moveBonus(movesLeft: movesLeft)
+            + objectiveBonus(type: objectiveType, energyRating: energyRating)
+    }
+
+    /// Human-readable breakdown for the daily score display.
+    static func maxScore(for difficulty: DifficultyTier, timeLimit: Int) -> Int {
+        difficultyBase(for: difficulty) + timeBonus(secondsLeft: timeLimit)
+    }
+}
+
 // MARK: - GameResult
 /// Snapshot of a completed game session.
 struct GameResult {
@@ -427,8 +496,35 @@ struct AstronautProfile: Codable {
     /// Updated only when the new score strictly exceeds the previous best.
     var bestScoreByLevel: [String: Int] = [:]
 
-    /// Cumulative leaderboard score: sum of best per-level weighted scores.
-    var leaderboardScore: Int { bestScoreByLevel.values.reduce(0, +) }
+    /// Cumulative score from daily challenges. Added to leaderboardScore
+    /// but kept separate from campaign bestScoreByLevel.
+    var dailyCumulativeScore: Int = 0
+
+    // MARK: - Safe Codable decoder
+    // Swift's auto-synthesized init(from:) throws on missing keys.
+    // New properties MUST be decoded with decodeIfPresent to avoid
+    // total data loss when loading profiles saved before the field existed.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        level                = try c.decodeIfPresent(Int.self, forKey: .level) ?? 1
+        totalScore           = try c.decodeIfPresent(Int.self, forKey: .totalScore) ?? 0
+        currentPlanetIndex   = try c.decodeIfPresent(Int.self, forKey: .currentPlanetIndex) ?? 0
+        bestEfficiencyByLevel = try c.decodeIfPresent([String: Float].self, forKey: .bestEfficiencyByLevel) ?? [:]
+        lastEfficiencyByLevel = try c.decodeIfPresent([String: Float].self, forKey: .lastEfficiencyByLevel) ?? [:]
+        bestScoreByLevel     = try c.decodeIfPresent([String: Int].self, forKey: .bestScoreByLevel) ?? [:]
+        dailyCumulativeScore = try c.decodeIfPresent(Int.self, forKey: .dailyCumulativeScore) ?? 0
+    }
+
+    init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case level, totalScore, currentPlanetIndex
+        case bestEfficiencyByLevel, lastEfficiencyByLevel, bestScoreByLevel
+        case dailyCumulativeScore
+    }
+
+    /// Cumulative leaderboard score: campaign best scores + daily challenge total.
+    var leaderboardScore: Int { bestScoreByLevel.values.reduce(0, +) + dailyCumulativeScore }
 
     /// Leaderboard score filtered to a single difficulty tier.
     func tierScore(for tier: DifficultyTier) -> Int {
@@ -484,7 +580,7 @@ struct AstronautProfile: Codable {
         guard !bestEfficiencyByLevel.isEmpty else { return 0 }
         return bestEfficiencyByLevel.values.reduce(0, +) / Float(bestEfficiencyByLevel.count)
     }
-    var averageEfficiencyPercent: Int { Int(averageEfficiency * 100) }
+    var averageEfficiencyPercent: Int { Int((averageEfficiency * 100).rounded()) }
 
     /// How many quality-weighted completions the player has, using their LAST score per level.
     ///
@@ -723,8 +819,18 @@ struct Level: Identifiable {
     /// Used for the energySaving win condition.
     let solutionPathLength: Int
 
+    /// When set, mechanics are applied as if this were the level ID.
+    /// Used by daily challenge (id: -2) to map to campaign-equivalent mechanic tiers.
+    var mechanicLevelId: Int? = nil
+
+    var isDailyChallenge: Bool { id == DailyChallengeConfig.levelID }
+
     var displayID: String   { String(format: "%02d", id) }
-    var displayName: String { id == 0 ? "INTRO MISSION" : "MISSION \(displayID)" }
+    var displayName: String {
+        if id == 0  { return "INTRO MISSION" }
+        if id == -2 { return "DAILY CHALLENGE" }
+        return "MISSION \(displayID)"
+    }
     /// Slack over the theoretical minimum. Reflects how forgiving the move budget is.
     var moveBuffer: Int     { maxMoves - minimumRequiredMoves }
     /// Max allowed active nodes for energySaving levels (solution path + tolerance).

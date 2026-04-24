@@ -38,13 +38,7 @@ struct LevelGenerator {
 
     // MARK: - Daily challenge
     static var dailyLevel: Level {
-        let c = Calendar.current
-        let n = Date()
-        let y = c.component(.year,  from: n)
-        let m = c.component(.month, from: n)
-        let d = c.component(.day,   from: n)
-        let idx = abs(y * 10000 + m * 100 + d) % levels.count
-        return levels[idx]
+        DailyLevelFactory.todayLevel
     }
 
     // MARK: - Board building (public API — gameplay entry point)
@@ -64,7 +58,7 @@ struct LevelGenerator {
     ///   5. Scramble relay tiles (source/target orientation is fixed)
     ///   6. Sum minimum taps over all on-path relay tiles → minimumRequiredMoves
     ///   7. Apply tile mechanics to a seeded-random subset of relay path tiles
-    private static func buildBoardInternal(for level: Level) -> (board: [[Tile]], minMoves: Int, solutionPathLength: Int) {
+    static func buildBoardInternal(for level: Level) -> (board: [[Tile]], minMoves: Int, solutionPathLength: Int) {
         if level.id == 0 { return (buildIntroBoard(), 1, 3) }
         let gs = level.gridSize
         var rng = SeededRNG(seed: level.seed)
@@ -138,8 +132,8 @@ struct LevelGenerator {
             grid.append(row)
         }
 
-        // 7. Apply progressive tile mechanics based on level ID
-        applyMechanics(for: level.id, to: &grid, relayPath: relayPathInfo,
+        // 7. Apply progressive tile mechanics based on level ID (or mechanicLevelId for daily challenges)
+        applyMechanics(for: level.mechanicLevelId ?? level.id, to: &grid, relayPath: relayPathInfo,
                        rng: &rng, minMoves: &minMoves)
 
         // Count tiles on any solution path (source + relays + targets)
@@ -704,19 +698,31 @@ struct LevelGenerator {
 
         for (diff, count, gs, type, nTargets) in specs {
             for _ in 0..<count {
-                let seed   = UInt64(id) &* 6364136223846793005 &+ 1442695040888963407
+                var seed   = UInt64(id) &* 6364136223846793005 &+ 1442695040888963407
                 let tl     = timeLimitSeconds(for: id, difficulty: diff)
                 let objType = objectiveType(for: type, id: id)
 
-                // Build a temporary level (maxMoves doesn't affect board generation)
-                // to measure the actual minimum moves and solution path length for this seed.
-                let temp = Level(
-                    id: id, seed: seed, maxMoves: 99, minimumRequiredMoves: 0,
-                    difficulty: diff, gridSize: gs, levelType: type,
-                    numTargets: nTargets, timeLimit: tl,
-                    objectiveType: objType, solutionPathLength: 0
-                )
-                let (_, minMoves, pathLen) = buildBoardInternal(for: temp)
+                // maxCoverage levels need a solution path that covers ≥50% of the grid.
+                // If the initial seed produces a path that's too short, re-seed until it fits.
+                let minPathForCoverage = objType == .maxCoverage ? (gs * gs + 1) / 2 : 0
+
+                var minMoves = 0
+                var pathLen  = 0
+                for _ in 0..<20 {
+                    let temp = Level(
+                        id: id, seed: seed, maxMoves: 99, minimumRequiredMoves: 0,
+                        difficulty: diff, gridSize: gs, levelType: type,
+                        numTargets: nTargets, timeLimit: tl,
+                        objectiveType: objType, solutionPathLength: 0
+                    )
+                    let result = buildBoardInternal(for: temp)
+                    minMoves = result.minMoves
+                    pathLen  = result.solutionPathLength
+                    if pathLen >= minPathForCoverage { break }
+                    // Re-seed: rotate the seed to get a different board layout
+                    seed = seed &+ 0x9E3779B97F4A7C15 // golden-ratio increment
+                }
+
                 let maxMov = minMoves + movesBuffer(for: diff, minMoves: minMoves, levelId: id)
 
                 catalogue.append(Level(

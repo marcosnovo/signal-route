@@ -20,7 +20,7 @@ struct DevMenuView: View {
     @EnvironmentObject private var cloudSave:  CloudSaveManager
 
     // ── Tab ───────────────────────────────────────────────────────────────
-    enum DevTab { case overview, missions, story, tools, money, reset, qa, sim, versus }
+    enum DevTab { case overview, missions, story, tools, reset }
     @State private var activeTab: DevTab = .overview
 
     // ── QA tab ────────────────────────────────────────────────────────────
@@ -205,6 +205,10 @@ struct DevMenuView: View {
 
     // ── Derived ───────────────────────────────────────────────────────────
 
+    // Fixed heights for GeometryReader calculation
+    private let navStripHeight: CGFloat = 44
+    private let tabBarHeight: CGFloat = 46
+
     private var profile: AstronautProfile {
         _ = refreshID
         return ProgressionStore.profile
@@ -247,102 +251,99 @@ struct DevMenuView: View {
             return AnyView(storyPanel)
         case .tools:
             return AnyView(toolsPanel)
-        case .money:
-            return AnyView(moneyPanel)
         case .reset:
             return AnyView(resetPanel)
-        case .qa:
-            return AnyView(SelfQAView(runner: qaRunner) { level in
-                onSelect(level)
-                onDismiss()
-            })
-        case .sim:
-            return AnyView(PlayerSimulationView(runner: simRunner))
-        case .versus:
-            return AnyView(versusPanel)
         }
     }
 
     var body: some View {
-        ZStack {
-            AppTheme.backgroundPrimary.ignoresSafeArea()
-            BackgroundGrid()
-
+        GeometryReader { geo in
             VStack(spacing: 0) {
                 navStrip
-                globalStatusBar
-                quickActionsStrip
                 tabBar
                 TechDivider()
 
                 tabContent
+                    .frame(height: geo.size.height
+                           - navStripHeight
+                           - tabBarHeight
+                           - 1) // TechDivider
             }
-
-            // ── Dev toast ─────────────────────────────────────────────────
-            if let toast = devToast {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Image(systemName: toast.icon)
-                            .font(.system(size: 11, weight: .bold))
-                        Text(toast.message)
-                            .font(AppTheme.mono(10, weight: .bold))
-                            .kerning(0.5)
+        }
+        .background {
+            AppTheme.backgroundPrimary.ignoresSafeArea()
+        }
+        .background {
+            BackgroundGrid()
+        }
+        .overlay {
+            ZStack {
+                // ── Dev toast ─────────────────────────────────────────
+                if let toast = devToast {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 8) {
+                            Image(systemName: toast.icon)
+                                .font(.system(size: 11, weight: .bold))
+                            Text(toast.message)
+                                .font(AppTheme.mono(10, weight: .bold))
+                                .kerning(0.5)
+                        }
+                        .foregroundStyle(toast.color)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(AppTheme.backgroundPrimary)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                                .strokeBorder(toast.color.opacity(0.60), lineWidth: 0.75)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                        .shadow(color: toast.color.opacity(0.25), radius: 16, y: 4)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 28)
                     }
-                    .foregroundStyle(toast.color)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-                    .background(AppTheme.backgroundPrimary)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                            .strokeBorder(toast.color.opacity(0.60), lineWidth: 0.75)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                    .shadow(color: toast.color.opacity(0.25), radius: 16, y: 4)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 28)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .allowsHitTesting(false)
+                    .zIndex(400)
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .allowsHitTesting(false)
-                .zIndex(400)
-            }
 
-            // ── Full-screen mechanic preview overlay ──────────────────────
-            if let mechanic = previewMechanic {
-                DevMechanicPreviewCard(mechanic: mechanic, language: previewLanguage) {
-                    withAnimation(.easeOut(duration: 0.22)) { previewMechanic = nil }
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-            }
-
-            // ── Full-screen pass card viewer ───────────────────────────────
-            if let pass = viewingPass {
-                DevPassViewerOverlay(pass: pass) {
-                    withAnimation(.easeOut(duration: 0.22)) { viewingPass = nil }
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-            }
-
-            // ── Story beat preview overlay (full StoryModal for visual fidelity) ──
-            if let beat = previewingBeat {
-                StoryModal(beat: beat, hasNext: !previewBeatQueue.isEmpty) {
-                    withAnimation(.easeOut(duration: 0.22)) { advancePreviewBeatQueue() }
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                .zIndex(300)
-            }
-
-            // ── Dev paywall test overlay ───────────────────────────────────────
-            if showingDevPaywall {
-                PaywallView(context: devPaywallContext) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.90)) {
-                        showingDevPaywall = false
+                // ── Full-screen mechanic preview overlay ─────────────
+                if let mechanic = previewMechanic {
+                    DevMechanicPreviewCard(mechanic: mechanic, language: previewLanguage) {
+                        withAnimation(.easeOut(duration: 0.22)) { previewMechanic = nil }
                     }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
-                .transition(.asymmetric(
-                    insertion: .move(edge: .bottom).combined(with: .opacity),
-                    removal:   .move(edge: .bottom).combined(with: .opacity)
-                ))
-                .zIndex(250)
+
+                // ── Full-screen pass card viewer ─────────────────────
+                if let pass = viewingPass {
+                    DevPassViewerOverlay(pass: pass) {
+                        withAnimation(.easeOut(duration: 0.22)) { viewingPass = nil }
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
+
+                // ── Story beat preview overlay ───────────────────────
+                if let beat = previewingBeat {
+                    StoryModal(beat: beat, hasNext: !previewBeatQueue.isEmpty) {
+                        withAnimation(.easeOut(duration: 0.22)) { advancePreviewBeatQueue() }
+                    }
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .zIndex(300)
+                }
+
+                // ── Dev paywall test overlay ─────────────────────────
+                if showingDevPaywall {
+                    PaywallView(context: devPaywallContext) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.90)) {
+                            showingDevPaywall = false
+                        }
+                    }
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity),
+                        removal:   .move(edge: .bottom).combined(with: .opacity)
+                    ))
+                    .zIndex(250)
+                }
             }
         }
         .onAppear {
@@ -366,68 +367,6 @@ struct DevMenuView: View {
         } message: {
             if let action = pendingReset { Text(action.message) }
         }
-    }
-
-    // MARK: - Global status bar
-
-    private var globalStatusBar: some View {
-        _ = refreshID
-        let prog    = profile.progression
-        let store   = EntitlementStore.shared
-        let isPrem  = store.isPremium
-        let unseen  = StoryBeatCatalog.beats.filter { !StoryStore.seenIDs.contains($0.id) }.count
-
-        let missingPasses = SpatialRegion.catalog.filter { s in
-            !PassStore.hasPass(for: s.id - 1) && s.levels.allSatisfy { profile.hasCompleted(levelId: $0.id) }
-        }
-        let devGranted = SpatialRegion.catalog.filter { s in
-            PassStore.hasPass(for: s.id - 1) && !s.levels.allSatisfy { profile.hasCompleted(levelId: $0.id) }
-        }
-        let (cohLabel, cohColor): (String, Color) = {
-            if !missingPasses.isEmpty { return ("INVALID", AppTheme.danger) }
-            if !devGranted.isEmpty    { return ("WARNING", Color.orange) }
-            return ("OK", AppTheme.success)
-        }()
-
-        return VStack(spacing: 0) {
-            // Row 1 — progression
-            HStack(spacing: 0) {
-                miniStat("LVL",     "\(prog.playerLevel) · \(rankLabel(for: prog.playerLevel))")
-                statDivider()
-                miniStat("SECTOR",  prog.currentSector.name.components(separatedBy: " ").first ?? "—")
-                statDivider()
-                miniStat("PLANET",  prog.currentPlanet.name)
-                statDivider()
-                miniStat("NEXT",    prog.nextPlanet?.name ?? "—")
-                statDivider()
-                miniStat("MISSION", prog.activeMission.map { "#\($0.id)" } ?? "DONE")
-            }
-            .padding(.vertical, 8)
-
-            TechDivider()
-
-            // Row 2 — meta state
-            HStack(spacing: 0) {
-                miniStatC("PLAN",    isPrem ? "PREMIUM" : "FREE",
-                          isPrem ? AppTheme.accentPrimary : AppTheme.sage)
-                statDivider()
-                miniStatC("GATE",
-                          isPrem ? "∞" : store.isInIntroPhase
-                              ? "INTRO \(store.freeIntroCompleted)/\(EntitlementStore.freeIntroLimit)"
-                              : store.canPlayNow ? "OPEN" : "LOCKED",
-                          isPrem ? AppTheme.accentPrimary
-                              : store.isInIntroPhase ? AppTheme.sage
-                              : store.canPlayNow ? AppTheme.success : AppTheme.danger)
-                statDivider()
-                miniStatC("STORY",  unseen > 0 ? "\(unseen) UNSEEN" : "ALL SEEN",
-                          unseen > 0 ? Color.orange : AppTheme.success)
-                statDivider()
-                miniStatC("STATE",   cohLabel, cohColor)
-            }
-            .padding(.vertical, 8)
-        }
-        .background(AppTheme.surface)
-        .overlay(alignment: .bottom) { TechDivider() }
     }
 
     private func miniStatC(_ label: String, _ value: String, _ color: Color) -> some View {
@@ -469,75 +408,12 @@ struct DevMenuView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .frame(height: navStripHeight)
         .background(AppTheme.backgroundPrimary.ignoresSafeArea(edges: .top))
         .overlay(alignment: .bottom) { TechDivider() }
     }
 
-    // MARK: - Quick actions strip
-
-    private var quickActionsStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                // RESET ALL
-                quickBtn("RESET ALL", icon: "trash.fill", color: AppTheme.danger, isDanger: true) {
-                    pendingReset = .all
-                }
-                // REPLAY ONBOARDING
-                quickBtn("ONBOARDING", icon: "play.fill", color: AppTheme.accentPrimary) {
-                    OnboardingStore.resetAll()
-                    NotificationCenter.default.post(name: .devReplayOnboarding, object: nil)
-                    onDismiss()
-                }
-                // OPEN CURRENT MISSION
-                quickBtn("CUR MISSION", icon: "bolt.fill", color: AppTheme.sage) {
-                    if let m = profile.progression.activeMission { onSelect(m) }
-                }
-                // OPEN CURRENT PASS
-                quickBtn("CUR PASS", icon: "creditcard.fill", color: AppTheme.accentPrimary) {
-                    viewingPass = PassStore.all.last
-                }
-                // JUMP TO ACTIVE SECTOR
-                quickBtn("SECTOR", icon: "map.fill", color: AppTheme.sage) {
-                    activeTab = .overview
-                }
-                // STORY PANEL
-                quickBtn("STORY", icon: "text.bubble", color: Color(hex: "7EC8E3")) {
-                    activeTab = .story
-                }
-                // MONETIZATION PANEL
-                quickBtn("MONEY", icon: "infinity", color: AppTheme.accentPrimary) {
-                    activeTab = .money
-                }
-                // SELF QA
-                quickBtn("SELF QA", icon: "checkmark.seal.fill", color: Color(hex: "4DB87A")) {
-                    activeTab = .qa
-                    Task { await qaRunner.runQuick() }
-                }
-                // PLAYER SIM
-                quickBtn("PLAYER SIM", icon: "figure.run", color: Color(hex: "7EC8E3")) {
-                    activeTab = .sim
-                    Task { await simRunner.run() }
-                }
-                #if DEBUG
-                // VALIDATE ALL
-                quickBtn("VALIDATE ALL", icon: "checkmark.seal.fill", color: AppTheme.sage) {
-                    activeTab = .tools
-                    runValidation(useSolver: false)
-                }
-                // DIFFICULTY ANALYSIS
-                quickBtn("ANALYSIS", icon: "chart.bar.xaxis", color: AppTheme.accentPrimary) {
-                    activeTab = .tools
-                    runDifficultyAnalysis()
-                }
-                #endif
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-        }
-        .background(AppTheme.backgroundPrimary)
-        .overlay(alignment: .bottom) { TechDivider() }
-    }
+    // MARK: - Quick action button helper
 
     private func quickBtn(
         _ label: String,
@@ -568,63 +444,101 @@ struct DevMenuView: View {
 
     private var tabBar: some View {
         HStack(spacing: 0) {
-            tabButton("OVERVIEW", icon: "square.grid.2x2",          tab: .overview)
-            tabSeparator()
-            tabButton("MISSIONS", icon: "list.bullet",              tab: .missions)
-            tabSeparator()
-            tabButton("STORY",    icon: "text.bubble",              tab: .story)
-            tabSeparator()
-            tabButton("TOOLS",    icon: "wrench.and.screwdriver",   tab: .tools)
-            tabSeparator()
-            tabButton("MONEY",    icon: "infinity",                 tab: .money)
-            tabSeparator()
-            tabButton("RESET",    icon: "exclamationmark.triangle", tab: .reset)
-            tabSeparator()
-            tabButton("VERSUS",   icon: "person.2",                 tab: .versus)
+            tabChip("OVERVIEW",  icon: "square.grid.2x2",          tab: .overview)
+            tabChip("MISSIONS",  icon: "list.bullet",              tab: .missions)
+            tabChip("STORY",     icon: "text.bubble",              tab: .story)
+            tabChip("TOOLS",     icon: "wrench.and.screwdriver",   tab: .tools)
+            tabChip("RESET",     icon: "exclamationmark.triangle", tab: .reset)
         }
-        .frame(height: 42)
+        .padding(.horizontal, 8)
+        .frame(height: tabBarHeight)
         .background(AppTheme.backgroundSecondary)
     }
 
-    private func tabSeparator() -> some View {
-        Rectangle().fill(AppTheme.sage.opacity(0.14)).frame(width: 0.5)
-    }
-
-    private func tabButton(_ label: String, icon: String, tab: DevTab) -> some View {
+    private func tabChip(_ label: String, icon: String, tab: DevTab) -> some View {
         let isActive = activeTab == tab
         let isReset  = tab == .reset
-        let fgColor: Color = isActive
-            ? (isReset ? AppTheme.danger : AppTheme.accentPrimary)
-            : AppTheme.textSecondary.opacity(0.50)
+        let activeColor: Color = isReset ? AppTheme.danger : AppTheme.accentPrimary
+        let fgColor: Color = isActive ? activeColor : AppTheme.textSecondary.opacity(0.50)
         return Button(action: {
             withAnimation(.easeInOut(duration: 0.14)) { activeTab = tab }
         }) {
-            VStack(spacing: 3) {
+            VStack(spacing: 2) {
                 Image(systemName: icon)
-                    .font(.system(size: 10, weight: isActive ? .bold : .regular))
+                    .font(.system(size: 11, weight: isActive ? .bold : .medium))
                 Text(label)
-                    .font(AppTheme.mono(6, weight: isActive ? .bold : .regular))
-                    .kerning(0.5)
+                    .font(AppTheme.mono(7, weight: .bold))
+                    .kerning(0.6)
             }
             .foregroundStyle(fgColor)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(isActive
-                ? (isReset ? AppTheme.danger.opacity(0.06) : AppTheme.accentPrimary.opacity(0.07))
-                : Color.clear)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(isActive ? fgColor : Color.clear)
-                    .frame(height: 1.5)
-            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(isActive ? activeColor.opacity(0.12) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
     }
 
     // MARK: - OVERVIEW tab
 
+    // MARK: - Compact status strip (moved from persistent header)
+
+    private var compactStatusStrip: some View {
+        _ = refreshID
+        let prog   = profile.progression
+        let store  = EntitlementStore.shared
+        let isPrem = store.isPremium
+
+        return HStack(spacing: 0) {
+            miniStat("LVL", "\(prog.playerLevel)")
+            statDivider()
+            miniStat("SECTOR", prog.currentSector.name.components(separatedBy: " ").first ?? "—")
+            statDivider()
+            miniStat("PLANET", prog.currentPlanet.name)
+            statDivider()
+            miniStatC("PLAN", isPrem ? "PRO" : "FREE",
+                      isPrem ? AppTheme.accentPrimary : AppTheme.sage)
+            statDivider()
+            miniStat("MISSION", prog.activeMission.map { "#\($0.id)" } ?? "DONE")
+        }
+        .padding(.vertical, 6)
+        .background(AppTheme.surface)
+    }
+
+    // MARK: - Quick actions row (moved from persistent header)
+
+    private var quickActionsRow: some View {
+        HStack(spacing: 6) {
+            quickBtn("RESET ALL", icon: "trash.fill", color: AppTheme.danger, isDanger: true) {
+                pendingReset = .all
+            }
+            quickBtn("RESET DAILY", icon: "calendar.badge.clock", color: Color(hex: "F5A623")) {
+                DailyStore.resetToday()
+                showToast("Daily challenge re-activated", style: .success)
+                refreshID = UUID()
+            }
+            quickBtn("ONBOARDING", icon: "play.fill", color: AppTheme.accentPrimary) {
+                OnboardingStore.resetAll()
+                NotificationCenter.default.post(name: .devReplayOnboarding, object: nil)
+                onDismiss()
+            }
+            quickBtn("CUR MISSION", icon: "bolt.fill", color: AppTheme.sage) {
+                if let m = profile.progression.activeMission { onSelect(m) }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
     private var overviewPanel: some View {
         ScrollView {
             VStack(spacing: 0) {
+                compactStatusStrip
+                TechDivider()
+                quickActionsRow
+                TechDivider()
+                dailyChallengeSection
+                TechDivider()
                 systemHealthSection
                 TechDivider()
                 gameCenterSection
@@ -638,6 +552,131 @@ struct DevMenuView: View {
                 sectorPassGrid
             }
         }
+    }
+
+    // MARK: - Daily Challenge (dev)
+
+    private var dailyChallengeSection: some View {
+        _ = refreshID
+        let played = DailyStore.hasPlayedToday
+        let dayKey = DailyChallengeConfig.activeDayKey
+        let seed   = DailyChallengeConfig.todaySeed
+        let level  = DailyLevelFactory.todayLevel
+        let secs   = max(0, DailyChallengeConfig.secondsUntilNext)
+        let h = Int(secs) / 3600
+        let m = (Int(secs) % 3600) / 60
+        let s = Int(secs) % 60
+
+        return VStack(spacing: 0) {
+            sectionHeader("DAILY CHALLENGE")
+
+            VStack(spacing: 8) {
+                // Status row
+                HStack(spacing: 10) {
+                    Image(systemName: played ? "checkmark.circle.fill" : "clock.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(played ? AppTheme.success : AppTheme.accentPrimary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(played ? "PLAYED TODAY" : "AVAILABLE")
+                            .font(AppTheme.mono(10, weight: .bold))
+                            .foregroundStyle(played ? AppTheme.success : AppTheme.accentPrimary)
+                        Text("Next in \(String(format: "%02d:%02d:%02d", h, m, s))")
+                            .font(AppTheme.mono(8))
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    Spacer()
+                    if played {
+                        Button(action: {
+                            DailyStore.resetToday()
+                            showToast("Daily challenge re-activated", style: .success)
+                            refreshID = UUID()
+                        }) {
+                            Text("RESET")
+                                .font(AppTheme.mono(9, weight: .bold))
+                                .kerning(0.8)
+                                .foregroundStyle(AppTheme.accentPrimary)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .strokeBorder(AppTheme.accentPrimary.opacity(0.45), lineWidth: 0.75)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Info grid
+                HStack(spacing: 0) {
+                    infoCell("DAY KEY", dayKey)
+                    infoCell("SEED", String(seed.description.prefix(10)))
+                    infoCell("DIFFICULTY", level.difficulty.label)
+                    infoCell("TIME LIMIT", "\(level.timeLimit ?? 0)s")
+                }
+                .background(AppTheme.backgroundSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                HStack(spacing: 0) {
+                    infoCell("OBJECTIVE", level.objectiveType.rawValue.uppercased())
+                    infoCell("GRID", "\(level.gridSize)×\(level.gridSize)")
+                    infoCell("MOVES", "\(level.maxMoves)")
+                    infoCell("MIN MOVES", "\(level.minimumRequiredMoves)")
+                }
+                .background(AppTheme.backgroundSecondary)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                // Score info
+                if let result = DailyStore.todayResult {
+                    HStack(spacing: 0) {
+                        infoCell("RESULT", result.success ? "WIN" : "LOSS")
+                        infoCell("SCORE", result.score.formatted())
+                        infoCell("CUMULATIVE", DailyStore.cumulativeScore.formatted())
+                        infoCell("EFFICIENCY", "\(Int(result.efficiency * 100))%")
+                    }
+                    .background(AppTheme.backgroundSecondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+
+                // Play button
+                if !played {
+                    Button(action: {
+                        DailyStore.markStarted()
+                        onSelect(DailyLevelFactory.todayLevel)
+                        onDismiss()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("PLAY DAILY CHALLENGE")
+                                .font(AppTheme.mono(9, weight: .bold))
+                                .kerning(0.8)
+                        }
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .background(AppTheme.accentPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+        .background(AppTheme.surface)
+    }
+
+    private func infoCell(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 2) {
+            Text(label)
+                .font(AppTheme.mono(6, weight: .regular))
+                .kerning(0.5)
+                .foregroundStyle(AppTheme.textSecondary.opacity(0.55))
+            Text(value)
+                .font(AppTheme.mono(9, weight: .bold))
+                .foregroundStyle(AppTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
     }
 
     // MARK: - System Health
@@ -741,7 +780,7 @@ struct DevMenuView: View {
             HStack(spacing: 8) {
                 scenarioBtn("RUN QUICK QA", icon: "checkmark.seal.fill",
                             color: qaStat == .fail ? AppTheme.danger : AppTheme.sage) {
-                    activeTab = .qa
+                    activeTab = .tools
                     Task { await qaRunner.runQuick() }
                 }
                 scenarioBtn("VALIDATE ASSETS", icon: "checklist", color: AppTheme.accentPrimary) {
@@ -789,18 +828,16 @@ struct DevMenuView: View {
     // MARK: - MONEY tab
 
     private var moneyPanel: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                monetizationSection
-                TechDivider()
-                unlockCodesSection
-                TechDivider()
-                discountCodesSection
-                TechDivider()
-                notificationsSection
-                TechDivider()
-                cloudSaveSection
-            }
+        VStack(spacing: 0) {
+            monetizationSection
+            TechDivider()
+            unlockCodesSection
+            TechDivider()
+            discountCodesSection
+            TechDivider()
+            notificationsSection
+            TechDivider()
+            cloudSaveSection
         }
     }
 
@@ -2982,11 +3019,26 @@ struct DevMenuView: View {
     private var toolsPanel: some View {
         ScrollView {
             VStack(spacing: 0) {
+                // ── Monetization (moved from MONEY tab) ──────────
+                moneyPanel
+                TechDivider()
+                // ── Versus (moved from VERSUS tab) ───────────────
+                versusPanel
+                TechDivider()
                 #if DEBUG
                 audioSection
                 TechDivider()
                 #endif
                 onboardingSection
+                TechDivider()
+                // ── QA (moved from QA tab) ───────────────────────
+                SelfQAView(runner: qaRunner) { level in
+                    onSelect(level)
+                    onDismiss()
+                }
+                TechDivider()
+                // ── Player Sim (moved from SIM tab) ──────────────
+                PlayerSimulationView(runner: simRunner)
                 TechDivider()
                 #if DEBUG
                 difficultyAnalysisSection
@@ -5628,27 +5680,54 @@ struct DevMenuView: View {
     // MARK: - Versus panel
 
     private var versusPanel: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                sectionHeader("FEATURE FLAG")
+        VStack(spacing: 0) {
+            sectionHeader("VERSUS — FEATURE FLAGS")
 
-                VStack(spacing: 8) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("VERSUS MODE")
-                                .font(AppTheme.mono(11, weight: .bold))
-                                .foregroundStyle(AppTheme.textPrimary)
-                            Text("Toggle to show Versus CTA on Home")
-                                .font(AppTheme.mono(8))
-                                .foregroundStyle(AppTheme.textSecondary)
-                        }
-                        Spacer()
-                        Toggle("", isOn: Binding(
+                VStack(spacing: 12) {
+                    // Master gate
+                    versusFlagRow(
+                        title: "ENABLED",
+                        subtitle: "Master gate — all versus functionality",
+                        isOn: Binding(
                             get: { VersusFeatureFlag.isEnabled },
                             set: { VersusFeatureFlag.setEnabled($0) }
-                        ))
-                        .labelsHidden()
-                        .tint(AppTheme.accentPrimary)
+                        ),
+                        tint: AppTheme.accentPrimary
+                    )
+
+                    // Visible in Home
+                    versusFlagRow(
+                        title: "VISIBLE IN HOME",
+                        subtitle: "Show \"VERSUS 1v1\" button on Home screen",
+                        isOn: Binding(
+                            get: { VersusFeatureFlag.isVisibleInHome },
+                            set: { VersusFeatureFlag.setVisibleInHome($0) }
+                        ),
+                        tint: AppTheme.accentPrimary,
+                        disabled: !VersusFeatureFlag.isEnabled
+                    )
+
+                    // Allow matchmaking
+                    versusFlagRow(
+                        title: "ALLOW MATCHMAKING",
+                        subtitle: "Allow GKMatchmaker.findMatch() calls",
+                        isOn: Binding(
+                            get: { VersusFeatureFlag.isMatchmakingAllowed },
+                            set: { VersusFeatureFlag.setMatchmakingAllowed($0) }
+                        ),
+                        tint: AppTheme.accentPrimary,
+                        disabled: !VersusFeatureFlag.isEnabled
+                    )
+
+                    // State summary
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(VersusFeatureFlag.isDevOnly ? AppTheme.accentPrimary : (VersusFeatureFlag.isEnabled ? AppTheme.success : AppTheme.danger))
+                            .frame(width: 6, height: 6)
+                        Text(VersusFeatureFlag.isDevOnly ? "DEV-ONLY MODE" : (VersusFeatureFlag.isEnabled ? "FULLY ACTIVE" : "ALL OFF"))
+                            .font(AppTheme.mono(8, weight: .bold))
+                            .foregroundStyle(VersusFeatureFlag.isDevOnly ? AppTheme.accentPrimary : (VersusFeatureFlag.isEnabled ? AppTheme.success : AppTheme.danger))
+                        Spacer()
                     }
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
@@ -5697,6 +5776,16 @@ struct DevMenuView: View {
                     devRow("REMOTE STATUS", state.remoteSnapshot.status.uppercased())
                     devRow("LOCAL OUTCOME", state.localOutcome?.rawValue.uppercased() ?? "—")
                     devRow("REMOTE OUTCOME", state.remoteOutcome?.rawValue.uppercased() ?? "—")
+                    devRow("BOARD READY", "\(state.localBoardReady ? "L" : "—") / \(state.remoteBoardReady ? "R" : "—")")
+                    devRow("REMATCH", "\(state.localWantsRematch ? "L" : "—") / \(state.remoteWantsRematch ? "R" : "—")")
+                    devRow("REMOTE MOVE #", "\(state.lastRemoteMoveNumber)")
+                    let connectionStatus: String = {
+                        if state.phase == .idle || state.phase == .searching { return "—" }
+                        if state.remoteOutcome == .disconnected { return "DISCONNECTED" }
+                        if state.phase == .matched || state.phase == .countdown || state.phase == .playing { return "CONNECTED" }
+                        return "ENDED"
+                    }()
+                    devRow("CONNECTION", connectionStatus)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
 
@@ -5704,6 +5793,7 @@ struct DevMenuView: View {
                 sectionHeader("ACTIONS")
 
                 VStack(spacing: 8) {
+                    let canMatch = gcManager.isAuthenticated && VersusFeatureFlag.isMatchmakingAllowed
                     Button(action: { VersusMatchmakingManager.shared.findMatch() }) {
                         HStack(spacing: 6) {
                             Image(systemName: "person.2.fill")
@@ -5712,17 +5802,17 @@ struct DevMenuView: View {
                                 .font(AppTheme.mono(10, weight: .bold))
                                 .kerning(0.8)
                         }
-                        .foregroundStyle(gcManager.isAuthenticated ? AppTheme.accentPrimary : AppTheme.textSecondary)
+                        .foregroundStyle(canMatch ? AppTheme.accentPrimary : AppTheme.textSecondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(AppTheme.accentPrimary.opacity(gcManager.isAuthenticated ? 0.12 : 0.04))
+                        .background(AppTheme.accentPrimary.opacity(canMatch ? 0.12 : 0.04))
                         .overlay(
                             RoundedRectangle(cornerRadius: 3)
-                                .strokeBorder(AppTheme.accentPrimary.opacity(gcManager.isAuthenticated ? 0.4 : 0.15), lineWidth: 0.6)
+                                .strokeBorder(AppTheme.accentPrimary.opacity(canMatch ? 0.4 : 0.15), lineWidth: 0.6)
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 3))
                     }
-                    .disabled(!gcManager.isAuthenticated)
+                    .disabled(!canMatch)
 
                     Button(action: { VersusMatchmakingManager.shared.disconnect() }) {
                         HStack(spacing: 6) {
@@ -5744,7 +5834,227 @@ struct DevMenuView: View {
                     }
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
+
+                TechDivider()
+                sectionHeader("VERSUS ANALYTICS")
+
+                VStack(spacing: 8) {
+                    let va = VersusAnalytics.shared
+                    devRow("SEARCHES", "\(va.totalSearches)")
+                    devRow("MATCHES FOUND", "\(va.totalMatchesFound)")
+                    devRow("GAMES PLAYED", "\(va.totalGamesPlayed)")
+                    devRow("WINS", "\(va.totalWins)")
+                    devRow("LOSSES", "\(va.totalLosses)")
+                    devRow("DRAWS", "\(va.totalDraws)")
+                    devRow("DISCONNECTS", "\(va.totalDisconnects)")
+                    devRow("WIN RATE", va.totalGamesPlayed > 0 ? String(format: "%.0f%%", va.winRate * 100) : "—")
+
+                    if let lastEvent = va.recentEvents.last {
+                        TechDivider()
+                        devRow("LAST EVENT", lastEvent.name.replacingOccurrences(of: "versus_", with: ""))
+                        let fmt = DateFormatter()
+                        let _ = fmt.dateFormat = "HH:mm:ss"
+                        devRow("LAST TIME", fmt.string(from: lastEvent.timestamp))
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+
+                TechDivider()
+                versusSessionMonitor
+                TechDivider()
+                versusValidations
+                TechDivider()
+                versusTimeline
+                TechDivider()
+                versusExport
             }
+    }
+
+    // MARK: - Versus Session Monitor
+
+    private var versusSessionMonitor: some View {
+        let harness = VersusTestHarness.shared
+        let state = VersusMatchmakingManager.shared.matchState
+        return Group {
+            sectionHeader("SESSION MONITOR")
+
+            VStack(spacing: 8) {
+                devRow("PHASE", "\(state.phase)")
+                devRow("GC AUTH", gcManager.isAuthenticated ? "YES" : "NO")
+                devRow("OPPONENT", state.opponentDisplayName)
+                devRow("SEED", state.sharedSeed == 0 ? "—" : "\(state.sharedSeed)")
+                devRow("LOCAL SIDE", state.isHost ? "P1 (HOST)" : "P2 (GUEST)")
+                devRow("IS HOST", state.isHost ? "YES" : "NO")
+                devRow("LOCAL MOVE #", "\(harness.lastSentMoveNumber)")
+                devRow("REMOTE MOVE #", "\(harness.lastReceivedMoveNumber)")
+                if let lat = harness.latencyEstimateMs {
+                    devRow("LATENCY (est)", "\(Int(lat))ms")
+                } else {
+                    devRow("LATENCY (est)", "—")
+                }
+                if let start = harness.sessionStartTime {
+                    let elapsed = Int(Date().timeIntervalSince(start))
+                    devRow("SESSION TIME", "\(elapsed)s")
+                } else {
+                    devRow("SESSION TIME", "—")
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+    }
+
+    // MARK: - Versus Validations
+
+    private var versusValidations: some View {
+        let harness = VersusTestHarness.shared
+        return Group {
+            sectionHeader("VALIDATIONS")
+
+            VStack(spacing: 8) {
+                versusValidationRow("SEED SYNCED", status: harness.seedSynced)
+                versusValidationRow("BOTH READY", status: harness.bothPlayersReady)
+                versusCheckRow("SEQUENCE GAP", detected: harness.sequenceGapDetected)
+                versusCheckRow("DUPLICATE ACTION", detected: harness.duplicateActionDetected)
+                versusCheckRow("DESYNC SUSPECTED", detected: harness.desyncSuspected)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+    }
+
+    private func versusValidationRow(_ label: String, status: VersusTestHarness.ValidationStatus) -> some View {
+        HStack {
+            Text(label)
+                .font(AppTheme.mono(9, weight: .bold))
+                .foregroundStyle(AppTheme.textSecondary)
+            Spacer()
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(status.isOK ? AppTheme.success : (status == .fail ? AppTheme.danger : AppTheme.textSecondary.opacity(0.4)))
+                    .frame(width: 6, height: 6)
+                Text(status.rawValue)
+                    .font(AppTheme.mono(9, weight: .bold))
+                    .foregroundStyle(status.isOK ? AppTheme.success : (status == .fail ? AppTheme.danger : AppTheme.textSecondary))
+            }
+        }
+    }
+
+    private func versusCheckRow(_ label: String, detected: Bool) -> some View {
+        HStack {
+            Text(label)
+                .font(AppTheme.mono(9, weight: .bold))
+                .foregroundStyle(AppTheme.textSecondary)
+            Spacer()
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(detected ? AppTheme.danger : AppTheme.success)
+                    .frame(width: 6, height: 6)
+                Text(detected ? "YES" : "NO")
+                    .font(AppTheme.mono(9, weight: .bold))
+                    .foregroundStyle(detected ? AppTheme.danger : AppTheme.success)
+            }
+        }
+    }
+
+    // MARK: - Versus Timeline
+
+    private var versusTimeline: some View {
+        let harness = VersusTestHarness.shared
+        let timeFmt: DateFormatter = {
+            let f = DateFormatter()
+            f.dateFormat = "HH:mm:ss.SSS"
+            return f
+        }()
+        return Group {
+            sectionHeader("MATCH TIMELINE (\(harness.timeline.count))")
+
+            if harness.timeline.isEmpty {
+                HStack {
+                    Text("No events yet — start a match")
+                        .font(AppTheme.mono(8))
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(harness.timeline.suffix(30)) { entry in
+                        HStack(alignment: .top, spacing: 6) {
+                            // Severity indicator
+                            Circle()
+                                .fill(timelineSeverityColor(entry.severity))
+                                .frame(width: 4, height: 4)
+                                .padding(.top, 4)
+
+                            // Timestamp
+                            Text(timeFmt.string(from: entry.timestamp))
+                                .font(AppTheme.mono(7))
+                                .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
+                                .frame(width: 68, alignment: .leading)
+
+                            // Label
+                            Text(entry.label)
+                                .font(AppTheme.mono(7, weight: .bold))
+                                .foregroundStyle(timelineSeverityColor(entry.severity))
+
+                            // Detail
+                            if let detail = entry.detail {
+                                Text(detail)
+                                    .font(AppTheme.mono(7))
+                                    .foregroundStyle(AppTheme.textSecondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+        }
+    }
+
+    private func timelineSeverityColor(_ severity: VersusTestHarness.TimelineEntry.Severity) -> Color {
+        switch severity {
+        case .info:    return AppTheme.sage
+        case .warning: return Color.orange
+        case .error:   return AppTheme.danger
+        }
+    }
+
+    // MARK: - Versus Export
+
+    private var versusExport: some View {
+        Group {
+            sectionHeader("EXPORT")
+
+            VStack(spacing: 8) {
+                Button(action: {
+                    VersusTestHarness.shared.copyToClipboard()
+                    showToast("Test summary copied to clipboard", style: .success)
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.on.clipboard")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("COPY TEST SUMMARY")
+                            .font(AppTheme.mono(10, weight: .bold))
+                            .kerning(0.8)
+                    }
+                    .foregroundStyle(AppTheme.accentPrimary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(AppTheme.accentPrimary.opacity(0.12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .strokeBorder(AppTheme.accentPrimary.opacity(0.4), lineWidth: 0.6)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                }
+
+                Text("Copies result, duration, moves, validations, and timeline to clipboard")
+                    .font(AppTheme.mono(7))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.5))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
         }
     }
 
@@ -5758,6 +6068,25 @@ struct DevMenuView: View {
                 .font(AppTheme.mono(9, weight: .bold))
                 .foregroundStyle(AppTheme.textPrimary)
         }
+    }
+
+    private func versusFlagRow(title: String, subtitle: String, isOn: Binding<Bool>, tint: Color, disabled: Bool = false) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AppTheme.mono(10, weight: .bold))
+                    .foregroundStyle(disabled ? AppTheme.textSecondary.opacity(0.5) : AppTheme.textPrimary)
+                Text(subtitle)
+                    .font(AppTheme.mono(7))
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(tint)
+                .disabled(disabled)
+        }
+        .opacity(disabled ? 0.5 : 1)
     }
 
     // MARK: - Layout helpers

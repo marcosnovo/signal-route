@@ -1,5 +1,6 @@
 import SwiftUI
 import UserNotifications
+import WidgetKit
 
 @main
 struct geometryApp: App {
@@ -38,10 +39,20 @@ struct geometryApp: App {
                 }
             }
             .animation(.easeOut(duration: 0.55), value: splash.isDone)
+            .onOpenURL { url in
+                guard let route = DeepLinkRoute.from(url) else { return }
+                NotificationCenter.default.post(
+                    name: .widgetDeepLink,
+                    object: nil,
+                    userInfo: ["route": route]
+                )
+            }
             .onChange(of: scenePhase) { _, phase in
                 switch phase {
                 case .active:
                     AudioManager.shared.handleForeground()
+                    // Push fresh data to widgets when returning to foreground
+                    ProgressionStore.pushWidgetSnapshot(ProgressionStore.profile)
                 case .background:
                     AudioManager.shared.handleBackground()
                 default:

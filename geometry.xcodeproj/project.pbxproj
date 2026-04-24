@@ -24,6 +24,10 @@
 		6A8FD3D62F983216001E27EC /* AchievementManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A8FD3D52F983216001E27EC /* AchievementManager.swift */; };
 		6AA27C602F92813D00482A03 /* AudioManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AA27C5F2F92813D00482A03 /* AudioManager.swift */; };
 		6AA27C622F92848600482A03 /* MusicSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AA27C612F92848600482A03 /* MusicSynthesizer.swift */; };
+		6AB6C43E2F9A766B00A92BE2 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6AB6C43D2F9A766B00A92BE2 /* WidgetKit.framework */; };
+		6AB6C4402F9A766B00A92BE2 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6AB6C43F2F9A766B00A92BE2 /* SwiftUI.framework */; };
+		6AB6C44D2F9A766C00A92BE2 /* SignalVoidWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6AB6C43B2F9A766B00A92BE2 /* SignalVoidWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		6AE649082F9B8B3C009E9139 /* VersusTestHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AE649072F9B8B3C009E9139 /* VersusTestHarness.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -41,7 +45,28 @@
 			remoteGlobalIDString = 6A68C0EB2F890D860077D0E0;
 			remoteInfo = geometry;
 		};
+		6AB6C44B2F9A766C00A92BE2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6A68C0E42F890D860077D0E0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6AB6C43A2F9A766B00A92BE2;
+			remoteInfo = SignalVoidWidgetsExtension;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		6AB6C4522F9A766C00A92BE2 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				6AB6C44D2F9A766C00A92BE2 /* SignalVoidWidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		6A4FDB922F8BAD690069C7B0 /* L.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = L.swift; sourceTree = "<group>"; };
@@ -64,6 +89,19 @@
 		6A8FD3D52F983216001E27EC /* AchievementManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AchievementManager.swift; sourceTree = "<group>"; };
 		6AA27C5F2F92813D00482A03 /* AudioManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioManager.swift; sourceTree = "<group>"; };
 		6AA27C612F92848600482A03 /* MusicSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicSynthesizer.swift; sourceTree = "<group>"; };
+		6AB6C4262F9A732700A92BE2 /* WidgetTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetTheme.swift; sourceTree = "<group>"; };
+		6AB6C4272F9A732800A92BE2 /* WidgetHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetHelpers.swift; sourceTree = "<group>"; };
+		6AB6C4282F9A739300A92BE2 /* ProgressWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProgressWidget.swift; sourceTree = "<group>"; };
+		6AB6C4292F9A739400A92BE2 /* LeaderboardWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardWidget.swift; sourceTree = "<group>"; };
+		6AB6C42A2F9A739500A92BE2 /* PlanetPassWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanetPassWidget.swift; sourceTree = "<group>"; };
+		6AB6C42B2F9A739500A92BE2 /* SignalVoidWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalVoidWidgets.swift; sourceTree = "<group>"; };
+		6AB6C42F2F9A740400A92BE2 /* SignalVoidWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SignalVoidWidgets.entitlements; sourceTree = "<group>"; };
+		6AB6C4362F9A747A00A92BE2 /* SharedTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTypes.swift; sourceTree = "<group>"; };
+		6AB6C43B2F9A766B00A92BE2 /* SignalVoidWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SignalVoidWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		6AB6C43D2F9A766B00A92BE2 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		6AB6C43F2F9A766B00A92BE2 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		6AB6C4602F9A7C9A00A92BE2 /* SignalVoidWidgetsExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SignalVoidWidgetsExtension.entitlements; sourceTree = "<group>"; };
+		6AE649072F9B8B3C009E9139 /* VersusTestHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersusTestHarness.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -73,6 +111,13 @@
 				Info.plist,
 			);
 			target = 6A68C0EB2F890D860077D0E0 /* geometry */;
+		};
+		6AB6C4512F9A766C00A92BE2 /* Exceptions for "SignalVoidWidgets" folder in "SignalVoidWidgetsExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6AB6C43A2F9A766B00A92BE2 /* SignalVoidWidgetsExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -93,6 +138,14 @@
 		6A68C1062F890D870077D0E0 /* geometryUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = geometryUITests;
+			sourceTree = "<group>";
+		};
+		6AB6C4412F9A766B00A92BE2 /* SignalVoidWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6AB6C4512F9A766C00A92BE2 /* Exceptions for "SignalVoidWidgets" folder in "SignalVoidWidgetsExtension" target */,
+			);
+			path = SignalVoidWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -119,16 +172,28 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6AB6C4382F9A766B00A92BE2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6AB6C4402F9A766B00A92BE2 /* SwiftUI.framework in Frameworks */,
+				6AB6C43E2F9A766B00A92BE2 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		6A68C0E32F890D860077D0E0 = {
 			isa = PBXGroup;
 			children = (
+				6AB6C4602F9A7C9A00A92BE2 /* SignalVoidWidgetsExtension.entitlements */,
 				6A72A1C92F9903A500A26454 /* SignalRoute.storekit */,
 				6A68C0EE2F890D860077D0E0 /* geometry */,
 				6A68C0FC2F890D870077D0E0 /* geometryTests */,
 				6A68C1062F890D870077D0E0 /* geometryUITests */,
+				6AB6C4412F9A766B00A92BE2 /* SignalVoidWidgets */,
+				6AB6C43C2F9A766B00A92BE2 /* Frameworks */,
 				6A68C0ED2F890D860077D0E0 /* Products */,
 				6A4FDB922F8BAD690069C7B0 /* L.swift */,
 				6A4FDB962F8C15EA0069C7B0 /* DeviceMotionManager.swift */,
@@ -146,6 +211,8 @@
 				6AA27C5F2F92813D00482A03 /* AudioManager.swift */,
 				6AA27C612F92848600482A03 /* MusicSynthesizer.swift */,
 				6A8FD3D52F983216001E27EC /* AchievementManager.swift */,
+				6AB6C4232F9A730300A92BE2 /* SignalVoidWidgets */,
+				6AE649072F9B8B3C009E9139 /* VersusTestHarness.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -155,8 +222,33 @@
 				6A68C0EC2F890D860077D0E0 /* geometry.app */,
 				6A68C0F92F890D870077D0E0 /* geometryTests.xctest */,
 				6A68C1032F890D870077D0E0 /* geometryUITests.xctest */,
+				6AB6C43B2F9A766B00A92BE2 /* SignalVoidWidgetsExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		6AB6C4232F9A730300A92BE2 /* SignalVoidWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				6AB6C4262F9A732700A92BE2 /* WidgetTheme.swift */,
+				6AB6C4272F9A732800A92BE2 /* WidgetHelpers.swift */,
+				6AB6C4282F9A739300A92BE2 /* ProgressWidget.swift */,
+				6AB6C4292F9A739400A92BE2 /* LeaderboardWidget.swift */,
+				6AB6C42A2F9A739500A92BE2 /* PlanetPassWidget.swift */,
+				6AB6C42B2F9A739500A92BE2 /* SignalVoidWidgets.swift */,
+				6AB6C42F2F9A740400A92BE2 /* SignalVoidWidgets.entitlements */,
+				6AB6C4362F9A747A00A92BE2 /* SharedTypes.swift */,
+			);
+			path = SignalVoidWidgets;
+			sourceTree = "<group>";
+		};
+		6AB6C43C2F9A766B00A92BE2 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				6AB6C43D2F9A766B00A92BE2 /* WidgetKit.framework */,
+				6AB6C43F2F9A766B00A92BE2 /* SwiftUI.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -169,10 +261,12 @@
 				6A68C0E82F890D860077D0E0 /* Sources */,
 				6A68C0E92F890D860077D0E0 /* Frameworks */,
 				6A68C0EA2F890D860077D0E0 /* Resources */,
+				6AB6C4522F9A766C00A92BE2 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				6AB6C44C2F9A766C00A92BE2 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				6A68C0EE2F890D860077D0E0 /* geometry */,
@@ -230,6 +324,28 @@
 			productReference = 6A68C1032F890D870077D0E0 /* geometryUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		6AB6C43A2F9A766B00A92BE2 /* SignalVoidWidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6AB6C44E2F9A766C00A92BE2 /* Build configuration list for PBXNativeTarget "SignalVoidWidgetsExtension" */;
+			buildPhases = (
+				6AB6C4372F9A766B00A92BE2 /* Sources */,
+				6AB6C4382F9A766B00A92BE2 /* Frameworks */,
+				6AB6C4392F9A766B00A92BE2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				6AB6C4412F9A766B00A92BE2 /* SignalVoidWidgets */,
+			);
+			name = SignalVoidWidgetsExtension;
+			packageProductDependencies = (
+			);
+			productName = SignalVoidWidgetsExtension;
+			productReference = 6AB6C43B2F9A766B00A92BE2 /* SignalVoidWidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -251,6 +367,9 @@
 						CreatedOnToolsVersion = 26.4;
 						TestTargetID = 6A68C0EB2F890D860077D0E0;
 					};
+					6AB6C43A2F9A766B00A92BE2 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
 				};
 			};
 			buildConfigurationList = 6A68C0E72F890D860077D0E0 /* Build configuration list for PBXProject "geometry" */;
@@ -270,6 +389,7 @@
 				6A68C0EB2F890D860077D0E0 /* geometry */,
 				6A68C0F82F890D870077D0E0 /* geometryTests */,
 				6A68C1022F890D870077D0E0 /* geometryUITests */,
+				6AB6C43A2F9A766B00A92BE2 /* SignalVoidWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -297,6 +417,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6AB6C4392F9A766B00A92BE2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -305,6 +432,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6A89C9192F8EA21A00CF3706 /* AdaptiveDifficultyEngine.swift in Sources */,
+				6AE649082F9B8B3C009E9139 /* VersusTestHarness.swift in Sources */,
 				6A89C91E2F8EA40000CF3706 /* SessionTracker.swift in Sources */,
 				6A89C91C2F8EA30000CF3706 /* PaywallMomentSelector.swift in Sources */,
 				6A89C9222F8EA60000CF3706 /* FrustrationGuard.swift in Sources */,
@@ -337,6 +465,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6AB6C4372F9A766B00A92BE2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -349,6 +484,11 @@
 			isa = PBXTargetDependency;
 			target = 6A68C0EB2F890D860077D0E0 /* geometry */;
 			targetProxy = 6A68C1042F890D870077D0E0 /* PBXContainerItemProxy */;
+		};
+		6AB6C44C2F9A766C00A92BE2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6AB6C43A2F9A766B00A92BE2 /* SignalVoidWidgetsExtension */;
+			targetProxy = 6AB6C44B2F9A766C00A92BE2 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -499,7 +639,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.marcosnovo.signalvoidgame;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -537,7 +677,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.marcosnovo.signalvoidgame;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -559,7 +699,7 @@
 				DEVELOPMENT_TEAM = P9FLLA9Z8Q;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = MarcosNovo.geometryTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -581,7 +721,7 @@
 				DEVELOPMENT_TEAM = P9FLLA9Z8Q;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.4;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = MarcosNovo.geometryTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -601,7 +741,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = P9FLLA9Z8Q;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = MarcosNovo.geometryUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -621,7 +761,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = P9FLLA9Z8Q;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = MarcosNovo.geometryUITests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = NO;
@@ -631,6 +771,68 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = geometry;
+			};
+			name = Release;
+		};
+		6AB6C44F2F9A766C00A92BE2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = SignalVoidWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R2NTD25VWF;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SignalVoidWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SignalVoidWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.5;
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcosnovo.signalvoidgame.SignalVoidWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		6AB6C4502F9A766C00A92BE2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = SignalVoidWidgetsExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = R2NTD25VWF;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SignalVoidWidgets/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SignalVoidWidgets;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.5;
+				PRODUCT_BUNDLE_IDENTIFIER = com.marcosnovo.signalvoidgame.SignalVoidWidgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -669,6 +871,15 @@
 			buildConfigurations = (
 				6A68C1142F890D870077D0E0 /* Debug */,
 				6A68C1152F890D870077D0E0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6AB6C44E2F9A766C00A92BE2 /* Build configuration list for PBXNativeTarget "SignalVoidWidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6AB6C44F2F9A766C00A92BE2 /* Debug */,
+				6AB6C4502F9A766C00A92BE2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
