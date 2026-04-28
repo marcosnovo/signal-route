@@ -1,3 +1,4 @@
+#if DEBUG
 import SwiftUI
 
 // MARK: - SelfQAView
@@ -289,3 +290,4 @@ struct QAResultRow: View {
         .background(result.status == .pass ? Color.clear : result.status.color.opacity(0.03))
     }
 }
+#endif

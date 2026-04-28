@@ -1,3 +1,4 @@
+#if DEBUG
 import SwiftUI
 
 // MARK: - PlayerSimulationView
@@ -302,3 +303,4 @@ struct SimStepRow: View {
                     : step.status.color.opacity(0.04))
     }
 }
+#endif

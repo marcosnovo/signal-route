@@ -404,6 +404,8 @@ final class EntitlementStore: ObservableObject {
         activeCodeID  = nil
         save()
         if value { clearCooldown() }
+        // Push updated premium status to widgets immediately
+        ProgressionStore.pushWidgetSnapshot(ProgressionStore.profile)
     }
 
     /// Clear any active cooldown (equivalent to old resetDailyCount).

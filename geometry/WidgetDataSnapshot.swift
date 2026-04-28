@@ -31,6 +31,10 @@ struct WidgetDataSnapshot: Codable {
     let streak: Int?
     let weeklyRankChange: Int?
 
+    // ── Free-user cooldown ───────────────────────────────────────────────
+    /// Seconds until the free player can play again, nil if premium or no cooldown active.
+    let cooldownRemainingSeconds: Int?
+
     // ── Metadata ─────────────────────────────────────────────────────────
     let language: String?
     let updatedAt: Date

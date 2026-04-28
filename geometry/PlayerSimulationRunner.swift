@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import SwiftUI
 import Combine
@@ -463,3 +464,4 @@ final class PlayerSimulationRunner: ObservableObject {
         )
     }
 }
+#endif

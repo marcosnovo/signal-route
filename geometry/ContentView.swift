@@ -1,8 +1,9 @@
 import SwiftUI
 
-// Posted by DevMenuView to replay the intro without touching main game progress.
 extension Notification.Name {
+    #if DEBUG
     static let devReplayOnboarding = Notification.Name("geometry.devReplayOnboarding")
+    #endif
     static let widgetDeepLink = Notification.Name("geometry.widgetDeepLink")
     static let openPlanetPass = Notification.Name("geometry.openPlanetPass")
 }
@@ -25,6 +26,9 @@ struct ContentView: View {
 
     // ── Versus mode ──────────────────────────────────────────────────────
     @State private var showingVersus: Bool = false
+
+    // ── Daily Challenge confirmation ─────────────────────────────────────
+    @State private var showingDailyConfirm: Bool = false
 
     // ── Multi-step intro flow ──────────────────────────────────────────────
     /// nil = intro complete (player goes to Home as normal).
@@ -233,8 +237,7 @@ struct ContentView: View {
                     onUpgrade:  { showPaywall(.homeSoftCTA) },
                     onVersus:   { showingVersus = true },
                     onDailyChallenge: {
-                        DailyStore.markStarted()
-                        activeLevel = DailyLevelFactory.todayLevel
+                        showingDailyConfirm = true
                     }
                 )
                 .transition(.asymmetric(
@@ -258,6 +261,22 @@ struct ContentView: View {
                 .zIndex(100)
             }
 
+            // ── Daily Challenge confirmation overlay ────────────────────────
+            if showingDailyConfirm {
+                DailyChallengeConfirmOverlay(
+                    onPlay: {
+                        showingDailyConfirm = false
+                        DailyStore.markStarted()
+                        activeLevel = DailyLevelFactory.todayLevel
+                    },
+                    onCancel: {
+                        showingDailyConfirm = false
+                    }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.93)))
+                .zIndex(60)
+            }
+
             // ── Story beat overlay ─────────────────────────────────────────
             // Visible during normal play (introStep == nil) and during the two
             // intro steps that rely on the queue to drive their flow.
@@ -274,6 +293,7 @@ struct ContentView: View {
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: activeLevel != nil)
         .animation(.spring(response: 0.44, dampingFraction: 0.88), value: introStep)
         .animation(.easeInOut(duration: 0.30), value: storyQueue.current?.id)
+        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: showingDailyConfirm)
         // ── Mission map modal ────────────────────────────────────────────
         .sheet(isPresented: $showingLevelSelect) {
             MissionMapView(
@@ -352,17 +372,17 @@ struct ContentView: View {
                 SoundManager.play(.sonicLogoShort)
             }
         }
+        #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: .devReplayOnboarding)) { _ in
             activeLevel        = nil
             showingLevelSelect = false
             storyQueue         = StoryBeatQueue()
-            // Re-surface firstMissionReady beat so it fires again after the intro mission
             StoryBeatCatalog.beats
                 .filter { $0.trigger == .firstMissionReady }
                 .forEach { StoryStore.markUnseen($0) }
-            // Instant-play replay: jump straight to the intro mission
             withAnimation(.easeIn(duration: 0.35)) { introStep = .gameplay }
         }
+        #endif
         // Widget deep link handler
         .onReceive(NotificationCenter.default.publisher(for: .widgetDeepLink)) { note in
             guard introStep == nil,
@@ -386,13 +406,16 @@ struct ContentView: View {
                     try? await Task.sleep(nanoseconds: 300_000_000)
                     NotificationCenter.default.post(name: .openPlanetPass, object: nil)
                 }
+            case .paywall:
+                activeLevel = nil
+                showingLevelSelect = false
+                showingPaywall = true
             case .dailyChallenge:
                 guard EntitlementStore.shared.isPremium,
                       !DailyStore.hasPlayedToday else { return }
                 activeLevel = nil
                 showingLevelSelect = false
-                DailyStore.markStarted()
-                activeLevel = DailyLevelFactory.todayLevel
+                showingDailyConfirm = true
             }
         }
     }
@@ -481,8 +504,9 @@ struct ContentView: View {
         let profile = ProgressionStore.profile
         var triggers: [(StoryTrigger, StoryContext)] = []
 
-        // 0. First mission ever completed
-        if profile.uniqueCompletions == 1 {
+        // 0. First mission ever completed — deferred until onboarding is done (8 wins)
+        //    so story beats don't interrupt the early learning curve.
+        if profile.uniqueCompletions == 1, !EntitlementStore.shared.isInIntroPhase {
             triggers.append((.firstMissionComplete, StoryContext(playerLevel: profile.level)))
         }
 
@@ -508,7 +532,8 @@ struct ContentView: View {
         }
 
         // 4. Rank up — fire for milestone levels (2, 5, 10)
-        if let event, event.levelsGained > 0 {
+        //    Deferred until onboarding is done so early rank-ups don't interrupt.
+        if let event, event.levelsGained > 0, !EntitlementStore.shared.isInIntroPhase {
             triggers.append((.rankUp, .forRankUp(to: profile.level)))
         }
 

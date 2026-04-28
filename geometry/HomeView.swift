@@ -13,17 +13,20 @@ struct HomeView: View {
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var entitlement: EntitlementStore
     private var S: AppStrings { AppStrings(lang: settings.language) }
+    #if DEBUG
     @State private var devSecretStep = 0
     @State private var devLastTap    = Date.distantPast
+    #endif
     @State private var showingPlanetTicket = false
     @State private var showingSettings     = false
+    #if DEBUG
     @State private var showingDevMenu      = false
+    #endif
     @AppStorage("lastPlayedMissionID") private var lastPlayedMissionID: String = ""
     @State private var contentOpacity: Double = 0
     @State private var heroOffset: CGFloat    = 18
     @State private var fabPulsing             = false
     @State private var rankPulsing            = false
-    @State private var dailyPulsing           = false
 
     var body: some View {
         ZStack {
@@ -80,6 +83,7 @@ struct HomeView: View {
         .sheet(isPresented: $showingSettings) {
             SettingsView()
         }
+        #if DEBUG
         .fullScreenCover(isPresented: $showingDevMenu) {
             DevMenuView(
                 onSelect: { level in
@@ -89,6 +93,7 @@ struct HomeView: View {
                 onDismiss: { showingDevMenu = false }
             )
         }
+        #endif
         .task(id: ticketCacheKey) {
             guard introCompleted else { return }
             await warmTicketCache()
@@ -257,7 +262,9 @@ struct HomeView: View {
                 .minimumScaleFactor(0.72)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
+                #if DEBUG
                 .onTapGesture { advanceDev(zone: 1) }
+                #endif
 
             // Objective line
             Text(S.objectiveText(type: level.objectiveType, targets: level.numTargets))
@@ -283,9 +290,11 @@ struct HomeView: View {
     @ViewBuilder
     private func ctaFAB(for level: Level) -> some View {
         let isBlocked = !entitlement.isPremium && entitlement.dailyLimitReached
-        // leaderboardSecondaryButton is ALWAYS shown below the primary action,
-        // regardless of blocked / unblocked state.
-        VStack(spacing: 14) {
+        let showDaily = entitlement.isPremium
+        let showVersus = VersusFeatureFlag.isVisibleInHome && gcManager.isAuthenticated
+
+        VStack(spacing: 12) {
+            // Row 1: Primary CTA
             if isBlocked {
                 blockedFAB()
             } else {
@@ -308,33 +317,146 @@ struct HomeView: View {
                     }
                 }
             }
-            leaderboardSecondaryButton
 
-            // Daily challenge CTA — premium only
-            if entitlement.isPremium {
-                dailyChallengeCTA
+            // Row 2: Daily + Versus side by side (or single if only one visible)
+            if showDaily || showVersus {
+                HStack(spacing: 10) {
+                    if showDaily {
+                        dailyChallengeCompactCTA
+                    }
+                    if showVersus {
+                        versusCompactCTA
+                    }
+                }
+                .frame(width: 260)
             }
 
-            // Versus CTA — only visible when feature flag allows Home visibility + GC authenticated
-            if VersusFeatureFlag.isVisibleInHome, gcManager.isAuthenticated {
-                Button(action: { onVersus?() }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.2.fill")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("VERSUS 1v1")
-                            .font(AppTheme.mono(10, weight: .bold))
-                            .kerning(1.0)
-                    }
-                    .foregroundStyle(AppTheme.accentPrimary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(AppTheme.accentPrimary.opacity(0.45), lineWidth: 0.75)
-                    )
+
+            // Row 3: Leaderboard
+            leaderboardSecondaryButton
+        }
+    }
+
+    /// Compact daily challenge button for the side-by-side row.
+    @ViewBuilder
+    private var dailyChallengeCompactCTA: some View {
+        let played = DailyStore.hasPlayedToday
+        if played {
+            let won = DailyStore.todayResult?.success == true
+            HStack(spacing: 10) {
+                Image(systemName: won ? "checkmark.circle.fill" : "clock.badge.checkmark")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(AppTheme.sage.opacity(0.5))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(won ? S.dailyChallengeCompleted : S.dailyChallengePlayed)
+                        .font(AppTheme.mono(9, weight: .bold))
+                        .kerning(0.6)
+                        .foregroundStyle(AppTheme.sage.opacity(0.55))
+                    Text(S.dailyChallengeNextIn)
+                        .font(AppTheme.mono(7, weight: .medium))
+                        .kerning(0.4)
+                        .foregroundStyle(AppTheme.sage.opacity(0.35))
+                }
+                Spacer(minLength: 0)
+                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    let secs = max(0, DailyChallengeConfig.secondsUntilNext)
+                    let h = Int(secs) / 3600
+                    let m = (Int(secs) % 3600) / 60
+                    let s = Int(secs) % 60
+                    Text(String(format: "%02d:%02d:%02d", h, m, s))
+                        .font(AppTheme.mono(13, weight: .black))
+                        .kerning(1.0)
+                        .foregroundStyle(AppTheme.sage.opacity(0.5))
+                        .monospacedDigit()
                 }
             }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .background(AppTheme.surface.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .strokeBorder(AppTheme.sage.opacity(0.12), lineWidth: 0.5)
+            )
+        } else {
+            Button(action: {
+                SoundManager.play(.tapPrimary)
+                HapticsManager.medium()
+                onDailyChallenge?()
+            }) {
+                VStack(spacing: 4) {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(AppTheme.accentPrimary)
+                    Text(S.dailyChallenge)
+                        .font(AppTheme.mono(8, weight: .bold))
+                        .kerning(0.6)
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .background(AppTheme.surfaceElevated)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .strokeBorder(AppTheme.accentPrimary.opacity(0.30), lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlayPressStyle(onPress: {
+                HapticsManager.medium()
+                SoundManager.play(.tapPrimary)
+            }))
         }
+    }
+
+    /// Compact versus button for the side-by-side row.
+    private var versusCompactCTA: some View {
+        Button(action: {
+            SoundManager.play(.tapPrimary)
+            HapticsManager.medium()
+            onVersus?()
+        }) {
+            VStack(spacing: 4) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AppTheme.sage)
+                Text(S.versus)
+                    .font(AppTheme.mono(8, weight: .bold))
+                    .kerning(0.8)
+                    .foregroundStyle(AppTheme.sage.opacity(0.82))
+            }
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .background(AppTheme.sage.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .strokeBorder(AppTheme.sage.opacity(0.18), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Muted countdown label shown when the daily challenge has been played.
+    private var dailyChallengePlayedLabel: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 9, weight: .semibold))
+            Text(S.dailyChallengeCompleted)
+                .font(AppTheme.mono(8, weight: .bold))
+                .kerning(0.8)
+            Text("·")
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                let secs = max(0, DailyChallengeConfig.secondsUntilNext)
+                let h = Int(secs) / 3600
+                let m = (Int(secs) % 3600) / 60
+                let s = Int(secs) % 60
+                Text(S.nextIn(String(format: "%02d:%02d:%02d", h, m, s)))
+                    .font(AppTheme.mono(8))
+                    .kerning(0.6)
+            }
+        }
+        .foregroundStyle(AppTheme.sage.opacity(0.38))
     }
 
     /// Active / resume — centered pill with animated glow
@@ -434,88 +556,6 @@ struct HomeView: View {
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
                 rankPulsing = true
-            }
-        }
-    }
-
-    /// Daily challenge CTA — two distinct states:
-    ///   • Available: prominent filled button with glow (clearly tappable)
-    ///   • Played:    muted countdown text (just informational)
-    @ViewBuilder
-    private var dailyChallengeCTA: some View {
-        let played = DailyStore.hasPlayedToday
-
-        if played {
-            // ── Countdown only — compact, muted, non-interactive ──────────
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 9, weight: .semibold))
-                Text(S.dailyChallengeCompleted)
-                    .font(AppTheme.mono(8, weight: .bold))
-                    .kerning(0.8)
-                Text("·")
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
-                    let secs = max(0, DailyChallengeConfig.secondsUntilNext)
-                    let h = Int(secs) / 3600
-                    let m = (Int(secs) % 3600) / 60
-                    let s = Int(secs) % 60
-                    Text(S.nextIn(String(format: "%02d:%02d:%02d", h, m, s)))
-                        .font(AppTheme.mono(8))
-                        .kerning(0.6)
-                }
-            }
-            .foregroundStyle(AppTheme.sage.opacity(0.38))
-        } else {
-            // ── Available: prominent secondary button ─────────────────────
-            Button(action: {
-                SoundManager.play(.tapPrimary)
-                HapticsManager.medium()
-                onDailyChallenge?()
-            }) {
-                HStack(spacing: 0) {
-                    // Left accent stripe
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(AppTheme.accentPrimary)
-                        .frame(width: 4, height: 28)
-                        .padding(.leading, 14)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(S.dailyChallenge)
-                            .font(AppTheme.mono(12, weight: .black))
-                            .kerning(1.5)
-                            .foregroundStyle(AppTheme.textPrimary)
-                        Text(S.dailyChallengeSubtitle)
-                            .font(AppTheme.mono(7, weight: .medium))
-                            .kerning(0.8)
-                            .foregroundStyle(AppTheme.sage.opacity(0.6))
-                    }
-                    .padding(.leading, 10)
-
-                    Spacer()
-
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(AppTheme.accentPrimary)
-                        .padding(.trailing, 16)
-                }
-                .frame(width: 260, height: 52)
-                .background(AppTheme.surfaceElevated)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                        .strokeBorder(AppTheme.accentPrimary.opacity(0.30), lineWidth: 1)
-                )
-            }
-            .buttonStyle(PlayPressStyle(onPress: {
-                HapticsManager.medium()
-                SoundManager.play(.tapPrimary)
-            }))
-            .shadow(color: AppTheme.accentPrimary.opacity(dailyPulsing ? 0.22 : 0.06),
-                    radius: 10, y: 2)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
-                    dailyPulsing = true
-                }
             }
         }
     }
@@ -817,6 +857,7 @@ struct HomeView: View {
                     .padding(.vertical, 5)
                     .frame(maxWidth: .infinity)
                     .background(AppTheme.accentPrimary.opacity(0.07))
+                    .transaction { $0.animation = nil }
 
                     Rectangle()
                         .fill(AppTheme.accentPrimary.opacity(0.22))
@@ -825,7 +866,7 @@ struct HomeView: View {
                     // ── Body ─────────────────────────────────────────────
                     VStack(alignment: .leading, spacing: 0) {
 
-                        // Hero: done / total — reads clearly as global progress
+                        // Hero: done / total — static, never animates
                         HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text("\(done)")
                                 .font(AppTheme.mono(22, weight: .black))
@@ -835,15 +876,17 @@ struct HomeView: View {
                                 .font(AppTheme.mono(11))
                                 .foregroundStyle(AppTheme.textSecondary.opacity(0.62))
                         }
+                        .transaction { $0.animation = nil }
                         Text(S.missionsCompletedShort)
                             .font(AppTheme.mono(7))
                             .foregroundStyle(AppTheme.textSecondary.opacity(0.60))
                             .kerning(0.3)
                             .padding(.top, 1)
+                            .transaction { $0.animation = nil }
 
                         Spacer(minLength: 4)
 
-                        // ── Mini signal-network canvas ────────────────────
+                        // ── Mini signal-network canvas (only animated element) ──
                         MiniNetworkCanvas(activeFrac: frac)
                             .frame(height: 46)
 
@@ -859,6 +902,7 @@ struct HomeView: View {
                             }
                         }
                         .frame(height: 3)
+                        .transaction { $0.animation = nil }
 
                         Spacer(minLength: 6)
 
@@ -878,6 +922,7 @@ struct HomeView: View {
                                 .font(.system(size: 8, weight: .bold))
                                 .foregroundStyle(AppTheme.accentPrimary.opacity(0.82))
                         }
+                        .transaction { $0.animation = nil }
                     }
                     .padding(.leading, 14)
                     .padding(.trailing, 12)
@@ -899,19 +944,23 @@ struct HomeView: View {
 
             Spacer()
 
-            HStack(spacing: 5) {
-                Button(action: { showingSettings = true }) {
+            Button(action: { showingSettings = true }) {
+                HStack(spacing: 5) {
                     Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(AppTheme.textPrimary.opacity(0.65))
-                        .frame(width: 36, height: 36)
-                        .background(AppTheme.backgroundSecondary)
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                                .strokeBorder(AppTheme.stroke, lineWidth: 0.5)
-                        )
+                        .font(.system(size: 12, weight: .bold))
+                    Text("CONFIG")
+                        .font(AppTheme.mono(9, weight: .bold))
+                        .kerning(0.8)
                 }
+                .foregroundStyle(AppTheme.textPrimary.opacity(0.75))
+                .padding(.horizontal, 12)
+                .frame(height: 36)
+                .background(AppTheme.surfaceElevated)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .strokeBorder(AppTheme.stroke.opacity(0.6), lineWidth: 0.5)
+                )
             }
         }
         .padding(.horizontal, 18)
@@ -936,7 +985,9 @@ struct HomeView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .contentShape(Rectangle())
+                #if DEBUG
                 .onTapGesture { advanceDev(zone: 2) }
+                #endif
 
                 Rectangle().fill(AppTheme.sage.opacity(0.14)).frame(width: 0.5, height: 18)
 
@@ -950,10 +1001,12 @@ struct HomeView: View {
                 Rectangle().fill(AppTheme.sage.opacity(0.14)).frame(width: 0.5, height: 18)
 
                 // System version  [secret zone 0]
-                TechLabel(text: "SYS  ·  v1.0.1", color: AppTheme.sage.opacity(0.78))
+                TechLabel(text: "SYS  ·  v1.1.0", color: AppTheme.sage.opacity(0.78))
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
+                    #if DEBUG
                     .onTapGesture { advanceDev(zone: 0) }
+                    #endif
             }
             .padding(.vertical, 14)
         }
@@ -998,6 +1051,7 @@ struct HomeView: View {
         TicketCache.shared.cache(image, for: p, language: lang)
     }
 
+    #if DEBUG
     // MARK: Secret DEV menu trigger
     // Sequence: v1.0 (zone 0) → next mission (zone 1) → v1.0 (zone 0) → signal (zone 2)
     private static let devSequence = [0, 1, 0, 2]
@@ -1013,10 +1067,10 @@ struct HomeView: View {
                 showingDevMenu = true
             }
         } else {
-            // Wrong zone — restart; check if this tap could begin the sequence
             devSecretStep = Self.devSequence[0] == zone ? 1 : 0
         }
     }
+    #endif
 }
 
 // MARK: - AllClearCard

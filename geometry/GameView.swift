@@ -147,7 +147,9 @@ struct GameView: View {
                 MechanicUnlockView(mechanic: mechanic) {
                     MechanicUnlockStore.markAnnounced(mechanic)
                     vm.pendingMechanicAnnouncement = nil
-                    // Surface the narrative beat for this mechanic, if unseen
+                    // Surface the narrative beat for this mechanic, if unseen.
+                    // Gate: no story beats during onboarding (missions 1–8).
+                    guard !EntitlementStore.shared.isInIntroPhase else { return }
                     let ctx = StoryContext.forMechanic(mechanic, level: ProgressionStore.profile.level)
                     if let beat = StoryStore.pending(for: .mechanicUnlocked, context: ctx) {
                         mechanicStoryQueue.enqueue(beat)
@@ -199,10 +201,13 @@ struct GameView: View {
             // Recover any mechanic story beats orphaned by a prior app kill.
             // If a mechanic was announced (MechanicUnlockStore) but its story beat
             // was never marked as seen (StoryStore), re-enqueue it now.
-            for mechanic in MechanicType.allCases where MechanicUnlockStore.hasAnnounced(mechanic) {
-                let ctx = StoryContext.forMechanic(mechanic, level: ProgressionStore.profile.level)
-                if let beat = StoryStore.pending(for: .mechanicUnlocked, context: ctx) {
-                    mechanicStoryQueue.enqueue(beat)
+            // Gate: no story beats during onboarding (missions 1–8).
+            if !EntitlementStore.shared.isInIntroPhase {
+                for mechanic in MechanicType.allCases where MechanicUnlockStore.hasAnnounced(mechanic) {
+                    let ctx = StoryContext.forMechanic(mechanic, level: ProgressionStore.profile.level)
+                    if let beat = StoryStore.pending(for: .mechanicUnlocked, context: ctx) {
+                        mechanicStoryQueue.enqueue(beat)
+                    }
                 }
             }
             // Let SwiftUI finish its first layout pass, then reveal the board.
@@ -1417,6 +1422,100 @@ struct MechanicUnlockView: View {
                         .background(amber)
                         .foregroundStyle(Color.black)
                 }
+            }
+            .background(AppTheme.backgroundPrimary)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                    .strokeBorder(amber.opacity(0.55), lineWidth: 1.0)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+            .padding(.horizontal, 24)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.82).delay(0.20)) {
+                bodyRevealed = true
+            }
+        }
+    }
+}
+
+// MARK: - DailyChallengeConfirmOverlay
+/// Confirmation modal shown before starting a Daily Challenge.
+/// Warns the player that they only get one attempt per day and cannot pause/exit.
+struct DailyChallengeConfirmOverlay: View {
+    let onPlay: () -> Void
+    let onCancel: () -> Void
+
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+    @State private var bodyRevealed = false
+
+    private let amber = Color(hex: "FFB800")
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.84).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // ── Header ───────────────────────────────────────────────
+                VStack(spacing: 10) {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundStyle(amber)
+                        .pulsingGlow(color: amber, duration: 1.3)
+
+                    TechLabel(text: S.dailyChallenge, color: amber)
+
+                    Text(S.dailyChallengeReady)
+                        .font(AppTheme.mono(20, weight: .black))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .kerning(1)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+                .padding(.horizontal, 20)
+                .background(AppTheme.surface)
+
+                TechDivider()
+
+                // ── Warning message ──────────────────────────────────────
+                Text(S.dailyChallengeWarning)
+                    .font(AppTheme.mono(11))
+                    .foregroundStyle(AppTheme.textPrimary.opacity(0.85))
+                    .lineSpacing(5)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 22)
+                    .frame(maxWidth: .infinity)
+                    .background(AppTheme.backgroundSecondary)
+                    .opacity(bodyRevealed ? 1 : 0)
+                    .offset(y: bodyRevealed ? 0 : 8)
+
+                TechDivider()
+
+                // ── CTA: Play ────────────────────────────────────────────
+                Button(action: onPlay) {
+                    Text(S.dailyChallengePlay)
+                        .font(AppTheme.mono(12, weight: .bold))
+                        .kerning(2)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(amber)
+                        .foregroundStyle(Color.black)
+                }
+
+                TechDivider()
+
+                // ── Secondary: Not ready ─────────────────────────────────
+                Button(action: onCancel) {
+                    Text(S.dailyChallengeNotReady)
+                        .font(AppTheme.mono(11))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .kerning(1)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                }
+                .background(AppTheme.surface)
             }
             .background(AppTheme.backgroundPrimary)
             .overlay(

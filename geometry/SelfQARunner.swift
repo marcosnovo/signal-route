@@ -1,3 +1,4 @@
+#if DEBUG
 import Foundation
 import SwiftUI
 import Combine
@@ -642,3 +643,4 @@ final class SelfQARunner: ObservableObject {
                   linkedLevelID: condition ? nil : level)]
     }
 }
+#endif

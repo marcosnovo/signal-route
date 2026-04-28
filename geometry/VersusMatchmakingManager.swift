@@ -22,6 +22,9 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
     // ── State ────────────────────────────────────────────────────────────
     let matchState = VersusMatchState()
 
+    /// True when running a local solo test (no real GKMatch).
+    @Published var isSoloTest = false
+
     // ── GK objects ───────────────────────────────────────────────────────
     private var currentMatch: GKMatch?
     private var searchTask: Task<Void, Never>?
@@ -49,6 +52,9 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
     /// Callback fired when the remote player requests a rematch.
     var onRemoteRematch: (() -> Void)?
 
+    /// Selected difficulty for the next match (used by host when generating seed).
+    var selectedDifficulty: DifficultyTier = .medium
+
     private override init() {
         super.init()
         loadLocalPlayerInfo()
@@ -70,21 +76,33 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
 
     /// Start searching for an opponent via programmatic auto-match.
     /// Uses `GKMatchmaker.findMatch(for:)` — no Game Center UI presented.
+    private var S: AppStrings { AppStrings(lang: SettingsStore.shared.language) }
+
     func findMatch() {
         guard VersusFeatureFlag.isMatchmakingAllowed else {
+            matchState.error = S.versusMatchmakingDisabled
             #if DEBUG
             print("[VersusFlag] matchmaking blocked — isMatchmakingAllowed=false")
             #endif
             return
         }
         guard GKLocalPlayer.local.isAuthenticated else {
-            matchState.error = "Game Center not authenticated"
+            matchState.error = S.gameCenterNotAuth
             #if DEBUG
             print("[Versus] Cannot match — Game Center not authenticated")
             #endif
             return
         }
-        guard matchState.phase == .idle else { return }
+        // Allow retry from finished state
+        if matchState.phase == .finished {
+            disconnect()
+        }
+        guard matchState.phase == .idle else {
+            #if DEBUG
+            print("[Versus] findMatch ignored — phase=\(matchState.phase)")
+            #endif
+            return
+        }
 
         matchState.reset()
         matchState.phase = .searching
@@ -142,9 +160,14 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
     }
 
     /// Send the local player's game outcome.
-    func sendResult(_ outcome: VersusOutcome) {
+    /// In solo test, `soloRemoteOutcome` sets the bot's result directly (needed for draws).
+    func sendResult(_ outcome: VersusOutcome, soloRemoteOutcome: VersusOutcome? = nil) {
         matchState.localOutcome = outcome
-        send(.result(payload: outcome))
+        if isSoloTest {
+            matchState.remoteOutcome = soloRemoteOutcome ?? (outcome == .won ? .lost : .won)
+        } else {
+            send(.result(payload: outcome))
+        }
         checkMatchResolution()
     }
 
@@ -162,15 +185,63 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
     /// Request a same-opponent rematch after a game ends.
     func sendRematch() {
         matchState.localWantsRematch = true
-        send(.rematch)
+        if isSoloTest {
+            matchState.remoteWantsRematch = true
+        } else {
+            send(.rematch)
+        }
         #if DEBUG
         print("[Versus] Sent rematch request (remote=\(matchState.remoteWantsRematch))")
         #endif
         if matchState.bothWantRematch { handleBothWantRematch() }
     }
 
+    /// The selected bot difficulty for solo test (stored so VM can read it).
+    var soloBotDifficulty: VersusBotDifficulty = .medium
+
+    /// Start a local solo test match against a bot. No GKMatch needed.
+    func startSoloTest(botDifficulty: VersusBotDifficulty = .medium, difficulty: DifficultyTier = .medium) {
+        guard matchState.phase == .idle || matchState.phase == .finished else { return }
+        isSoloTest = true
+        soloBotDifficulty = botDifficulty
+        matchState.reset()
+        matchState.phase = .matched
+        matchState.isHost = true
+        matchState.opponentDisplayName = botDifficulty.botName
+
+        let seed = UInt64.random(in: 1...UInt64.max)
+        let config = VersusLevelConfig.v3(difficulty: difficulty)
+        matchState.sharedSeed = seed
+        matchState.sharedConfig = config
+
+        onLevelReady?(seed, config)
+
+        Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard matchState.phase == .matched else { return }
+            matchState.remoteBoardReady = true
+            if matchState.bothBoardReady {
+                matchState.phase = .countdown
+                try? await Task.sleep(for: .seconds(3.5))
+                guard matchState.phase == .countdown else { return }
+                matchState.phase = .playing
+                onGameStart?()
+            }
+        }
+    }
+
+    /// Forfeit the current game (sends loss), then disconnect.
+    func forfeitAndDisconnect() {
+        if matchState.phase == .playing && !isSoloTest {
+            matchState.localOutcome = .lost
+            send(.result(payload: .lost))
+        }
+        disconnect()
+    }
+
     /// Tear down the current match and reset state.
     func disconnect() {
+        isSoloTest = false
         searchTask?.cancel()
         searchTask = nil
         currentMatch?.disconnect()
@@ -224,7 +295,7 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
         if isHost {
             // Generate seed and send .ready to guest
             let seed = UInt64.random(in: 1...UInt64.max)
-            let config = VersusLevelConfig.defaultV3
+            let config = VersusLevelConfig.v3(difficulty: .medium)
             matchState.sharedSeed   = seed
             matchState.sharedConfig = config
             send(.ready(payload: VersusReadyPayload(seed: seed, config: config)))
@@ -273,15 +344,30 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
         matchState.phase              = .matched
 
         if matchState.isHost {
-            // Host generates a new seed
             let seed = UInt64.random(in: 1...UInt64.max)
             let config = matchState.sharedConfig ?? .defaultV3
             matchState.sharedSeed = seed
-            send(.ready(payload: VersusReadyPayload(seed: seed, config: config)))
+            if !isSoloTest {
+                send(.ready(payload: VersusReadyPayload(seed: seed, config: config)))
+            }
             VersusTestHarness.shared.logSeedSent(seed)
             onLevelReady?(seed, config)
         }
-        // Guest waits for .ready → builds board → sendBoardReady
+
+        if isSoloTest {
+            Task {
+                try? await Task.sleep(for: .milliseconds(500))
+                guard matchState.phase == .matched else { return }
+                matchState.remoteBoardReady = true
+                if matchState.bothBoardReady {
+                    matchState.phase = .countdown
+                    try? await Task.sleep(for: .seconds(3.5))
+                    guard matchState.phase == .countdown else { return }
+                    matchState.phase = .playing
+                    onGameStart?()
+                }
+            }
+        }
     }
 
     private func checkMatchResolution() {
@@ -421,4 +507,17 @@ extension VersusLevelConfig {
         levelType:     LevelType.singlePath.rawValue,
         isV3:          true
     )
+
+    /// V3 with selectable difficulty.
+    static func v3(difficulty: DifficultyTier) -> VersusLevelConfig {
+        VersusLevelConfig(
+            gridSize:      5,
+            difficultyRaw: difficulty.rawValue,
+            maxMoves:      999,
+            numTargets:    5,
+            objectiveType: LevelObjectiveType.normal.rawValue,
+            levelType:     LevelType.singlePath.rawValue,
+            isV3:          true
+        )
+    }
 }

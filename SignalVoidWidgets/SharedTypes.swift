@@ -28,6 +28,7 @@ struct WidgetDataSnapshot: Codable {
     let passes: [PassSnapshot]
     let streak: Int?
     let weeklyRankChange: Int?
+    let cooldownRemainingSeconds: Int?
     let language: String?
     let updatedAt: Date
 

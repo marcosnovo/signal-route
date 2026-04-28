@@ -134,6 +134,34 @@ struct WidgetStrings {
         }
     }
 
+    // MARK: - Navigator Widget
+    var navigatorStatus:   String { t("NAVIGATOR STATUS",   "ESTADO NAVEGANTE",     "STATUT NAVIGATEUR") }
+    var sector:            String { t("SECTOR",             "SECTOR",               "SECTEUR") }
+
+    // MARK: - Campaign Widget
+    var campaignOverview:  String { t("CAMPAIGN OVERVIEW",  "RESUMEN CAMPAÑA",      "APERÇU CAMPAGNE") }
+    var remaining:         String { t("REMAINING",          "RESTANTES",            "RESTANTES") }
+    var sectorCompletion:  String { t("SECTOR COMPLETION",  "SECTORES COMPLETADOS", "SECTEURS COMPLÉTÉS") }
+    var completed:         String { t("COMPLETED",          "COMPLETADAS",          "TERMINÉES") }
+    var avgEff:            String { t("AVG EFF",            "EF MEDIA",             "EFF MOY") }
+
+    // MARK: - Nova Pass Widget
+    var novaPass:          String { t("NOVA PASS",          "NOVA PASS",            "NOVA PASS") }
+    var novaPassCollection: String { t("NOVA PASS COLLECTION", "COLECCIÓN NOVA PASS", "COLLECTION NOVA PASS") }
+    var earned:            String { t("EARNED",             "OBTENIDOS",            "OBTENUS") }
+    var locked:            String { t("LOCKED",             "BLOQUEADO",            "VERROUILLÉ") }
+    func more(_ n: Int) -> String { t("+\(n) MORE",        "+\(n) MÁS",            "+\(n) DE PLUS") }
+
+    // MARK: - Telemetry Widget
+    var telemetry:         String { t("TELEMETRY",          "TELEMETRÍA",           "TÉLÉMÉTRIE") }
+    var telemetryDashboard: String { t("TELEMETRY DASHBOARD", "PANEL TELEMETRÍA",   "TABLEAU TÉLÉMÉTRIE") }
+    var avgEfficiency:     String { t("AVG EFFICIENCY",     "EFICIENCIA MEDIA",     "EFFICACITÉ MOY") }
+    var weekly:            String { t("WEEKLY Δ",           "SEMANAL Δ",            "HEBDO Δ") }
+
+    // MARK: - Premium Lock
+    var premium:           String { t("PREMIUM",            "PREMIUM",              "PREMIUM") }
+    var upgradeToUnlock:   String { t("Upgrade to unlock",  "Mejora para desbloquear", "Améliorez pour débloquer") }
+
     // MARK: - Difficulty
     func difficulty(for planetIndex: Int) -> String {
         switch planetIndex {

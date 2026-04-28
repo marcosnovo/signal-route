@@ -272,45 +272,38 @@ enum LevelScoring {
 }
 
 // MARK: - DailyScoring
-/// Fine-grained scoring for daily challenges. Produces high-resolution scores
-/// so players on the same daily board can be meaningfully ranked.
+/// Scoring for daily challenges — thousands range for readable leaderboards.
 ///
-/// Score = difficultyBase + timeBonus + moveBonus + objectiveBonus + coverageBonus
+/// Score = difficultyBase + timeBonus + moveBonus + objectiveBonus
 ///
 /// Hierarchy (no overlap between tiers):
-///   Expert: 4,000,000+ | Hard: 3,000,000–3,999,999
+///   Expert: 5,000–6,100 | Hard: 3,000–4,450
 enum DailyScoring {
 
-    /// Difficulty base — ensures expert always outranks hard.
     private static func difficultyBase(for tier: DifficultyTier) -> Int {
         switch tier {
-        case .hard:   return 3_000_000
-        case .expert: return 4_000_000
-        default:      return 2_000_000   // shouldn't happen for daily
+        case .hard:   return 3_000
+        case .expert: return 5_000
+        default:      return 2_000
         }
     }
 
-    /// Time remaining (whole seconds) → 0–900,000.
-    /// 10,000 points per second makes time the primary differentiator.
     private static func timeBonus(secondsLeft: Int) -> Int {
-        max(0, secondsLeft) * 10_000
+        max(0, secondsLeft) * 10
     }
 
-    /// Moves remaining → 0–~15,000. 1,000 per move as secondary differentiator.
     private static func moveBonus(movesLeft: Int) -> Int {
-        max(0, movesLeft) * 1_000
+        max(0, movesLeft) * 50
     }
 
-    /// Special objective quality bonus (0–250). Tertiary differentiator.
     private static func objectiveBonus(type: LevelObjectiveType, energyRating: Float) -> Int {
         switch type {
         case .normal:       return 0
-        case .maxCoverage:  return Int((energyRating * 250).rounded())
-        case .energySaving: return Int((energyRating * 250).rounded())
+        case .maxCoverage:  return Int((energyRating * 50).rounded())
+        case .energySaving: return Int((energyRating * 50).rounded())
         }
     }
 
-    /// Compute the daily challenge score.
     static func computeScore(
         difficulty: DifficultyTier,
         timeRemaining: Int,
@@ -324,7 +317,6 @@ enum DailyScoring {
             + objectiveBonus(type: objectiveType, energyRating: energyRating)
     }
 
-    /// Human-readable breakdown for the daily score display.
     static func maxScore(for difficulty: DifficultyTier, timeLimit: Int) -> Int {
         difficultyBase(for: difficulty) + timeBonus(secondsLeft: timeLimit)
     }
@@ -523,8 +515,9 @@ struct AstronautProfile: Codable {
         case dailyCumulativeScore
     }
 
-    /// Cumulative leaderboard score: campaign best scores + daily challenge total.
-    var leaderboardScore: Int { bestScoreByLevel.values.reduce(0, +) + dailyCumulativeScore }
+    /// Cumulative leaderboard score: campaign best scores only.
+    /// Daily challenge scores live on their own dedicated leaderboards.
+    var leaderboardScore: Int { bestScoreByLevel.values.reduce(0, +) }
 
     /// Leaderboard score filtered to a single difficulty tier.
     func tierScore(for tier: DifficultyTier) -> Int {

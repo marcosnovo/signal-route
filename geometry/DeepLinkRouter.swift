@@ -7,6 +7,7 @@ enum DeepLinkRoute: Equatable {
     case missions
     case leaderboards
     case pass(planetIndex: Int)
+    case paywall
     case dailyChallenge
 
     /// Parse a URL into a route. Returns nil for unrecognised URLs.
@@ -22,6 +23,8 @@ enum DeepLinkRoute: Equatable {
                 return .pass(planetIndex: idx)
             }
             return .home
+        case "paywall":
+            return .paywall
         case "daily":
             return .dailyChallenge
         default:

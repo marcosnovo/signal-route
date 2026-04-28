@@ -7,5 +7,9 @@ struct SignalVoidWidgetBundle: WidgetBundle {
         ProgressWidget()
         LeaderboardWidget()
         PlanetPassWidget()
+        NavigatorWidget()
+        CampaignWidget()
+        NovaPassWidget()
+        TelemetryWidget()
     }
 }

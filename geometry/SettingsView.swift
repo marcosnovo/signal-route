@@ -235,7 +235,7 @@ struct SettingsView: View {
                 .fill(AppTheme.sage.opacity(0.14))
                 .frame(height: 0.5)
             HStack {
-                TechLabel(text: "SIGNAL VOID  ·  v1.0.1")
+                TechLabel(text: "SIGNAL VOID  ·  v1.1.0")
                 Spacer()
                 TechLabel(text: "\(LevelGenerator.levels.count) \(S.missionsLabel)",
                           color: AppTheme.sage.opacity(0.55))

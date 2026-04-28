@@ -1,3 +1,4 @@
+#if DEBUG
 import SwiftUI
 import StoreKit
 import GameKit
@@ -20,7 +21,7 @@ struct DevMenuView: View {
     @EnvironmentObject private var cloudSave:  CloudSaveManager
 
     // ── Tab ───────────────────────────────────────────────────────────────
-    enum DevTab { case overview, missions, story, tools, reset }
+    enum DevTab { case overview, missions, story, versus, tools, reset }
     @State private var activeTab: DevTab = .overview
 
     // ── QA tab ────────────────────────────────────────────────────────────
@@ -249,6 +250,8 @@ struct DevMenuView: View {
             })
         case .story:
             return AnyView(storyPanel)
+        case .versus:
+            return AnyView(versusPanel)
         case .tools:
             return AnyView(toolsPanel)
         case .reset:
@@ -264,10 +267,10 @@ struct DevMenuView: View {
                 TechDivider()
 
                 tabContent
-                    .frame(height: geo.size.height
+                    .frame(height: max(0, geo.size.height
                            - navStripHeight
                            - tabBarHeight
-                           - 1) // TechDivider
+                           - 1)) // TechDivider
             }
         }
         .background {
@@ -447,6 +450,7 @@ struct DevMenuView: View {
             tabChip("OVERVIEW",  icon: "square.grid.2x2",          tab: .overview)
             tabChip("MISSIONS",  icon: "list.bullet",              tab: .missions)
             tabChip("STORY",     icon: "text.bubble",              tab: .story)
+            tabChip("VERSUS",    icon: "gamecontroller.fill",      tab: .versus)
             tabChip("TOOLS",     icon: "wrench.and.screwdriver",   tab: .tools)
             tabChip("RESET",     icon: "exclamationmark.triangle", tab: .reset)
         }
@@ -829,15 +833,19 @@ struct DevMenuView: View {
 
     private var moneyPanel: some View {
         VStack(spacing: 0) {
-            monetizationSection
-            TechDivider()
-            unlockCodesSection
-            TechDivider()
-            discountCodesSection
-            TechDivider()
-            notificationsSection
-            TechDivider()
-            cloudSaveSection
+            Group {
+                monetizationSection
+                TechDivider()
+                unlockCodesSection
+                TechDivider()
+                discountCodesSection
+            }
+            Group {
+                TechDivider()
+                notificationsSection
+                TechDivider()
+                cloudSaveSection
+            }
         }
     }
 
@@ -1025,17 +1033,21 @@ struct DevMenuView: View {
 
     private var monetizationSection: some View {
         VStack(spacing: 0) {
-            moneyStatusSection
-            TechDivider()
-            moneyControlsSection
-            TechDivider()
-            paywallTestSection
-            TechDivider()
-            ctaPreviewSection
-            TechDivider()
-            moneyScenarioSection
-            TechDivider()
-            skMockSection
+            Group {
+                moneyStatusSection
+                TechDivider()
+                moneyControlsSection
+                TechDivider()
+                paywallTestSection
+                TechDivider()
+            }
+            Group {
+                ctaPreviewSection
+                TechDivider()
+                moneyScenarioSection
+                TechDivider()
+                skMockSection
+            }
         }
     }
 
@@ -2683,7 +2695,7 @@ struct DevMenuView: View {
     private var levelList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 0) {
+                VStack(spacing: 0) {
                     ForEach(filteredLevels) { level in
                         Button(action: { onSelect(level) }) { levelRow(level) }
                             .buttonStyle(.plain)
@@ -3019,38 +3031,176 @@ struct DevMenuView: View {
     private var toolsPanel: some View {
         ScrollView {
             VStack(spacing: 0) {
-                // ── Monetization (moved from MONEY tab) ──────────
-                moneyPanel
+                // Each section wrapped in AnyView to cut generic type depth
+                // and prevent stack overflow from deeply nested SwiftUI types.
+                AnyView(widgetDataSection)
                 TechDivider()
-                // ── Versus (moved from VERSUS tab) ───────────────
-                versusPanel
+                AnyView(moneyPanel)
                 TechDivider()
                 #if DEBUG
-                audioSection
+                AnyView(audioSection)
                 TechDivider()
                 #endif
-                onboardingSection
+                AnyView(onboardingSection)
                 TechDivider()
-                // ── QA (moved from QA tab) ───────────────────────
-                SelfQAView(runner: qaRunner) { level in
+                AnyView(SelfQAView(runner: qaRunner) { level in
                     onSelect(level)
                     onDismiss()
-                }
+                })
                 TechDivider()
-                // ── Player Sim (moved from SIM tab) ──────────────
-                PlayerSimulationView(runner: simRunner)
+                AnyView(PlayerSimulationView(runner: simRunner))
                 TechDivider()
                 #if DEBUG
-                difficultyAnalysisSection
+                AnyView(difficultyAnalysisSection)
                 TechDivider()
-                validationSection
+                AnyView(validationSection)
                 TechDivider()
-                startsSolvedSection
+                AnyView(startsSolvedSection)
                 TechDivider()
                 #endif
-                mechanicMessagesSection
+                AnyView(mechanicMessagesSection)
             }
         }
+    }
+
+    // ── Widget Data ───────────────────────────────────────────────────────
+
+    @State private var widgetPayloadText: String? = nil
+
+    private var widgetDataSection: some View {
+        VStack(spacing: 0) {
+            sectionHeader("WIDGET DATA")
+
+            // Current snapshot status
+            let snap = WidgetDataBridge.read()
+            VStack(spacing: 4) {
+                HStack {
+                    devRow("STATUS", snap != nil ? "LOADED" : "EMPTY")
+                    Spacer()
+                    devRow("PREMIUM", snap?.isPremium == true ? "YES" : "NO")
+                }
+                if let s = snap {
+                    HStack {
+                        devRow("LEVEL", "\(s.playerLevel)")
+                        Spacer()
+                        devRow("MISSIONS", "\(s.completedMissions)/\(s.totalMissions)")
+                    }
+                    HStack {
+                        devRow("RANK", s.rankTitle)
+                        Spacer()
+                        devRow("EFF", "\(s.averageEfficiencyPercent)%")
+                    }
+                    HStack {
+                        devRow("PLANET", s.currentPlanetName)
+                        Spacer()
+                        devRow("PASSES", "\(s.passes.count)")
+                    }
+                    HStack {
+                        devRow("COOLDOWN", s.cooldownRemainingSeconds.map { "\($0)s" } ?? "NONE")
+                        Spacer()
+                        devRow("UPDATED", {
+                            let fmt = DateFormatter()
+                            fmt.dateFormat = "HH:mm:ss"
+                            return fmt.string(from: s.updatedAt)
+                        }())
+                    }
+                    if let rank = s.playerRank {
+                        HStack {
+                            devRow("GC RANK", "#\(rank)")
+                            Spacer()
+                            devRow("GC TOTAL", s.totalPlayers.map { "\($0)" } ?? "—")
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            // Actions
+            VStack(spacing: 6) {
+                // Refresh
+                Button {
+                    ProgressionStore.pushWidgetSnapshot(ProgressionStore.profile)
+                    widgetPayloadText = "Refreshed at \(DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium))"
+                } label: {
+                    devActionLabel("REFRESH WIDGET PAYLOAD", icon: "arrow.clockwise", color: AppTheme.accentPrimary)
+                }
+                .buttonStyle(.plain)
+
+                // Print to console
+                Button {
+                    if let s = WidgetDataBridge.read() {
+                        let encoder = JSONEncoder()
+                        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                        encoder.dateEncodingStrategy = .iso8601
+                        if let json = try? encoder.encode(s),
+                           let str = String(data: json, encoding: .utf8) {
+                            print("──── WIDGET PAYLOAD ────")
+                            print(str)
+                            print("────────────────────────")
+                            widgetPayloadText = "Printed to console (\(json.count) bytes)"
+                        }
+                    } else {
+                        widgetPayloadText = "No snapshot available"
+                    }
+                } label: {
+                    devActionLabel("PRINT PAYLOAD TO CONSOLE", icon: "text.alignleft", color: AppTheme.sage)
+                }
+                .buttonStyle(.plain)
+
+                // Force premium snapshot
+                Button {
+                    let wasPremium = EntitlementStore.shared.isPremium
+                    if !wasPremium { EntitlementStore.shared.setPremium(true) }
+                    ProgressionStore.pushWidgetSnapshot(ProgressionStore.profile)
+                    if !wasPremium { EntitlementStore.shared.setPremium(false) }
+                    widgetPayloadText = "Pushed PREMIUM snapshot (restored: \(!wasPremium))"
+                } label: {
+                    devActionLabel("PUSH PREMIUM PREVIEW", icon: "crown.fill", color: AppTheme.accentPrimary)
+                }
+                .buttonStyle(.plain)
+
+                // Force free snapshot
+                Button {
+                    let wasPremium = EntitlementStore.shared.isPremium
+                    if wasPremium { EntitlementStore.shared.setPremium(false) }
+                    ProgressionStore.pushWidgetSnapshot(ProgressionStore.profile)
+                    if wasPremium { EntitlementStore.shared.setPremium(true) }
+                    widgetPayloadText = "Pushed FREE snapshot (restored: \(wasPremium))"
+                } label: {
+                    devActionLabel("PUSH FREE PREVIEW", icon: "lock.fill", color: AppTheme.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            // Toast
+            if let msg = widgetPayloadText {
+                Text(msg)
+                    .font(AppTheme.mono(8, weight: .bold))
+                    .foregroundStyle(AppTheme.accentPrimary)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
+        }
+    }
+
+    /// Styled action button for dev menu.
+    private func devActionLabel(_ label: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+            Text(label)
+                .font(AppTheme.mono(8, weight: .bold))
+                .tracking(1)
+        }
+        .foregroundStyle(color)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(color.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     // ── Audio Debug ────────────────────────────────────────────────────────
@@ -5680,145 +5830,160 @@ struct DevMenuView: View {
     // MARK: - Versus panel
 
     private var versusPanel: some View {
-        VStack(spacing: 0) {
-            sectionHeader("VERSUS — FEATURE FLAGS")
-
-                VStack(spacing: 12) {
-                    // Master gate
-                    versusFlagRow(
-                        title: "ENABLED",
-                        subtitle: "Master gate — all versus functionality",
-                        isOn: Binding(
-                            get: { VersusFeatureFlag.isEnabled },
-                            set: { VersusFeatureFlag.setEnabled($0) }
-                        ),
-                        tint: AppTheme.accentPrimary
-                    )
-
-                    // Visible in Home
-                    versusFlagRow(
-                        title: "VISIBLE IN HOME",
-                        subtitle: "Show \"VERSUS 1v1\" button on Home screen",
-                        isOn: Binding(
-                            get: { VersusFeatureFlag.isVisibleInHome },
-                            set: { VersusFeatureFlag.setVisibleInHome($0) }
-                        ),
-                        tint: AppTheme.accentPrimary,
-                        disabled: !VersusFeatureFlag.isEnabled
-                    )
-
-                    // Allow matchmaking
-                    versusFlagRow(
-                        title: "ALLOW MATCHMAKING",
-                        subtitle: "Allow GKMatchmaker.findMatch() calls",
-                        isOn: Binding(
-                            get: { VersusFeatureFlag.isMatchmakingAllowed },
-                            set: { VersusFeatureFlag.setMatchmakingAllowed($0) }
-                        ),
-                        tint: AppTheme.accentPrimary,
-                        disabled: !VersusFeatureFlag.isEnabled
-                    )
-
-                    // State summary
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(VersusFeatureFlag.isDevOnly ? AppTheme.accentPrimary : (VersusFeatureFlag.isEnabled ? AppTheme.success : AppTheme.danger))
-                            .frame(width: 6, height: 6)
-                        Text(VersusFeatureFlag.isDevOnly ? "DEV-ONLY MODE" : (VersusFeatureFlag.isEnabled ? "FULLY ACTIVE" : "ALL OFF"))
-                            .font(AppTheme.mono(8, weight: .bold))
-                            .foregroundStyle(VersusFeatureFlag.isDevOnly ? AppTheme.accentPrimary : (VersusFeatureFlag.isEnabled ? AppTheme.success : AppTheme.danger))
-                        Spacer()
-                    }
-                }
-                .padding(.horizontal, 16).padding(.vertical, 12)
+        ScrollView {
+            VStack(spacing: 0) {
+                // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                // HERO: One-tap activate / deactivate
+                // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                AnyView(versusHeroSection)
 
                 TechDivider()
-                sectionHeader("GAME CENTER")
 
-                VStack(spacing: 8) {
-                    HStack {
-                        Text("GC AUTH")
+                // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                // QUICK ACTIONS: Find match / Disconnect
+                // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                AnyView(versusQuickActions)
+
+                TechDivider()
+
+                // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                // STATUS: Game Center + Match State
+                // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                AnyView(versusStatusSection)
+
+                TechDivider()
+
+                // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                // ADVANCED: Flags, Analytics, Session, Validations, Timeline
+                // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+                AnyView(versusAdvancedSection)
+            }
+        }
+    }
+
+    // MARK: - Versus Hero Section
+
+    private var versusHeroSection: some View {
+        let isActive = VersusFeatureFlag.isEnabled
+        let gcOK = gcManager.isAuthenticated
+        return VStack(spacing: 16) {
+            // Status indicator
+            VStack(spacing: 8) {
+                Image(systemName: isActive ? "gamecontroller.fill" : "gamecontroller")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(isActive ? AppTheme.success : AppTheme.textSecondary.opacity(0.4))
+
+                Text(isActive ? "VERSUS MODE ACTIVE" : "VERSUS MODE OFF")
+                    .font(AppTheme.mono(14, weight: .black))
+                    .foregroundStyle(isActive ? AppTheme.success : AppTheme.textSecondary)
+                    .kerning(1.5)
+
+                if !gcOK {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                        Text("Game Center not connected")
+                            .font(AppTheme.mono(9))
+                    }
+                    .foregroundStyle(AppTheme.danger.opacity(0.8))
+                } else {
+                    HStack(spacing: 4) {
+                        Circle().fill(AppTheme.success).frame(width: 5, height: 5)
+                        Text(gcManager.displayName)
                             .font(AppTheme.mono(9, weight: .bold))
-                            .foregroundStyle(AppTheme.textSecondary)
-                        Spacer()
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(gcManager.isAuthenticated ? AppTheme.success : AppTheme.danger)
-                                .frame(width: 6, height: 6)
-                            Text(gcManager.isAuthenticated ? gcManager.displayName : "NOT CONNECTED")
-                                .font(AppTheme.mono(9, weight: .bold))
-                                .foregroundStyle(gcManager.isAuthenticated ? AppTheme.success : AppTheme.danger)
-                        }
-                    }
-
-                    HStack {
-                        Text("LOCAL PLAYER ID")
-                            .font(AppTheme.mono(9, weight: .bold))
-                            .foregroundStyle(AppTheme.textSecondary)
-                        Spacer()
-                        Text(GKLocalPlayer.local.isAuthenticated ? GKLocalPlayer.local.gamePlayerID.prefix(12) + "…" : "—")
-                            .font(AppTheme.mono(8))
-                            .foregroundStyle(AppTheme.textSecondary)
+                            .foregroundStyle(AppTheme.success)
                     }
                 }
-                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
 
-                TechDivider()
-                sectionHeader("MATCH STATE")
-
-                VStack(spacing: 8) {
-                    let state = VersusMatchmakingManager.shared.matchState
-                    devRow("PHASE", "\(state.phase)")
-                    devRow("IS HOST", state.isHost ? "YES" : "NO")
-                    devRow("SEED", state.sharedSeed == 0 ? "—" : "\(state.sharedSeed)")
-                    devRow("OPPONENT", state.opponentDisplayName)
-                    devRow("LOCAL STATUS", state.localSnapshot.status.uppercased())
-                    devRow("REMOTE STATUS", state.remoteSnapshot.status.uppercased())
-                    devRow("LOCAL OUTCOME", state.localOutcome?.rawValue.uppercased() ?? "—")
-                    devRow("REMOTE OUTCOME", state.remoteOutcome?.rawValue.uppercased() ?? "—")
-                    devRow("BOARD READY", "\(state.localBoardReady ? "L" : "—") / \(state.remoteBoardReady ? "R" : "—")")
-                    devRow("REMATCH", "\(state.localWantsRematch ? "L" : "—") / \(state.remoteWantsRematch ? "R" : "—")")
-                    devRow("REMOTE MOVE #", "\(state.lastRemoteMoveNumber)")
-                    let connectionStatus: String = {
-                        if state.phase == .idle || state.phase == .searching { return "—" }
-                        if state.remoteOutcome == .disconnected { return "DISCONNECTED" }
-                        if state.phase == .matched || state.phase == .countdown || state.phase == .playing { return "CONNECTED" }
-                        return "ENDED"
-                    }()
-                    devRow("CONNECTION", connectionStatus)
+            // Big toggle button
+            Button {
+                let newState = !isActive
+                VersusFeatureFlag.setEnabled(newState)
+                if newState {
+                    VersusFeatureFlag.setVisibleInHome(true)
+                    VersusFeatureFlag.setMatchmakingAllowed(true)
                 }
-                .padding(.horizontal, 16).padding(.vertical, 12)
+                refreshID = UUID()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isActive ? "power" : "bolt.fill")
+                        .font(.system(size: 14, weight: .bold))
+                    Text(isActive ? "DEACTIVATE" : "ACTIVATE VERSUS")
+                        .font(AppTheme.mono(13, weight: .bold))
+                        .kerning(1.5)
+                }
+                .foregroundStyle(isActive ? AppTheme.danger : .black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(isActive ? AppTheme.danger.opacity(0.15) : AppTheme.success)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                        .strokeBorder(isActive ? AppTheme.danger.opacity(0.5) : AppTheme.success.opacity(0.6), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+            }
+            .padding(.horizontal, 4)
 
-                TechDivider()
-                sectionHeader("ACTIONS")
+            if isActive {
+                TechLabel(text: "Button visible on Home · Matchmaking enabled", color: AppTheme.success.opacity(0.6))
+            } else {
+                TechLabel(text: "Tap to enable versus, show button on Home, and allow matchmaking", color: AppTheme.textSecondary.opacity(0.5))
+            }
+        }
+        .padding(20)
+        .background(AppTheme.surface)
+    }
 
-                VStack(spacing: 8) {
-                    let canMatch = gcManager.isAuthenticated && VersusFeatureFlag.isMatchmakingAllowed
-                    Button(action: { VersusMatchmakingManager.shared.findMatch() }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "person.2.fill")
-                                .font(.system(size: 10, weight: .bold))
-                            Text("FIND MATCH")
-                                .font(AppTheme.mono(10, weight: .bold))
-                                .kerning(0.8)
-                        }
-                        .foregroundStyle(canMatch ? AppTheme.accentPrimary : AppTheme.textSecondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(AppTheme.accentPrimary.opacity(canMatch ? 0.12 : 0.04))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 3)
-                                .strokeBorder(AppTheme.accentPrimary.opacity(canMatch ? 0.4 : 0.15), lineWidth: 0.6)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
+    // MARK: - Versus Quick Actions
+
+    private var versusQuickActions: some View {
+        let canMatch = gcManager.isAuthenticated && VersusFeatureFlag.isMatchmakingAllowed
+        let state = VersusMatchmakingManager.shared.matchState
+        let isSearching = state.phase == .searching
+        let isConnected = state.phase == .matched || state.phase == .countdown || state.phase == .playing
+
+        return VStack(spacing: 0) {
+            sectionHeader("PLAY")
+
+            VStack(spacing: 10) {
+                // Find Match — hero action
+                Button(action: { VersusMatchmakingManager.shared.findMatch() }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: isSearching ? "antenna.radiowaves.left.and.right" : "person.2.fill")
+                            .font(.system(size: 14, weight: .bold))
+                        Text(isSearching ? "SEARCHING…" : "FIND MATCH")
+                            .font(AppTheme.mono(12, weight: .bold))
+                            .kerning(1)
                     }
-                    .disabled(!canMatch)
+                    .foregroundStyle(canMatch ? AppTheme.accentPrimary : AppTheme.textSecondary.opacity(0.4))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(AppTheme.accentPrimary.opacity(canMatch ? 0.15 : 0.04))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppTheme.cardRadius)
+                            .strokeBorder(AppTheme.accentPrimary.opacity(canMatch ? 0.5 : 0.15), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+                }
+                .disabled(!canMatch || isSearching)
 
+                if !canMatch {
+                    TechLabel(
+                        text: !VersusFeatureFlag.isEnabled ? "Activate versus mode first" :
+                              !gcManager.isAuthenticated ? "Connect Game Center first" :
+                              "Enable matchmaking in advanced settings",
+                        color: AppTheme.textSecondary.opacity(0.5)
+                    )
+                }
+
+                // Disconnect
+                if isConnected || isSearching {
                     Button(action: { VersusMatchmakingManager.shared.disconnect() }) {
                         HStack(spacing: 6) {
                             Image(systemName: "xmark.circle")
-                                .font(.system(size: 10, weight: .bold))
-                            Text("DISCONNECT")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(isSearching ? "CANCEL SEARCH" : "DISCONNECT")
                                 .font(AppTheme.mono(10, weight: .bold))
                                 .kerning(0.8)
                         }
@@ -5832,6 +5997,117 @@ struct DevMenuView: View {
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 3))
                     }
+                }
+
+                // Live match info
+                if isConnected {
+                    HStack(spacing: 6) {
+                        Circle().fill(AppTheme.success).frame(width: 6, height: 6)
+                        Text("MATCHED WITH \(state.opponentDisplayName.uppercased())")
+                            .font(AppTheme.mono(9, weight: .bold))
+                            .foregroundStyle(AppTheme.success)
+                        Spacer()
+                    }
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+    }
+
+    // MARK: - Versus Status Section
+
+    private var versusStatusSection: some View {
+        let state = VersusMatchmakingManager.shared.matchState
+        return VStack(spacing: 0) {
+            sectionHeader("CONNECTION STATUS")
+
+            VStack(spacing: 8) {
+                devRow("GAME CENTER", gcManager.isAuthenticated ? "✓ \(gcManager.displayName)" : "✗ Not connected")
+                devRow("PHASE", "\(state.phase)")
+                devRow("OPPONENT", state.opponentDisplayName.isEmpty ? "—" : state.opponentDisplayName)
+                if state.phase != .idle {
+                    devRow("HOST", state.isHost ? "YES (you)" : "NO (opponent)")
+                    devRow("SEED", state.sharedSeed == 0 ? "—" : "\(state.sharedSeed)")
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+    }
+
+    // MARK: - Versus Advanced Section
+
+    @State private var showVersusAdvanced = false
+
+    private var versusAdvancedSection: some View {
+        VStack(spacing: 0) {
+            // Collapsible header
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showVersusAdvanced.toggle() }
+            } label: {
+                HStack {
+                    Image(systemName: showVersusAdvanced ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                    Text("ADVANCED")
+                        .font(AppTheme.mono(9, weight: .bold))
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .kerning(1.5)
+                    Spacer()
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+                .background(AppTheme.backgroundSecondary)
+            }
+
+            if showVersusAdvanced {
+                TechDivider()
+                sectionHeader("FEATURE FLAGS")
+
+                VStack(spacing: 12) {
+                    versusFlagRow(
+                        title: "ENABLED",
+                        subtitle: "Master gate — all versus functionality",
+                        isOn: Binding(
+                            get: { VersusFeatureFlag.isEnabled },
+                            set: { VersusFeatureFlag.setEnabled($0); refreshID = UUID() }
+                        ),
+                        tint: AppTheme.accentPrimary
+                    )
+                    versusFlagRow(
+                        title: "VISIBLE IN HOME",
+                        subtitle: "Show \"VERSUS 1v1\" button on Home screen",
+                        isOn: Binding(
+                            get: { VersusFeatureFlag.isVisibleInHome },
+                            set: { VersusFeatureFlag.setVisibleInHome($0); refreshID = UUID() }
+                        ),
+                        tint: AppTheme.accentPrimary,
+                        disabled: !VersusFeatureFlag.isEnabled
+                    )
+                    versusFlagRow(
+                        title: "ALLOW MATCHMAKING",
+                        subtitle: "Allow GKMatchmaker.findMatch() calls",
+                        isOn: Binding(
+                            get: { VersusFeatureFlag.isMatchmakingAllowed },
+                            set: { VersusFeatureFlag.setMatchmakingAllowed($0); refreshID = UUID() }
+                        ),
+                        tint: AppTheme.accentPrimary,
+                        disabled: !VersusFeatureFlag.isEnabled
+                    )
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+
+                TechDivider()
+                sectionHeader("MATCH DETAILS")
+
+                VStack(spacing: 8) {
+                    let state = VersusMatchmakingManager.shared.matchState
+                    devRow("LOCAL STATUS", state.localSnapshot.status.uppercased())
+                    devRow("REMOTE STATUS", state.remoteSnapshot.status.uppercased())
+                    devRow("LOCAL OUTCOME", state.localOutcome?.rawValue.uppercased() ?? "—")
+                    devRow("REMOTE OUTCOME", state.remoteOutcome?.rawValue.uppercased() ?? "—")
+                    devRow("BOARD READY", "\(state.localBoardReady ? "L" : "—") / \(state.remoteBoardReady ? "R" : "—")")
+                    devRow("REMATCH", "\(state.localWantsRematch ? "L" : "—") / \(state.remoteWantsRematch ? "R" : "—")")
+                    devRow("REMOTE MOVE #", "\(state.lastRemoteMoveNumber)")
+                    devRow("PLAYER ID", GKLocalPlayer.local.isAuthenticated ? String(GKLocalPlayer.local.gamePlayerID.prefix(12)) + "…" : "—")
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
 
@@ -5868,6 +6144,7 @@ struct DevMenuView: View {
                 TechDivider()
                 versusExport
             }
+        }
     }
 
     // MARK: - Versus Session Monitor
@@ -6552,3 +6829,4 @@ private struct DevMechanicPreviewCard: View {
         }
     }
 }
+#endif

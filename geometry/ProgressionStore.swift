@@ -147,6 +147,13 @@ enum ProgressionStore {
             },
             streak: nil,
             weeklyRankChange: nil,
+            cooldownRemainingSeconds: {
+                let store = EntitlementStore.shared
+                guard !store.isPremium,
+                      let next = store.nextPlayableDate else { return nil }
+                let remaining = Int(next.timeIntervalSinceNow)
+                return remaining > 0 ? remaining : nil
+            }(),
             language: SettingsStore.shared.language.rawValue,
             updatedAt: Date()
         )

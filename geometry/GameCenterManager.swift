@@ -166,7 +166,6 @@ final class GameCenterManager: ObservableObject {
         let submissions: [(Int, [String])] = [
             (dailyScore,               [Self.leaderboardDailyChallenge]),
             (cumulativeDaily,          [Self.leaderboardDailyCumulative]),
-            (profile.leaderboardScore, [Self.leaderboardTotalScore]),
         ]
 
         for (score, ids) in submissions where score > 0 {
@@ -283,6 +282,10 @@ final class GameCenterManager: ObservableObject {
                 )
             }
             LeaderboardCache.update(entries: cached, playerRank: rank, totalPlayers: total)
+            // Push fresh leaderboard data to widgets
+            await MainActor.run {
+                ProgressionStore.pushWidgetSnapshot(ProgressionStore.profile)
+            }
         } catch {
             // Rank loading is best-effort — failure is silent
             #if DEBUG

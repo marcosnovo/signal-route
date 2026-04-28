@@ -1,101 +1,63 @@
 import Foundation
 
 // MARK: - VersusBoardGenerator
-/// Generates the 5-row × 9-column versus split-board from a shared seed.
+/// Generates a standard 5×5 versus board from a shared seed.
 ///
-/// Layout:
-///   cols 0-3:  Player 1 zone (host)
-///   col 4:     Center objective column (shared beacon targets)
-///   cols 5-8:  Player 2 zone (guest) — horizontally mirrored from P1
+/// Both players get the same board and solve it independently.
+/// Layout is identical to a campaign level: source on one edge, target(s) on the other.
 ///
 /// Deterministic: same seed → identical board on both devices.
 enum VersusBoardGenerator {
 
-    static let rows = 5
-    static let cols = 9
-    static let p1Range = 0...3
-    static let centerCol = 4
-    static let p2Range = 5...8
-    static let panelCols = 4
+    static let gridSize = 5
 
-    /// Mechanics eligible for versus (fast-game-friendly only).
-    private static let versusMechanics: [MechanicType] = [
-        .rotationCap, .overloaded, .oneWayRelay, .interferenceZone
-    ]
+    private static let versusMechanics: [MechanicType] = []
 
     // MARK: - Public API
 
-    /// Build the full 5×9 board from a seed and config.
+    /// Build a 5×5 solvable board from a seed and config.
     static func buildBoard(seed: UInt64, config: VersusLevelConfig) -> [[Tile]] {
-        var rng = SeededRNG(seed: seed)
-
-        // Step 1: Generate P1's 5×4 panel (source at col 0, path toward col 3)
-        let p1Panel = generatePanel(rng: &rng)
-
-        // Step 2: Mirror P1 → P2
-        let p2Panel = mirrorPanel(p1Panel)
-
-        // Step 3: Build center column
-        let center = buildCenterColumn()
-
-        // Step 4: Assemble the 5×9 grid
-        var grid: [[Tile]] = []
-        for row in 0..<rows {
-            var fullRow: [Tile] = []
-            // P1 zone (cols 0-3)
-            for col in 0..<panelCols {
-                var tile = p1Panel[row][col]
-                tile.owner = .p1
-                fullRow.append(tile)
+        for attempt in 0..<10 {
+            let grid = buildBoardAttempt(seed: seed &+ UInt64(attempt), config: config)
+            if verifySolvable(grid) {
+                #if DEBUG
+                print("[VersusBoard] Attempt \(attempt) solvable ✓")
+                #endif
+                return grid
             }
-            // Center (col 4)
-            fullRow.append(center[row])
-            // P2 zone (cols 5-8)
-            for col in 0..<panelCols {
-                var tile = p2Panel[row][col]
-                tile.owner = .p2
-                fullRow.append(tile)
-            }
-            grid.append(fullRow)
+            #if DEBUG
+            print("[VersusBoard] Attempt \(attempt) unsolvable — retrying")
+            #endif
         }
-
-        // Step 5: Apply versus-safe mechanics symmetrically
-        applyVersusMechanics(to: &grid, rng: &rng)
-
-        // Step 6: Verify not already solved (rescue if needed)
-        rescueIfSolved(&grid, rng: &rng)
-
-        return grid
+        return buildBoardAttempt(seed: seed, config: config)
     }
 
-    // MARK: - Panel Generation (5×4)
+    // MARK: - Board Generation
 
-    /// Generate one player's 5×4 panel.
-    /// Source is placed on the left edge (col 0), DFS path carves toward the right edge (col 3).
-    /// The right-edge tile gets an East connection so it can reach the center column.
-    private static func generatePanel(rng: inout SeededRNG) -> [[Tile]] {
-        let sourceRow = rng.nextInt(rows)
-        let exitRow = rng.nextInt(rows)
+    private static func buildBoardAttempt(seed: UInt64, config: VersusLevelConfig) -> [[Tile]] {
+        var rng = SeededRNG(seed: seed)
+        let size = gridSize
 
-        var connMap = Array(repeating: Array(repeating: Set<Direction>(), count: panelCols), count: rows)
-        var roleMap = Array(repeating: Array(repeating: NodeRole.relay, count: panelCols), count: rows)
+        let sourceRow = rng.nextInt(size)
+        let targetRow = rng.nextInt(size)
+
+        var connMap = Array(repeating: Array(repeating: Set<Direction>(), count: size), count: size)
+        var roleMap = Array(repeating: Array(repeating: NodeRole.relay, count: size), count: size)
         roleMap[sourceRow][0] = .source
+        roleMap[targetRow][size - 1] = .target
 
-        // DFS path from source to exit
-        let path = panelDFS(
-            from: (sourceRow, 0), to: (exitRow, panelCols - 1),
-            rows: rows, cols: panelCols, rng: &rng
+        // DFS path from source to target
+        let path = dfs(
+            from: (sourceRow, 0), to: (targetRow, size - 1),
+            size: size, rng: &rng
         )
         applyPathConnections(path: path, to: &connMap)
 
-        // The exit tile needs an East connection toward the center column
-        connMap[exitRow][panelCols - 1].insert(.east)
-
         // Build tile grid
-        var panel: [[Tile]] = []
-        for r in 0..<rows {
+        var grid: [[Tile]] = []
+        for r in 0..<size {
             var row: [Tile] = []
-            for c in 0..<panelCols {
+            for c in 0..<size {
                 let conns = connMap[r][c]
                 let role = roleMap[r][c]
 
@@ -110,76 +72,89 @@ enum VersusBoardGenerator {
                     row.append(tile)
                 }
             }
-            panel.append(row)
+            grid.append(row)
         }
 
-        return panel
+        // Apply mechanics based on difficulty
+        let difficulty = DifficultyTier(rawValue: config.difficultyRaw) ?? .medium
+        applyMechanics(to: &grid, rng: &rng, difficulty: difficulty)
+
+        // Rescue if already solved at initial state
+        rescueIfSolved(&grid, rng: &rng)
+
+        return grid
     }
 
-    // MARK: - Mirror
+    // MARK: - Solvability Verification
 
-    /// Mirror a 5×4 panel horizontally: col c → col (3-c), swap E↔W connections.
-    private static func mirrorPanel(_ panel: [[Tile]]) -> [[Tile]] {
-        panel.map { row in
-            row.reversed().map { mirrorTileHorizontally($0) }
-        }
-    }
+    private static func verifySolvable(_ grid: [[Tile]]) -> Bool {
+        let size = gridSize
+        var test = grid
+        var solved = Set<Int>()
 
-    /// Mirror a single tile's orientation horizontally (E↔W swap).
-    /// Finds the rotation producing the E↔W-swapped connection set for the same tile type.
-    private static func mirrorTileHorizontally(_ tile: Tile) -> Tile {
-        var result = tile
-        let currentConns = tile.connections
-        // Swap east ↔ west
-        let mirroredConns: Set<Direction> = Set(currentConns.map { dir in
-            switch dir {
-            case .east:  return .west
-            case .west:  return .east
-            default:     return dir
+        for r in 0..<size {
+            for c in 0..<size where test[r][c].role == .source {
+                solved.insert(r * size + c)
             }
-        })
-        // Find the rotation that produces mirroredConns for this tile type
-        if let rotations = TileType.rotatedConnections[tile.type] {
-            for rot in 0..<4 {
-                if rotations[rot] == mirroredConns {
-                    result.rotation = rot
-                    break
+        }
+
+        var changed = true
+        while changed {
+            changed = false
+            for r in 0..<size {
+                for c in 0..<size {
+                    let key = r * size + c
+                    guard !solved.contains(key) else { continue }
+                    guard test[r][c].role == .relay || test[r][c].role == .target else { continue }
+
+                    for dir in Direction.allCases {
+                        let (nr, nc) = neighborPos(r, c, dir)
+                        guard nr >= 0, nr < size, nc >= 0, nc < size else { continue }
+                        let nkey = nr * size + nc
+                        guard solved.contains(nkey) else { continue }
+                        guard test[nr][nc].connections.contains(dir.opposite) else { continue }
+
+                        for rot in 0..<4 {
+                            test[r][c].rotation = rot
+                            guard test[r][c].connections.contains(dir) else { continue }
+                            let others = test[r][c].connections.subtracting([dir])
+                            let valid = others.allSatisfy { d in
+                                let (onr, onc) = neighborPos(r, c, d)
+                                guard onr >= 0, onr < size, onc >= 0, onc < size else { return false }
+                                return test[onr][onc].role != .none
+                            }
+                            if valid {
+                                solved.insert(key)
+                                changed = true
+                                break
+                            }
+                        }
+                        if solved.contains(key) { break }
+                    }
                 }
             }
         }
-        // Mirror blocked inbound directions (for one-way relay)
-        if !tile.baseBlockedInboundDirections.isEmpty {
-            result.baseBlockedInboundDirections = Set(tile.baseBlockedInboundDirections.map { dir in
-                switch dir {
-                case .east:  return .west
-                case .west:  return .east
-                default:     return dir
-                }
-            })
-            result._recomputeBlockedCache()
-        }
-        // Mirror source role → stays source, relay → relay
-        return result
-    }
 
-    // MARK: - Center Column
-
-    /// 5 fixed beacon tiles: E+W connections, role = .target, non-rotatable.
-    private static func buildCenterColumn() -> [Tile] {
-        (0..<rows).map { _ in
-            var tile = Tile(type: .straight, rotation: 1) // rotation 1 = E+W
-            tile.role = .target
-            tile.maxRotations = 0 // non-rotatable
-            return tile
+        // Check all targets are solvable
+        for r in 0..<size {
+            for c in 0..<size where test[r][c].role == .target {
+                if !solved.contains(r * size + c) { return false }
+            }
         }
+        return true
     }
 
     // MARK: - Mechanics
 
-    private static func applyVersusMechanics(to grid: inout [[Tile]], rng: inout SeededRNG) {
-        // Pick 0-2 mechanics from the eligible set
+    private static func applyMechanics(to grid: inout [[Tile]], rng: inout SeededRNG, difficulty: DifficultyTier) {
         var pool = versusMechanics
-        let count = rng.nextInt(3) // 0, 1, or 2
+        let count: Int
+        switch difficulty {
+        case .easy:   count = 0
+        case .medium: count = rng.nextInt(2)
+        case .hard:   count = 1 + rng.nextInt(2)
+        case .expert: count = 2 + min(1, rng.nextInt(2))
+        }
         var selected: [MechanicType] = []
         for _ in 0..<count {
             guard !pool.isEmpty else { break }
@@ -187,31 +162,21 @@ enum VersusBoardGenerator {
             selected.append(pool.remove(at: idx))
         }
 
-        // Apply each mechanic to both panels symmetrically
         for mechanic in selected {
-            applyMechanicToPanel(mechanic, grid: &grid, colRange: p1Range, rng: &rng)
-            // Use a fresh RNG branch for P2 so the placement mirrors P1's pattern
-            var p2Rng = rng
-            applyMechanicToPanel(mechanic, grid: &grid, colRange: p2Range, rng: &p2Rng)
+            applyMechanic(mechanic, grid: &grid, rng: &rng)
         }
     }
 
-    private static func applyMechanicToPanel(
-        _ mechanic: MechanicType,
-        grid: inout [[Tile]],
-        colRange: ClosedRange<Int>,
-        rng: inout SeededRNG
-    ) {
-        // Collect relay tiles in this panel
+    private static func applyMechanic(_ mechanic: MechanicType, grid: inout [[Tile]], rng: inout SeededRNG) {
+        let size = gridSize
         var relays: [(Int, Int)] = []
-        for r in 0..<rows {
-            for c in colRange where grid[r][c].role == .relay {
+        for r in 0..<size {
+            for c in 0..<size where grid[r][c].role == .relay {
                 relays.append((r, c))
             }
         }
         guard !relays.isEmpty else { return }
 
-        // Seeded shuffle
         for i in stride(from: relays.count - 1, through: 1, by: -1) {
             relays.swapAt(i, rng.nextInt(i + 1))
         }
@@ -219,105 +184,78 @@ enum VersusBoardGenerator {
         switch mechanic {
         case .rotationCap:
             let n = min(2, relays.count)
-            for i in 0..<n {
-                let (r, c) = relays[i]
-                grid[r][c].maxRotations = 3
-            }
+            for i in 0..<n { grid[relays[i].0][relays[i].1].maxRotations = 3 }
         case .overloaded:
-            if let (r, c) = relays.first {
-                grid[r][c].isOverloaded = true
-            }
-        case .oneWayRelay:
-            if let idx = relays.firstIndex(where: { grid[$0.0][$0.1].connections.count == 2 }) {
-                let (r, c) = relays[idx]
-                let conns = grid[r][c].connections
-                if let exitDir = conns.first(where: { $0 == .east || $0 == .west }) {
-                    let (_, solvedRot) = tileSpec(for: conns)
-                    let baseDir = exitDir.rotated(by: (4 - solvedRot) % 4)
-                    grid[r][c].baseBlockedInboundDirections = [baseDir]
-                    grid[r][c]._recomputeBlockedCache()
-                }
-            }
+            if let (r, c) = relays.first { grid[r][c].isOverloaded = true }
         case .interferenceZone:
             let n = min(2, relays.count)
-            for i in 0..<n {
-                let (r, c) = relays[i]
-                grid[r][c].hasInterference = true
-            }
+            for i in 0..<n { grid[relays[i].0][relays[i].1].hasInterference = true }
         default:
             break
         }
     }
 
-    // MARK: - Starts-Solved Rescue
+    // MARK: - Rescue (break starts-solved boards)
 
-    /// If either panel already connects source to center at initial state, rotate a relay to break it.
     private static func rescueIfSolved(_ grid: inout [[Tile]], rng: inout SeededRNG) {
-        func isConnected(player: VersusPlayer, in grid: [[Tile]]) -> Bool {
-            let sourceRange = player == .p1 ? p1Range : p2Range
-            let allowedCols = player == .p1 ? 0...centerCol : centerCol...8
-            var energized = Array(repeating: Array(repeating: false, count: cols), count: rows)
-            var queue: [(Int, Int)] = []
-            for r in 0..<rows {
-                for c in sourceRange where grid[r][c].role == .source {
-                    energized[r][c] = true
-                    queue.append((r, c))
-                }
-            }
-            var visited = Set<Int>()
-            while !queue.isEmpty {
-                let (r, c) = queue.removeFirst()
-                let key = r * cols + c
-                guard visited.insert(key).inserted else { continue }
-                if c == centerCol { return true }
-                for dir in grid[r][c].connections {
-                    let (nr, nc) = neighborPos(r, c, dir)
-                    guard nr >= 0, nr < rows, nc >= 0, nc < cols else { continue }
-                    guard allowedCols.contains(nc) else { continue }
-                    guard grid[nr][nc].connections.contains(dir.opposite) else { continue }
-                    guard !energized[nr][nc] else { continue }
-                    energized[nr][nc] = true
-                    if nc != centerCol { queue.append((nr, nc)) }
-                }
-            }
-            return false
-        }
-
-        // Rescue P1 if already connected
-        if isConnected(player: .p1, in: grid) {
-            for r in 0..<rows {
-                for c in p1Range where grid[r][c].role == .relay {
-                    grid[r][c].rotation = (grid[r][c].rotation + 1) % 4
-                    if !isConnected(player: .p1, in: grid) { break }
-                }
-                if !isConnected(player: .p1, in: grid) { break }
-            }
-        }
-
-        // Mirror the rescue for P2
-        if isConnected(player: .p2, in: grid) {
-            for r in 0..<rows {
-                for c in p2Range where grid[r][c].role == .relay {
-                    grid[r][c].rotation = (grid[r][c].rotation + 1) % 4
-                    if !isConnected(player: .p2, in: grid) { break }
-                }
-                if !isConnected(player: .p2, in: grid) { break }
+        guard isSolvedAtInitialState(grid) else { return }
+        let size = gridSize
+        for r in 0..<size {
+            for c in 0..<size where grid[r][c].role == .relay {
+                grid[r][c].rotation = (grid[r][c].rotation + 1) % 4
+                if !isSolvedAtInitialState(grid) { return }
             }
         }
     }
 
+    private static func isSolvedAtInitialState(_ grid: [[Tile]]) -> Bool {
+        let size = gridSize
+        var energized = Array(repeating: Array(repeating: false, count: size), count: size)
+        var queue: [(Int, Int)] = []
+
+        for r in 0..<size {
+            for c in 0..<size where grid[r][c].role == .source {
+                energized[r][c] = true
+                queue.append((r, c))
+            }
+        }
+
+        var visited = Set<Int>()
+        while !queue.isEmpty {
+            let (r, c) = queue.removeFirst()
+            let key = r * size + c
+            guard visited.insert(key).inserted else { continue }
+
+            for dir in grid[r][c].connections {
+                let (nr, nc) = neighborPos(r, c, dir)
+                guard nr >= 0, nr < size, nc >= 0, nc < size else { continue }
+                guard grid[nr][nc].connections.contains(dir.opposite) else { continue }
+                guard !energized[nr][nc] else { continue }
+                energized[nr][nc] = true
+                queue.append((nr, nc))
+            }
+        }
+
+        for r in 0..<size {
+            for c in 0..<size where grid[r][c].role == .target {
+                if energized[r][c] { return true }
+            }
+        }
+        return false
+    }
+
     // MARK: - DFS Path Finding
 
-    private static func panelDFS(
+    private static func dfs(
         from start: (Int, Int), to end: (Int, Int),
-        rows: Int, cols: Int,
+        size: Int,
         rng: inout SeededRNG
     ) -> [(Int, Int)] {
-        var visited = Array(repeating: Array(repeating: false, count: cols), count: rows)
+        var visited = Array(repeating: Array(repeating: false, count: size), count: size)
         var path: [(Int, Int)] = []
         var r = rng
 
-        func dfs(_ cell: (Int, Int)) -> Bool {
+        func search(_ cell: (Int, Int)) -> Bool {
             guard !visited[cell.0][cell.1] else { return false }
             visited[cell.0][cell.1] = true
             path.append(cell)
@@ -330,8 +268,8 @@ enum VersusBoardGenerator {
 
             for (dr, dc) in offsets {
                 let nr = cell.0 + dr, nc = cell.1 + dc
-                if nr >= 0, nr < rows, nc >= 0, nc < cols {
-                    if dfs((nr, nc)) { return true }
+                if nr >= 0, nr < size, nc >= 0, nc < size {
+                    if search((nr, nc)) { return true }
                 }
             }
 
@@ -339,12 +277,12 @@ enum VersusBoardGenerator {
             return false
         }
 
-        _ = dfs(start)
+        _ = search(start)
         rng = r
         return path
     }
 
-    // MARK: - Helpers (duplicated from LevelGenerator — those are private)
+    // MARK: - Helpers
 
     private static func applyPathConnections(
         path: [(Int, Int)],
@@ -389,8 +327,12 @@ enum VersusBoardGenerator {
     }
 
     private static func noiseTile(rng: inout SeededRNG) -> Tile {
-        let types: [TileType] = [.straight, .curve, .tShape, .cross]
-        return Tile(type: types[rng.nextInt(types.count)], rotation: rng.nextInt(4))
+        let types: [TileType] = [.straight, .curve]
+        let type = types[rng.nextInt(types.count)]
+        let rotation = rng.nextInt(4)
+        var tile = Tile(type: type, rotation: rotation)
+        tile.role = .relay
+        return tile
     }
 
     private static func neighborPos(_ r: Int, _ c: Int, _ dir: Direction) -> (Int, Int) {

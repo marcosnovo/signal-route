@@ -402,6 +402,90 @@ struct WidgetEmptyState: View {
     }
 }
 
+// MARK: - PremiumLockedView
+/// Locked overlay shown to free users on premium-only widgets.
+struct PremiumLockedView: View {
+    let widgetName: String
+    var darkBackground: Bool = true
+
+    private var fg: Color { darkBackground ? WidgetTheme.textSecondary : WidgetTheme.sageMid }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 20, weight: .light))
+                .foregroundStyle(fg.opacity(0.6))
+            Text(widgetName)
+                .font(WidgetTheme.mono(8, weight: .bold))
+                .tracking(1.5)
+                .foregroundStyle(fg)
+            Text("PREMIUM")
+                .font(WidgetTheme.mono(6, weight: .semibold))
+                .tracking(1.2)
+                .foregroundStyle(WidgetTheme.accentOrange)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - TelemetryCell
+/// Data cell with color-coded value for telemetry widgets.
+struct TelemetryCell: View {
+    let label: String
+    let value: String
+    var color: Color = WidgetTheme.sage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(WidgetTheme.mono(6.5, weight: .semibold))
+                .tracking(1.5)
+                .foregroundStyle(WidgetTheme.onDarkSub)
+            Text(value)
+                .font(WidgetTheme.sans(17, weight: .heavy))
+                .tracking(-0.5)
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+        }
+        .padding(.vertical, 7)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Efficiency Color Helper
+extension WidgetTheme {
+    static func efficiencyColor(_ pct: Int) -> Color {
+        if pct >= 80 { return success }
+        if pct >= 50 { return accentOrange }
+        return danger
+    }
+}
+
+// MARK: - DarkSectorStrip
+/// 8-segment sector strip for dark backgrounds. Completed = sage, current = orange, future = dim outline.
+struct DarkSectorStrip: View {
+    var totalSectors: Int = 8
+    var completedSectors: Int = 2
+    var height: CGFloat = 8
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<totalSectors, id: \.self) { i in
+                if i < completedSectors {
+                    Rectangle().fill(WidgetTheme.sage)
+                } else if i == completedSectors {
+                    Rectangle().fill(WidgetTheme.accentOrange)
+                } else {
+                    Rectangle().stroke(Color.white.opacity(0.15), lineWidth: 1)
+                }
+            }
+        }
+        .frame(height: height)
+    }
+}
+
 // MARK: - Preview Snapshot
 /// Sample data for widget previews and placeholder states.
 enum PreviewSnapshots {
@@ -434,6 +518,7 @@ enum PreviewSnapshots {
         ],
         streak: 12,
         weeklyRankChange: 240,
+        cooldownRemainingSeconds: nil,
         language: "en",
         updatedAt: Date()
     )

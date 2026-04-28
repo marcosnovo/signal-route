@@ -26,7 +26,13 @@ struct VersusView: View {
     private var matchState: VersusMatchState { versusManager.matchState }
     private var S: AppStrings { AppStrings(lang: settings.language) }
 
+    private var localPlayerAvatar: UIImage? {
+        GameCenterManager.shared.playerAvatar ?? matchState.localPlayerAvatar
+    }
+
     @State private var countdownDigit: Int? = nil
+    @State private var findMatchPulsing = false
+    @State private var selectedDifficulty: DifficultyTier = .medium
 
     var body: some View {
         ZStack {
@@ -96,53 +102,156 @@ struct VersusView: View {
     // MARK: - Lobby (Idle)
 
     private var versusLobby: some View {
-        VStack(spacing: 0) {
-            Spacer()
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 0) {
+                Spacer().frame(height: 40)
 
-            versusHeader
+                versusHeader
 
-            Spacer().frame(height: 36)
+                Spacer().frame(height: 24)
 
-            // Local player avatar
-            playerAvatar(
-                image: matchState.localPlayerAvatar,
-                name: matchState.localPlayerName,
-                accentColor: AppTheme.accentPrimary,
-                size: 80
-            )
+                playerAvatar(
+                    image: localPlayerAvatar,
+                    name: matchState.localPlayerName,
+                    accentColor: AppTheme.accentPrimary,
+                    size: 72
+                )
 
-            Spacer().frame(height: 36)
+                Spacer().frame(height: 28)
 
-            // Find Match button
-            Button(action: {
-                VersusAnalytics.shared.trackCTATap(gcAuthenticated: GKLocalPlayer.local.isAuthenticated)
-                versusManager.findMatch()
-            }) {
-                HStack(spacing: 10) {
-                    Image(systemName: "antenna.radiowaves.left.and.right")
-                        .font(.system(size: 14, weight: .bold))
-                    Text(S.findMatch)
-                        .font(AppTheme.mono(14, weight: .bold))
-                        .kerning(1.2)
+                // Find Match button
+                Button(action: {
+                    SoundManager.play(.tapPrimary)
+                    HapticsManager.medium()
+                    VersusAnalytics.shared.trackCTATap(gcAuthenticated: GKLocalPlayer.local.isAuthenticated)
+                    versusManager.findMatch()
+                }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.system(size: 14, weight: .bold))
+                        Text(S.findMatch)
+                            .font(AppTheme.mono(14, weight: .bold))
+                            .kerning(1.2)
+                    }
+                    .foregroundStyle(AppTheme.backgroundPrimary)
+                    .frame(width: 260, height: 50)
+                    .background(AppTheme.accentPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 }
-                .foregroundStyle(AppTheme.backgroundPrimary)
-                .padding(.horizontal, 36)
-                .padding(.vertical, 14)
-                .background(AppTheme.accentPrimary)
-                .clipShape(Capsule())
+                .disabled(!GKLocalPlayer.local.isAuthenticated)
+                .opacity(GKLocalPlayer.local.isAuthenticated ? 1 : 0.4)
+                .shadow(color: AppTheme.accentPrimary.opacity(findMatchPulsing ? 0.30 : 0.08),
+                        radius: 12, y: 2)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                        findMatchPulsing = true
+                    }
+                }
+
+                Spacer().frame(height: 10)
+
+                gcStatusLabel
+
+                Spacer().frame(height: 28)
+
+                // Bot section (difficulty picker is here — only for solo test)
+                botSection
+                    .padding(.horizontal, 20)
+
+                Spacer().frame(height: 28)
+
+                closeButton()
             }
-            .disabled(!GKLocalPlayer.local.isAuthenticated)
-            .opacity(GKLocalPlayer.local.isAuthenticated ? 1 : 0.4)
-
-            Spacer().frame(height: 16)
-
-            gcStatusLabel
-
-            Spacer()
-
-            closeButton()
+            .padding()
         }
-        .padding()
+    }
+
+    // MARK: - Difficulty Picker
+
+    private var difficultyPicker: some View {
+        VStack(spacing: 8) {
+            Text(S.versusDifficulty)
+                .font(AppTheme.mono(8, weight: .bold))
+                .kerning(1.5)
+                .foregroundStyle(AppTheme.textSecondary)
+
+            HStack(spacing: 6) {
+                ForEach(DifficultyTier.allCases) { tier in
+                    let isSelected = tier == selectedDifficulty
+                    Button(action: {
+                        SoundManager.play(.tapPrimary)
+                        HapticsManager.light()
+                        selectedDifficulty = tier
+                    }) {
+                        Text(S.difficultyFullLabel(tier))
+                            .font(AppTheme.mono(9, weight: isSelected ? .black : .bold))
+                            .kerning(0.6)
+                            .foregroundStyle(isSelected ? AppTheme.backgroundPrimary : AppTheme.textSecondary)
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .background(isSelected ? AppTheme.accentPrimary : AppTheme.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .strokeBorder(
+                                        isSelected ? Color.clear : AppTheme.stroke,
+                                        lineWidth: 0.75
+                                    )
+                            )
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Bot Section
+
+    private var botSection: some View {
+        VStack(spacing: 10) {
+            Text(S.versusChooseBot)
+                .font(AppTheme.mono(8, weight: .bold))
+                .kerning(1.5)
+                .foregroundStyle(AppTheme.textSecondary)
+
+            difficultyPicker
+
+            HStack(spacing: 8) {
+                botButton(difficulty: .easy, label: S.versusBotEasy, icon: "tortoise.fill")
+                botButton(difficulty: .medium, label: S.versusBotMedium, icon: "cpu")
+                botButton(difficulty: .hard, label: S.versusBotHard, icon: "bolt.fill")
+            }
+
+            Text(S.versusSoloHint)
+                .font(AppTheme.mono(7, weight: .medium))
+                .kerning(0.5)
+                .foregroundStyle(AppTheme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    private func botButton(difficulty: VersusBotDifficulty, label: String, icon: String) -> some View {
+        Button(action: {
+            SoundManager.play(.tapPrimary)
+            HapticsManager.light()
+            versusManager.startSoloTest(botDifficulty: difficulty, difficulty: selectedDifficulty)
+        }) {
+            VStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .bold))
+                Text(label)
+                    .font(AppTheme.mono(8, weight: .bold))
+                    .kerning(0.5)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .foregroundStyle(AppTheme.sage)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(AppTheme.sage.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .strokeBorder(AppTheme.sage.opacity(0.25), lineWidth: 0.75)
+            )
+        }
     }
 
     // MARK: - Searching
@@ -167,7 +276,7 @@ struct VersusView: View {
                 PulsingRing(color: AppTheme.accentPrimary, delay: 1.6)
 
                 // Avatar
-                avatarCircle(image: matchState.localPlayerAvatar, size: 72)
+                avatarCircle(image: localPlayerAvatar, size: 72)
             }
             .frame(width: 160, height: 160)
 
@@ -192,7 +301,10 @@ struct VersusView: View {
             Spacer().frame(height: 32)
 
             // Cancel button
-            Button(action: { versusManager.cancelSearch() }) {
+            Button(action: {
+                SoundManager.play(.tapPrimary)
+                versusManager.cancelSearch()
+            }) {
                 HStack(spacing: 6) {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .bold))
@@ -201,10 +313,12 @@ struct VersusView: View {
                         .kerning(0.8)
                 }
                 .foregroundStyle(AppTheme.danger)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 10)
+                .frame(width: 200, height: 40)
+                .background(AppTheme.danger.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    Capsule().strokeBorder(AppTheme.danger.opacity(0.5), lineWidth: 0.75)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .strokeBorder(AppTheme.danger.opacity(0.3), lineWidth: 0.75)
                 )
             }
 
@@ -230,7 +344,7 @@ struct VersusView: View {
             HStack(spacing: 0) {
                 // Local player
                 playerAvatar(
-                    image: matchState.localPlayerAvatar,
+                    image: localPlayerAvatar,
                     name: matchState.localPlayerName,
                     accentColor: AppTheme.accentPrimary,
                     size: 64
@@ -297,6 +411,30 @@ struct VersusView: View {
             }
 
             Spacer()
+
+            // Cancel button — available during matched + countdown
+            Button(action: {
+                SoundManager.play(.tapPrimary)
+                versusManager.disconnect()
+                onDismiss()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                    Text(S.versusCancel)
+                        .font(AppTheme.mono(11, weight: .bold))
+                        .kerning(0.8)
+                }
+                .foregroundStyle(AppTheme.danger)
+                .frame(width: 200, height: 40)
+                .background(AppTheme.danger.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .strokeBorder(AppTheme.danger.opacity(0.3), lineWidth: 0.75)
+                )
+            }
+            .padding(.bottom, 16)
         }
         .padding()
         .onChange(of: matchState.phase) { _, newPhase in
@@ -304,6 +442,15 @@ struct VersusView: View {
                 startCountdownSequence()
             } else if newPhase != .countdown {
                 countdownDigit = nil
+            }
+            // Timeout: if stuck in .matched for 15s, show error
+            if newPhase == .matched {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(15))
+                    if matchState.phase == .matched {
+                        matchState.error = S.versusConnectionTimeout
+                    }
+                }
             }
         }
     }
@@ -331,26 +478,104 @@ struct VersusView: View {
     // MARK: - Gameplay
 
     private var versusGameplay: some View {
-        VersusV3GameplayView(vm: versusV3VM, matchState: matchState)
+        ZStack(alignment: .topLeading) {
+            VersusV3GameplayView(vm: versusV3VM, matchState: matchState)
+
+            // Forfeit button (top-left)
+            Button(action: {
+                versusManager.forfeitAndDisconnect()
+                onDismiss()
+            }) {
+                HStack(spacing: 5) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                    Text(S.versusExit)
+                        .font(AppTheme.mono(9, weight: .bold))
+                        .kerning(0.6)
+                }
+                .foregroundStyle(AppTheme.danger.opacity(0.8))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(AppTheme.backgroundPrimary.opacity(0.85))
+                .overlay(
+                    Capsule().strokeBorder(AppTheme.danger.opacity(0.3), lineWidth: 0.75)
+                )
+                .clipShape(Capsule())
+            }
+            .padding(.leading, 12)
+            .padding(.top, 8)
+        }
     }
 
     // MARK: - Result
 
     private var versusResult: some View {
-        VStack(spacing: 24) {
+        let localWon: Bool? = {
+            switch matchState.localResult {
+            case .win, .winByDisconnect: return true
+            case .lose, .loseByDisconnect: return false
+            case .draw, .pending: return nil
+            }
+        }()
+
+        return VStack(spacing: 0) {
             Spacer()
 
+            // Result title
             resultIcon
+                .padding(.bottom, 12)
             resultTitle
-            resultSubtitle
+                .padding(.bottom, 6)
             resultReason
+                .padding(.bottom, 28)
+
+            // Face-off card: player LEFT, opponent RIGHT
+            HStack(spacing: 0) {
+                // Local player — always left
+                resultPlayerColumn(
+                    avatar: localPlayerAvatar,
+                    name: matchState.localPlayerName,
+                    won: localWon,
+                    moves: versusV3VM.localTapCount,
+                    accentColor: localWon == true ? AppTheme.accentPrimary : AppTheme.danger
+                )
+
+                // VS separator
+                VStack(spacing: 4) {
+                    Text("VS")
+                        .font(AppTheme.mono(12, weight: .black))
+                        .kerning(2.0)
+                        .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
+                    Rectangle()
+                        .fill(AppTheme.stroke)
+                        .frame(width: 0.5, height: 24)
+                }
+                .frame(width: 40)
+
+                // Opponent — always right
+                resultPlayerColumn(
+                    avatar: matchState.opponentAvatar,
+                    name: matchState.opponentDisplayName,
+                    won: localWon.map { !$0 },
+                    moves: versusV3VM.remoteTapCount,
+                    accentColor: localWon == false ? AppTheme.accentPrimary : AppTheme.danger
+                )
+            }
+            .padding(.vertical, 20)
+            .padding(.horizontal, 16)
+            .background(AppTheme.surface.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(AppTheme.stroke, lineWidth: 0.5)
+            )
+            .padding(.horizontal, 28)
 
             Spacer()
 
             // Rematch (same opponent) — only if opponent didn't disconnect
             if matchState.localResult != .winByDisconnect && matchState.localResult != .loseByDisconnect {
                 if matchState.localWantsRematch {
-                    // Waiting for opponent
                     VStack(spacing: 10) {
                         ProgressView()
                             .tint(AppTheme.sage)
@@ -361,6 +586,8 @@ struct VersusView: View {
                     }
                 } else {
                     Button(action: {
+                        SoundManager.play(.tapPrimary)
+                        HapticsManager.medium()
                         VersusAnalytics.shared.trackRematchRequested()
                         versusV3VM.resetForRematch()
                         versusManager.sendRematch()
@@ -373,10 +600,9 @@ struct VersusView: View {
                                 .kerning(1.0)
                         }
                         .foregroundStyle(AppTheme.backgroundPrimary)
-                        .padding(.horizontal, 28)
-                        .padding(.vertical, 12)
+                        .frame(width: 200, height: 46)
                         .background(AppTheme.accentPrimary)
-                        .clipShape(Capsule())
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     }
                     .breathingCTA()
                 }
@@ -385,6 +611,54 @@ struct VersusView: View {
             closeButton(label: S.backToHome)
         }
         .padding()
+    }
+
+    /// A single player column in the result face-off card.
+    /// `won`: true = won, false = lost, nil = draw
+    private func resultPlayerColumn(
+        avatar: UIImage?, name: String, won: Bool?, moves: Int, accentColor: Color
+    ) -> some View {
+        let borderColor: Color = {
+            guard let won else { return AppTheme.sage }
+            return won ? AppTheme.accentPrimary : AppTheme.danger
+        }()
+        let badgeText: String = {
+            guard let won else { return S.versusDraw }
+            return won ? S.versusWon : S.versusLost
+        }()
+        let badgeColor: Color = {
+            guard let won else { return AppTheme.sage }
+            return won ? AppTheme.accentPrimary : AppTheme.danger
+        }()
+
+        return VStack(spacing: 8) {
+            // Avatar
+            avatarCircle(image: avatar, size: 56)
+                .overlay(
+                    Circle()
+                        .strokeBorder(borderColor.opacity(0.7), lineWidth: 2)
+                )
+                .shadow(color: borderColor.opacity(0.3), radius: 8)
+
+            // Name
+            Text(name.uppercased())
+                .font(AppTheme.mono(9, weight: .bold))
+                .kerning(0.6)
+                .foregroundStyle(AppTheme.textPrimary)
+                .lineLimit(1)
+
+            // Win/Loss badge
+            Text(badgeText)
+                .font(AppTheme.mono(10, weight: .black))
+                .kerning(1.5)
+                .foregroundStyle(badgeColor)
+
+            // Moves count
+            Text(S.tapsCount(moves))
+                .font(AppTheme.mono(8, weight: .medium))
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Shared Subviews
@@ -516,13 +790,14 @@ struct VersusView: View {
             case .pending:          return ""
             }
         }())
-        .font(AppTheme.mono(9, weight: .medium))
+        .font(AppTheme.mono(10, weight: .medium))
         .kerning(0.8)
         .foregroundStyle(AppTheme.textSecondary)
     }
 
     private func closeButton(label: String? = nil) -> some View {
         Button(action: {
+            SoundManager.play(.tapPrimary)
             versusManager.disconnect()
             onDismiss()
         }) {
@@ -530,10 +805,12 @@ struct VersusView: View {
                 .font(AppTheme.mono(11, weight: .bold))
                 .kerning(0.8)
                 .foregroundStyle(AppTheme.textSecondary)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 10)
+                .frame(width: 200, height: 40)
+                .background(Color.white.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .overlay(
-                    Capsule().strokeBorder(AppTheme.textSecondary.opacity(0.3), lineWidth: 0.75)
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .strokeBorder(AppTheme.textSecondary.opacity(0.2), lineWidth: 0.75)
                 )
         }
         .padding(.bottom, 16)
