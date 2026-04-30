@@ -492,6 +492,10 @@ struct AstronautProfile: Codable {
     /// but kept separate from campaign bestScoreByLevel.
     var dailyCumulativeScore: Int = 0
 
+    /// Scoring formula version. Bumped when the formula changes so that
+    /// `recalibrateScoresIfNeeded()` can recompute from efficiency ground truth.
+    var scoreVersion: Int = 0
+
     // MARK: - Safe Codable decoder
     // Swift's auto-synthesized init(from:) throws on missing keys.
     // New properties MUST be decoded with decodeIfPresent to avoid
@@ -505,6 +509,7 @@ struct AstronautProfile: Codable {
         lastEfficiencyByLevel = try c.decodeIfPresent([String: Float].self, forKey: .lastEfficiencyByLevel) ?? [:]
         bestScoreByLevel     = try c.decodeIfPresent([String: Int].self, forKey: .bestScoreByLevel) ?? [:]
         dailyCumulativeScore = try c.decodeIfPresent(Int.self, forKey: .dailyCumulativeScore) ?? 0
+        scoreVersion         = try c.decodeIfPresent(Int.self, forKey: .scoreVersion) ?? 0
     }
 
     init() {}
@@ -512,7 +517,7 @@ struct AstronautProfile: Codable {
     private enum CodingKeys: String, CodingKey {
         case level, totalScore, currentPlanetIndex
         case bestEfficiencyByLevel, lastEfficiencyByLevel, bestScoreByLevel
-        case dailyCumulativeScore
+        case dailyCumulativeScore, scoreVersion
     }
 
     /// Cumulative leaderboard score: campaign best scores only.
@@ -557,6 +562,24 @@ struct AstronautProfile: Codable {
                   let level = LevelGenerator.levels.first(where: { $0.id == levelId }) else { continue }
             bestScoreByLevel[key] = LevelScoring.computeScore(level: level, quality: efficiency)
         }
+    }
+
+    private static let currentScoreVersion = 2
+
+    /// Recalculates all `bestScoreByLevel` entries from `bestEfficiencyByLevel`
+    /// using the current scoring formula. Runs once per score version bump.
+    /// Returns `true` if scores were recalibrated (caller should resubmit to GC).
+    @discardableResult
+    mutating func recalibrateScoresIfNeeded() -> Bool {
+        guard scoreVersion < Self.currentScoreVersion,
+              !bestEfficiencyByLevel.isEmpty else { return false }
+        for (key, efficiency) in bestEfficiencyByLevel {
+            guard let levelId = Int(key),
+                  let level = LevelGenerator.levels.first(where: { $0.id == levelId }) else { continue }
+            bestScoreByLevel[key] = LevelScoring.computeScore(level: level, quality: min(1.0, efficiency))
+        }
+        scoreVersion = Self.currentScoreVersion
+        return true
     }
 
     // ── Computed — unique completion stats ────────────────────────────────

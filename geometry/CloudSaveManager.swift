@@ -94,7 +94,8 @@ final class CloudSaveManager: ObservableObject {
             mechanicUnlocks: MechanicUnlockStore.announcedRawValues,
             storySeenIDs:    Array(StoryStore.seenIDs).sorted()
         )
-        guard let data = try? JSONEncoder().encode(payload) else { return }
+        let encodeTask = Task.detached(priority: .utility) { try? JSONEncoder().encode(payload) }
+        guard let data = await encodeTask.value else { return }
 
         isSyncing = true
         defer { isSyncing = false }
@@ -409,6 +410,7 @@ final class CloudSaveManager: ObservableObject {
         // Scalar counters: always take the higher value
         cloud.totalScore = max(local.totalScore, cloud.totalScore)
         cloud.dailyCumulativeScore = max(local.dailyCumulativeScore, cloud.dailyCumulativeScore)
+        cloud.scoreVersion = max(local.scoreVersion, cloud.scoreVersion)
         // Level: cascade from merged data, then take the higher of cascaded vs local
         while cloud.canLevelUp { cloud.level += 1 }
         cloud.level = max(local.level, cloud.level)

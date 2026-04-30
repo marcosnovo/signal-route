@@ -490,6 +490,49 @@ struct AppStrings {
                                             "Ce défi ne peut être joué qu'une fois par jour. Vous ne pouvez ni mettre en pause ni quitter une fois lancé.") }
     var dailyChallengePlay:      String { t("PLAY",                          "JUGAR",                                 "JOUER") }
     var dailyChallengeNotReady:  String { t("NOT READY YET",                 "AÚN NO ESTOY PREPARADO",               "PAS ENCORE PRÊT") }
+    var today:                   String { t("TODAY",                          "HOY",                                   "AUJOURD'HUI") }
+    var dailyRankGlobal:         String { t("DAILY RANKING",                  "CLASIFICACIÓN DIARIA",                  "CLASSEMENT QUOTIDIEN") }
+    var leaderboardPickerTitle:  String { t("RANKINGS",                       "CLASIFICACIONES",                       "CLASSEMENTS") }
+    var leaderboardGlobal:       String { t("GLOBAL SCORE",                   "PUNTUACIÓN GLOBAL",                     "SCORE GLOBAL") }
+    var leaderboardDaily:        String { t("TODAY'S CHALLENGE",              "DESAFÍO DE HOY",                        "DÉFI DU JOUR") }
+    var leaderboardWeekly:       String { t("WEEKLY ACCUMULATED",             "ACUMULADO SEMANAL",                     "CUMUL HEBDOMADAIRE") }
+    var leaderboardByDifficulty: String { t("BY DIFFICULTY",                  "POR DIFICULTAD",                        "PAR DIFFICULTÉ") }
+    var leaderboardLoading:      String { t("LOADING…",                       "CARGANDO…",                             "CHARGEMENT…") }
+    var leaderboardEmpty:        String { t("No rankings yet",                "Sin clasificaciones aún",               "Pas encore de classement") }
+    var leaderboardYourRank:     String { t("YOUR RANK",                      "TU POSICIÓN",                           "VOTRE RANG") }
+    func leaderboardOfTotal(_ total: Int) -> String { t("of \(total) players", "de \(total) jugadores", "sur \(total) joueurs") }
+    var challengeFriend:         String { t("CHALLENGE A FRIEND",             "RETAR A UN AMIGO",                      "DÉFIER UN AMI") }
+    var challengeSubtitle:       String { t("Beat my score!",                 "¡Supera mi puntuación!",                "Bats mon score !") }
+    var noRankYet:               String { t("—",                              "—",                                     "—") }
+    var achievements:            String { t("ACHIEVEMENTS",                   "LOGROS",                                "SUCCÈS") }
+    var achievementCompleted:    String { t("COMPLETED",                      "COMPLETADO",                            "TERMINÉ") }
+    var achievementLocked:       String { t("LOCKED",                         "BLOQUEADO",                             "VERROUILLÉ") }
+    var achievementReplayable:   String { t("REPEATABLE",                     "REPETIBLE",                             "REJOUABLE") }
+    func achievementPoints(_ n: Int) -> String { t("\(n) PTS", "\(n) PTS", "\(n) PTS") }
+    func achievementRarity(_ pct: Int) -> String { t("Earned by \(pct)% of players", "Obtenido por el \(pct)% de jugadores", "Obtenu par \(pct)% des joueurs") }
+    var achievementChallenge:    String { t("CHALLENGE A FRIEND",             "RETAR A UN AMIGO",                      "DÉFIER UN AMI") }
+    var challengesTab:           String { t("CHALLENGES",                     "RETOS",                                 "DÉFIS") }
+    var challengeStart:          String { t("START CHALLENGE",                "INICIAR RETO",                          "LANCER LE DÉFI") }
+    var challengeActive:         String { t("ACTIVE",                         "ACTIVO",                                "ACTIF") }
+    var challengeRepeatable:     String { t("REPEATABLE",                     "REPETIBLE",                             "REJOUABLE") }
+    var challengeNone:           String { t("No challenges available",        "No hay retos disponibles",              "Aucun défi disponible") }
+    var challengeLoading:        String { t("Loading challenges…",            "Cargando retos…",                       "Chargement des défis…") }
+    func challengeDuration(_ d: String) -> String { t("Duration: \(d)", "Duración: \(d)", "Durée: \(d)") }
+    var challengeSelectTitle:    String { t("SELECT CHALLENGE",               "SELECCIONAR RETO",                      "SÉLECTIONNER DÉFI") }
+    var challengeFriends:        String { t("FRIENDS",                        "AMIGOS",                                "AMIS") }
+    var challengeNoFriends:      String { t("No challengeable friends found", "No se encontraron amigos retables",     "Aucun ami disponible") }
+    var challengeLinkedTo:       String { t("Linked to",                      "Vinculado a",                           "Lié à") }
+    var leaderboardGlobalShort:  String { t("GLOBAL",                        "GLOBAL",                                "GLOBAL") }
+    var leaderboardDailyShort:   String { t("CHALLENGE",                     "DESAFÍO",                               "DÉFI") }
+    var leaderboardAccumShort:   String { t("ACCUMULATED",                   "ACUMULADO",                             "CUMULÉ") }
+    var dailyChallengeContext:   String { t("DAILY CHALLENGE \u{00B7} TODAY", "DESAFÍO DIARIO \u{00B7} HOY",          "DÉFI QUOTIDIEN \u{00B7} AUJOURD'HUI") }
+    var dailyAccumContext:       String { t("DAILY CHALLENGE \u{00B7} ALL-TIME", "DESAFÍO DIARIO \u{00B7} ACUMULADO","DÉFI QUOTIDIEN \u{00B7} CUMULÉ") }
+    var leaderboardAllTiers:     String { t("ALL",                           "TODAS",                                 "TOUTES") }
+    var leaderboardPoints:       String { t("points",                        "puntos",                                "points") }
+    var leaderboardYou:          String { t("You",                           "Tú",                                    "Toi") }
+    var inviteFriends:           String { t("CHALLENGE A FRIEND",            "RETAR A UN AMIGO",                      "DÉFIER UN AMI") }
+    func rankingCount(_ n: Int) -> String { t("Ranking · \(n) players",      "Ranking · \(n) jugadores",              "Ranking · \(n) joueurs") }
+    func ptsToNextRank(_ pts: String, _ rank: Int) -> String { t("↑ \(pts) pts to reach #\(rank)", "↑ \(pts) pts para alcanzar #\(rank)", "↑ \(pts) pts pour atteindre #\(rank)") }
     func paywallCtaBuy(_ price: String) -> String { t("Unlock for \(price)", "Desbloquear por \(price)", "Débloquer pour \(price)") }
     var paywallCtaRestore:      String { t("Restore Purchases",                "Restaurar compras",                     "Restaurer les achats") }
     var paywallLegal:           String { t("One-time payment. No subscriptions.", "Pago único. Sin suscripciones.",     "Paiement unique. Sans abonnement.") }
@@ -846,6 +889,7 @@ struct AppStrings {
 
     // MARK: - Victory telemetry
     var missionDebrief:  String { t("MISSION\nDEBRIEF",  "INFORME\nDE MISIÓN",  "COMPTE-RENDU\nDE MISSION") }
+    var dailyDebrief:    String { t("DAILY\nCHALLENGE",  "DESAFÍO\nDIARIO",     "DÉFI\nQUOTIDIEN") }
     var missionQuality:  String { t("MISSION QUALITY",   "CALIDAD DE MISIÓN",   "QUALITÉ DE MISSION") }
     var usedMin:         String { t("USED / MIN",         "USADO / MÍN",         "UTILISÉ / MIN") }
     var missionScore:    String { t("MISSION SCORE",      "PUNTUACIÓN MISIÓN",   "SCORE MISSION") }

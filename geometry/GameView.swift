@@ -319,10 +319,14 @@ struct GameView: View {
         // Notify ContentView immediately so it can collect story beats while context is accurate
         if !isIntro {
             onWin?(vm.currentLevel, vm.lastLevelUpEvent)
-            // Submit scores to all 5 Game Center leaderboards (fire-and-forget)
             let profile = ProgressionStore.profile
-            Task { await gcManager.submitAllScores(profile: profile) }
-            // Evaluate achievements
+            if vm.currentLevel.isDailyChallenge {
+                let score = vm.score
+                let cumulative = max(DailyStore.cumulativeScore, profile.dailyCumulativeScore)
+                Task { await gcManager.submitDailyScores(dailyScore: score, cumulativeDaily: cumulative, profile: profile) }
+            } else {
+                Task { await gcManager.submitAllScores(profile: profile) }
+            }
             if let result = vm.gameResult {
                 AchievementManager.shared.checkAfterWin(
                     result: result,
@@ -407,7 +411,7 @@ struct GameView: View {
                 try? await Task.sleep(nanoseconds: 800_000_000)
                 (onIntroComplete ?? onDismiss)()
             }
-        } else if vm.currentLevel.id <= 7 {
+        } else if vm.currentLevel.id >= 1 && vm.currentLevel.id <= 7 {
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 800_000_000)
                 (onNextMission ?? onDismiss)()
@@ -869,7 +873,7 @@ struct MissionOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(won ? 0.80 : 0.72).ignoresSafeArea()
+            Color.black.opacity(won ? 0.96 : 0.92).ignoresSafeArea()
 
             // ── Danger glow (loss only) ─────────────────────────────────
             if !won {
@@ -1051,7 +1055,7 @@ struct IntroWinOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.82).ignoresSafeArea()
+            Color.black.opacity(0.96).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // ── Header ──────────────────────────────────────────────
@@ -1131,7 +1135,7 @@ struct OnboardingTutorialOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.88).ignoresSafeArea()
+            Color.black.opacity(0.96).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // ── Title ────────────────────────────────────────────
@@ -1268,7 +1272,7 @@ struct IntroFailOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.82).ignoresSafeArea()
+            Color.black.opacity(0.96).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // ── Header ──────────────────────────────────────────────
@@ -1373,7 +1377,7 @@ struct MechanicUnlockView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.84).ignoresSafeArea()
+            Color.black.opacity(0.96).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // ── Header ───────────────────────────────────────────────
@@ -1454,7 +1458,7 @@ struct DailyChallengeConfirmOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.84).ignoresSafeArea()
+            Color.black.opacity(0.96).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // ── Header ───────────────────────────────────────────────
@@ -1682,7 +1686,7 @@ struct MilestoneView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.88).ignoresSafeArea()
+            Color.black.opacity(0.96).ignoresSafeArea()
 
             VStack(spacing: 28) {
 

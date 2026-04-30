@@ -13,5 +13,7 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSGKFriendListUsageDescription</key>
+	<string>Signal Route uses your Game Center friends list to let you challenge friends directly from the game.</string>
 </dict>
 </plist>

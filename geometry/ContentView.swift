@@ -209,10 +209,7 @@ struct ContentView: View {
                         }
                     },
                     onFail: { failedLevel in
-                        if failedLevel.isDailyChallenge {
-                            // One attempt only — dismiss to home, no entitlement tracking
-                            activeLevel = nil
-                        } else {
+                        if !failedLevel.isDailyChallenge {
                             EntitlementStore.shared.recordAttempt(failedLevel, didWin: false)
                         }
                     },

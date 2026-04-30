@@ -12,7 +12,7 @@ final class GameCenterManager: ObservableObject {
 
     // ── Leaderboard IDs (configured in App Store Connect) ─────────────────
     private static let prefix = "com.marcosnovo.signalvoidgame.leaderboard"
-    static let leaderboardTotalScore = "\(prefix).total_score"
+    static let leaderboardTotalScore = "\(prefix).total_score.v2"
     static let leaderboardTierEasy   = "\(prefix).tier_easy"
     static let leaderboardTierMedium = "\(prefix).tier_medium"
     static let leaderboardTierHard   = "\(prefix).tier_hard"
@@ -67,12 +67,23 @@ final class GameCenterManager: ObservableObject {
                 // may have been missed (offline wins, failed submissions, migrations).
                 Task {
                     await CloudSaveManager.shared.load()
-                    let profile = ProgressionStore.profile
+                    // Recalibrate scores after cloud merge (v1.0 scoring bug fix).
+                    // Cloud merge takes max(local, cloud) which can restore inflated scores.
+                    var profile = ProgressionStore.profile
+                    if profile.recalibrateScoresIfNeeded() {
+                        ProgressionStore.save(profile)
+                    }
                     guard profile.leaderboardScore > 0 else { return }
                     await self.submitAllScores(profile: profile)
-                    // Catch up daily cumulative leaderboard
-                    let cumulative = DailyStore.cumulativeScore
+                    // Catch up daily cumulative leaderboard — use the max of both
+                    // sources since UserDefaults and profile can be out of sync
+                    // (e.g. reinstall, cloud restore, migration).
+                    let cumulative = max(DailyStore.cumulativeScore, profile.dailyCumulativeScore)
                     if cumulative > 0 {
+                        // Sync DailyStore if profile has a higher value
+                        if profile.dailyCumulativeScore > DailyStore.cumulativeScore {
+                            UserDefaults.standard.set(profile.dailyCumulativeScore, forKey: "daily-cumulative-score")
+                        }
                         await self.submitDailyScores(dailyScore: 0, cumulativeDaily: cumulative, profile: profile)
                     }
                 }
@@ -186,7 +197,7 @@ final class GameCenterManager: ObservableObject {
             }
         }
 
-        await loadRankFeedback()
+        await loadRankFeedback(leaderboardID: Self.leaderboardDailyChallenge)
     }
 
     /// Clear stale rank feedback (call when a new game session starts).
@@ -198,18 +209,27 @@ final class GameCenterManager: ObservableObject {
     ///
     /// If the user is not authenticated, triggers the GK authentication flow instead —
     /// the leaderboard will be openable once they sign in.
-    func openLeaderboards() {
+    func openLeaderboards(leaderboardID: String = leaderboardTotalScore) {
         guard isAuthenticated else {
-            // Kick off sign-in; leaderboard can be opened once authenticated.
             authenticate()
             return
         }
         guard let topVC = topPresentedViewController() else { return }
         let vc = GKGameCenterViewController(
-            leaderboardID: Self.leaderboardTotalScore,
+            leaderboardID: leaderboardID,
             playerScope:   .global,
             timeScope:     .allTime
         )
+        vc.gameCenterDelegate = leaderboardDismissDelegate
+        topVC.present(vc, animated: true)
+    }
+
+    // MARK: - Challenges
+
+    func openChallenges() {
+        guard isAuthenticated else { return }
+        guard let topVC = topPresentedViewController() else { return }
+        let vc = GKGameCenterViewController(state: .challenges)
         vc.gameCenterDelegate = leaderboardDismissDelegate
         topVC.present(vc, animated: true)
     }
@@ -239,41 +259,31 @@ final class GameCenterManager: ObservableObject {
         return traverse(from: next)
     }
 
-    // MARK: - Private — rank loading
+    // MARK: - Leaderboard — fetch entries for in-app display
 
-    private func loadRankFeedback() async {
+    struct LeaderboardData {
+        let entries: [LeaderboardEntrySnapshot]
+        let playerRank: Int?
+        let totalPlayers: Int
+    }
+
+    func fetchLeaderboard(id: String, count: Int = 25) async -> LeaderboardData? {
+        guard isAuthenticated else {
+            print("[GameCenter] ⚠ fetchLeaderboard(\(id)) — not authenticated")
+            return nil
+        }
         do {
-            let boards = try await GKLeaderboard.loadLeaderboards(IDs: [Self.leaderboardTotalScore])
-            guard let lb = boards.first else { return }
-
-            // loadEntries(for:timeScope:range:) returns (localPlayerEntry, rangeEntries, totalCount)
-            // Fetch top 5 for widget leaderboard display
-            let (localEntry, topEntries, total) = try await lb.loadEntries(
-                for: .global, timeScope: .allTime, range: NSRange(1...5)
-            )
-
-            guard let entry = localEntry, total > 0 else { return }
-            #if DEBUG
-            print("[GameCenter] 🔍 GC stored score for local player: \(entry.score) | rank=\(entry.rank) of \(total)")
-            #endif
-            let rank       = entry.rank
-            let percentile = Int(Double(rank) / Double(total) * 100)
-
-            if rank == 1 {
-                rankFeedback = .newRecord
-            } else if percentile <= 10 {
-                rankFeedback = .topPercent(10)
-            } else if percentile <= 25 {
-                rankFeedback = .topPercent(25)
-            } else if percentile <= 50 {
-                rankFeedback = .topPercent(50)
-            } else {
-                rankFeedback = .ranked(rank)
+            let lbs = try await GKLeaderboard.loadLeaderboards(IDs: [id])
+            guard let lb = lbs.first else {
+                print("[GameCenter] ⚠ fetchLeaderboard(\(id)) — board not found in GC")
+                return nil
             }
-
-            // Cache top-5 entries + rank for widget leaderboard
+            let range = NSRange(1...count)
+            let (localEntry, topEntries, total) = try await lb.loadEntries(
+                for: .global, timeScope: .allTime, range: range
+            )
             let localID = GKLocalPlayer.local.gamePlayerID
-            let cached = topEntries.map { e in
+            var entries = topEntries.map { e in
                 LeaderboardEntrySnapshot(
                     rank: e.rank,
                     displayName: e.player.displayName,
@@ -281,13 +291,221 @@ final class GameCenterManager: ObservableObject {
                     isLocalPlayer: e.player.gamePlayerID == localID
                 )
             }
-            LeaderboardCache.update(entries: cached, playerRank: rank, totalPlayers: total)
-            // Push fresh leaderboard data to widgets
-            await MainActor.run {
-                ProgressionStore.pushWidgetSnapshot(ProgressionStore.profile)
+            if let local = localEntry, !entries.contains(where: { $0.isLocalPlayer }) {
+                entries.append(LeaderboardEntrySnapshot(
+                    rank: local.rank,
+                    displayName: local.player.displayName,
+                    score: local.score,
+                    isLocalPlayer: true
+                ))
+            }
+            return LeaderboardData(
+                entries: entries.sorted { $0.rank < $1.rank },
+                playerRank: localEntry?.rank,
+                totalPlayers: total
+            )
+        } catch {
+            print("[GameCenter] ✗ fetchLeaderboard(\(id)) failed: \(error.localizedDescription)")
+            return LeaderboardData(entries: [], playerRank: nil, totalPlayers: 0)
+        }
+    }
+
+    // MARK: - Achievements — fetch for in-app display
+
+    struct AchievementData: Identifiable {
+        var id: String { identifier }
+        let identifier: String
+        let title: String
+        let descriptionText: String
+        let isCompleted: Bool
+        let percentComplete: Double
+        let image: UIImage?
+        let isHidden: Bool
+        let maximumPoints: Int
+        let rarityPercent: Double?
+        let isReplayable: Bool
+    }
+
+    func fetchAchievements() async -> [AchievementData] {
+        guard isAuthenticated else { return [] }
+        do {
+            let descriptions = try await GKAchievementDescription.loadAchievementDescriptions()
+            let progress = try await GKAchievement.loadAchievements()
+            let progressMap = Dictionary(uniqueKeysWithValues: progress.map { ($0.identifier, $0) })
+
+            struct AchievementInput: Sendable {
+                let identifier: String
+                let title: String
+                let achievedDesc: String
+                let unachievedDesc: String
+                let completed: Bool
+                let percent: Double
+                let isHidden: Bool
+                let maximumPoints: Int
+                let rarityPercent: Double?
+                let isReplayable: Bool
+            }
+
+            let inputs: [(AchievementInput, GKAchievementDescription)] = descriptions.map { desc in
+                let ach = progressMap[desc.identifier]
+                let completed = ach?.isCompleted ?? false
+                return (AchievementInput(
+                    identifier: desc.identifier,
+                    title: desc.title,
+                    achievedDesc: desc.achievedDescription,
+                    unachievedDesc: desc.unachievedDescription,
+                    completed: completed,
+                    percent: ach?.percentComplete ?? 0,
+                    isHidden: desc.isHidden && !completed,
+                    maximumPoints: desc.maximumPoints,
+                    rarityPercent: desc.rarityPercent,
+                    isReplayable: desc.isReplayable
+                ), desc)
+            }
+
+            var results: [AchievementData] = []
+            for (input, desc) in inputs {
+                if input.isHidden { continue }
+                let img = try? await desc.loadImage()
+                results.append(AchievementData(
+                    identifier: input.identifier,
+                    title: input.title,
+                    descriptionText: input.completed ? input.achievedDesc : input.unachievedDesc,
+                    isCompleted: input.completed,
+                    percentComplete: input.percent,
+                    image: img,
+                    isHidden: false,
+                    maximumPoints: input.maximumPoints,
+                    rarityPercent: input.rarityPercent,
+                    isReplayable: input.isReplayable
+                ))
+            }
+            return results
+        } catch {
+            #if DEBUG
+            print("[GameCenter] Achievements fetch failed: \(error.localizedDescription)")
+            #endif
+            return []
+        }
+    }
+
+    // MARK: - Challenges — fetch definitions from App Store Connect
+
+    struct ChallengeDefinitionData: Identifiable {
+        var id: String { identifier }
+        let identifier: String
+        let title: String
+        let details: String?
+        let leaderboardTitle: String?
+        let image: UIImage?
+        let durationOptions: [DateComponents]
+        let isRepeatable: Bool
+        let hasActive: Bool
+    }
+
+    func fetchChallengeDefinitions() async -> [ChallengeDefinitionData] {
+        guard isAuthenticated else { return [] }
+        do {
+            let defs = try await GKChallengeDefinition.all
+            var results: [ChallengeDefinitionData] = []
+            for def in defs {
+                let active = (try? await def.hasActiveChallenges) ?? false
+                let img = try? await def.image
+                results.append(ChallengeDefinitionData(
+                    identifier: def.identifier,
+                    title: def.title,
+                    details: def.details,
+                    leaderboardTitle: def.leaderboard?.title,
+                    image: img,
+                    durationOptions: def.durationOptions,
+                    isRepeatable: def.isRepeatable,
+                    hasActive: active
+                ))
+            }
+            return results
+        } catch {
+            #if DEBUG
+            print("[GameCenter] Challenge definitions fetch failed: \(error.localizedDescription)")
+            #endif
+            return []
+        }
+    }
+
+    func triggerChallenge(identifier: String) {
+        guard isAuthenticated else { return }
+        Task {
+            await GKAccessPoint.shared.trigger(challengeDefinitionID: identifier)
+        }
+    }
+
+    // MARK: - Friends — for in-app challenge flow
+
+    struct FriendData: Identifiable {
+        var id: String { playerID }
+        let playerID: String
+        let displayName: String
+        let avatar: UIImage?
+    }
+
+    func loadChallengableFriends() async -> [FriendData] {
+        guard isAuthenticated else { return [] }
+        do {
+            let players = try await GKLocalPlayer.local.loadChallengableFriends()
+            var results: [FriendData] = []
+            for player in players {
+                let photo = try? await player.loadPhoto(for: .small)
+                results.append(FriendData(
+                    playerID: player.gamePlayerID,
+                    displayName: player.displayName,
+                    avatar: photo
+                ))
+            }
+            return results
+        } catch {
+            #if DEBUG
+            print("[GameCenter] Challengable friends load failed: \(error.localizedDescription)")
+            #endif
+            return []
+        }
+    }
+
+    // MARK: - Private — rank loading
+
+    private func loadRankFeedback(leaderboardID: String? = nil) async {
+        let boardID = leaderboardID ?? Self.leaderboardTotalScore
+        do {
+            let boards = try await GKLeaderboard.loadLeaderboards(IDs: [boardID])
+            guard let lb = boards.first else { return }
+
+            let (localEntry, topEntries, total) = try await lb.loadEntries(
+                for: .global, timeScope: .allTime, range: NSRange(1...5)
+            )
+
+            guard let entry = localEntry, total > 0 else { return }
+            #if DEBUG
+            print("[GameCenter] GC rank for \(boardID): score=\(entry.score) rank=\(entry.rank)/\(total)")
+            #endif
+            let rank = entry.rank
+
+            rankFeedback = .ranked(rank)
+
+            // Cache top-5 entries + rank for widget leaderboard (campaign only)
+            if boardID == Self.leaderboardTotalScore {
+                let localID = GKLocalPlayer.local.gamePlayerID
+                let cached = topEntries.map { e in
+                    LeaderboardEntrySnapshot(
+                        rank: e.rank,
+                        displayName: e.player.displayName,
+                        score: e.score,
+                        isLocalPlayer: e.player.gamePlayerID == localID
+                    )
+                }
+                LeaderboardCache.update(entries: cached, playerRank: rank, totalPlayers: total)
+                await MainActor.run {
+                    ProgressionStore.pushWidgetSnapshot(ProgressionStore.profile)
+                }
             }
         } catch {
-            // Rank loading is best-effort — failure is silent
             #if DEBUG
             print("[GameCenter] Rank load failed: \(error.localizedDescription)")
             #endif

@@ -46,11 +46,9 @@ struct VictoryTelemetryView: View {
         let currentID = vm.currentLevel.id
         let profile = ProgressionStore.profile
         let levels = LevelGenerator.levels
-        // Find the index of the current level in the catalog
         guard let curIdx = levels.firstIndex(where: { $0.id == currentID }) else {
             return []
         }
-        // Take up to 7 missions before this one in catalog order
         let startIdx = max(0, curIdx - 7)
         return levels[startIdx..<curIdx].map { level in
             let best = profile.bestEfficiencyByLevel["\(level.id)"] ?? 0
@@ -58,14 +56,36 @@ struct VictoryTelemetryView: View {
         }
     }
 
-    /// Bar fractions (0…1) for up to 7 previous missions + the current one.
+    // MARK: - Daily challenge chart data
+
+    private var dailyPastDays: [(dayLabel: String, score: Int)] {
+        DailyStore.pastDayScores(count: 7)
+    }
+
+    private var dailyMaxScore: Int {
+        let raw = max(dailyPastDays.map(\.score).max() ?? 0, vm.score, 1)
+        let step = raw <= 1000 ? 500 : 1000
+        return ((raw + step - 1) / step) * step
+    }
+
+    // MARK: - Unified chart interface
+
+    /// Bar fractions (0…1) for up to 7 previous entries + the current one.
     private var chartFractions: [CGFloat] {
+        if vm.currentLevel.isDailyChallenge {
+            let maxS = CGFloat(dailyMaxScore)
+            let prev = dailyPastDays.map { CGFloat($0.score) / maxS }
+            return prev + [CGFloat(vm.score) / maxS]
+        }
         let prev = previousMissionData.map(\.eff)
         return prev + [CGFloat(efficiency) / 100]
     }
 
-    /// X-axis labels: mission IDs for previous + "NOW" for current.
+    /// X-axis labels for the chart.
     private var chartLabels: [String] {
+        if vm.currentLevel.isDailyChallenge {
+            return dailyPastDays.map(\.dayLabel) + [S.today]
+        }
         let prev = previousMissionData.map { "#\($0.id)" }
         return prev + ["NOW"]
     }
@@ -199,17 +219,26 @@ struct VictoryTelemetryView: View {
                 }
                 .frame(height: Self.chartH)
 
-                // Y-axis labels: 100 → 0 top-to-bottom
+                // Y-axis labels
                 VStack(spacing: 0) {
-                    Text("100").frame(maxWidth: .infinity)
-                    Spacer()
-                    Text("50").frame(maxWidth: .infinity)
-                    Spacer()
-                    Text("0").frame(maxWidth: .infinity)
+                    if vm.currentLevel.isDailyChallenge {
+                        let m = dailyMaxScore
+                        Text(compactScore(m)).frame(maxWidth: .infinity)
+                        Spacer()
+                        Text(compactScore(m / 2)).frame(maxWidth: .infinity)
+                        Spacer()
+                        Text("0").frame(maxWidth: .infinity)
+                    } else {
+                        Text("100").frame(maxWidth: .infinity)
+                        Spacer()
+                        Text("50").frame(maxWidth: .infinity)
+                        Spacer()
+                        Text("0").frame(maxWidth: .infinity)
+                    }
                 }
                 .font(AppTheme.mono(6))
                 .foregroundStyle(AppTheme.sage.opacity(0.60))
-                .frame(width: 22, height: Self.chartH)
+                .frame(width: 32, height: Self.chartH)
             }
             .padding(.horizontal, 10)
 
@@ -257,8 +286,8 @@ struct VictoryTelemetryView: View {
             .padding(.horizontal, 14)
             .padding(.bottom, 8)
 
-            // ── Large title (mirrors "Planetary Telemetry Results") ──────
-            Text(S.missionDebrief)
+            // ── Large title ──────────────────────────────────────────
+            Text(vm.currentLevel.isDailyChallenge ? S.dailyDebrief : S.missionDebrief)
                 .font(.system(size: 24, weight: .black, design: .default))
                 .foregroundStyle(sageInk)
                 .lineSpacing(-2)
@@ -266,30 +295,52 @@ struct VictoryTelemetryView: View {
                 .padding(.bottom, 16)
 
             // ── Huge KPI ─────────────────────────────────────────────
-            // VStack layout guarantees "100%" never wraps regardless of
-            // panel width — the number gets the full row to itself.
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 0) {
-                    Text("\(displayedPct)")
-                        .font(.system(size: 56, weight: .black))
-                        .foregroundStyle(sageInk)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .contentTransition(.numericText())
-                    Text("%")
-                        .font(.system(size: 22, weight: .black))
-                        .foregroundStyle(AppTheme.accentPrimary)
-                        .lineLimit(1)
-                        .offset(y: -3)
+            if vm.currentLevel.isDailyChallenge {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text(displayedPct.formatted())
+                            .font(.system(size: 48, weight: .black))
+                            .foregroundStyle(sageInk)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                            .contentTransition(.numericText())
+                        Text("PTS")
+                            .font(.system(size: 16, weight: .black))
+                            .foregroundStyle(AppTheme.accentPrimary)
+                            .lineLimit(1)
+                    }
+                    Text(S.dailyScore)
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(1.5)
+                        .foregroundStyle(sageMid)
                 }
-                Text(S.missionQuality)
-                    .font(.system(size: 9, weight: .semibold))
-                    .tracking(1.5)
-                    .foregroundStyle(sageMid)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
+            } else {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        Text("\(displayedPct)")
+                            .font(.system(size: 56, weight: .black))
+                            .foregroundStyle(sageInk)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .contentTransition(.numericText())
+                        Text("%")
+                            .font(.system(size: 22, weight: .black))
+                            .foregroundStyle(AppTheme.accentPrimary)
+                            .lineLimit(1)
+                            .offset(y: -3)
+                    }
+                    Text(S.missionQuality)
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(1.5)
+                        .foregroundStyle(sageMid)
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 14)
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 14)
 
             // ── Horizontal divider ───────────────────────────────────────
             Rectangle()
@@ -578,7 +629,7 @@ struct VictoryTelemetryView: View {
                 TechDivider()
             }
 
-            // ── Secondary row: RETRY / SHARE / MAP / HOME ──────────────
+            // ── Secondary row: RETRY / SHARE / LEADERBOARD / MAP / HOME ──
             HStack(spacing: 0) {
                 if !vm.currentLevel.isDailyChallenge {
                     Button(action: { SoundManager.play(.tapSecondary); onRestart() }) {
@@ -592,6 +643,15 @@ struct VictoryTelemetryView: View {
                 Button(action: { SoundManager.play(.tapSecondary); shareTicket() }) {
                     secondaryButton(icon: "square.and.arrow.up", label: S.shareLabel,
                                     color: AppTheme.textSecondary)
+                }
+
+                if vm.currentLevel.isDailyChallenge {
+                    Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
+
+                    Button(action: { SoundManager.play(.tapSecondary); gcManager.openLeaderboards(leaderboardID: GameCenterManager.leaderboardDailyChallenge) }) {
+                        secondaryButton(icon: "trophy", label: S.leaderboard,
+                                        color: AppTheme.accentPrimary)
+                    }
                 }
 
                 if onMissions != nil {
@@ -686,7 +746,7 @@ struct VictoryTelemetryView: View {
                 barHeights[i] = h
             }
         }
-        await countUp(to: efficiency)
+        await countUp(to: vm.currentLevel.isDailyChallenge ? vm.score : efficiency)
         HapticsManager.light()
 
         // ── 3. Wait for bars to fully settle ────────────────────────────
@@ -703,19 +763,33 @@ struct VictoryTelemetryView: View {
 
         // ── 6. Auto-paywall at peak emotional moment ─────────────────────
         // Player just won but can't continue — surface the upgrade immediately
-        // without requiring them to tap anything.
-        guard !canContinue, let onUpgrade else { return }
+        // without requiring them to tap anything. Skip for daily challenges.
+        guard !vm.currentLevel.isDailyChallenge,
+              !canContinue, let onUpgrade else { return }
         try? await Task.sleep(nanoseconds: 500_000_000)
         onUpgrade()
     }
 
     /// Eased count-up: fast at the start, decelerates near the target.
     private func rankFeedbackLabel(_ feedback: GameCenterManager.RankFeedback) -> String {
+        if vm.currentLevel.isDailyChallenge {
+            switch feedback {
+            case .newRecord:          return "#1  \(S.dailyRankGlobal)"
+            case .topPercent(let n):  return "TOP \(n)%  \(S.dailyRankGlobal)"
+            case .ranked(let r):      return "#\(r)  \(S.dailyRankGlobal)"
+            }
+        }
         switch feedback {
         case .newRecord:          return "NEW RECORD  #1 GLOBAL"
         case .topPercent(let n):  return "TOP \(n)%  GLOBAL"
         case .ranked(let r):      return "RANK  #\(r)  GLOBAL"
         }
+    }
+
+    private func compactScore(_ n: Int) -> String {
+        if n >= 1_000_000 { return String(format: "%.1fM", Double(n) / 1_000_000) }
+        if n >= 1000 { return "\(n / 1000)K" }
+        return "\(n)"
     }
 
     private func countUp(to target: Int) async {

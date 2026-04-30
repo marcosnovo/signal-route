@@ -96,6 +96,26 @@ enum DailyStore {
         todayResult?.score ?? 0
     }
 
+    // MARK: - Past days (for victory chart)
+
+    /// Returns scores for the last `count` days before today (oldest first).
+    /// Each entry is (dayLabel: "MM/DD", score: Int). Days not played return score 0.
+    static func pastDayScores(count: Int = 7) -> [(dayLabel: String, score: Int)] {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = DailyChallengeConfig.timezone
+        let today = Date()
+        var results: [(dayLabel: String, score: Int)] = []
+        for daysAgo in (1...count).reversed() {
+            guard let date = cal.date(byAdding: .day, value: -daysAgo, to: today) else { continue }
+            let key = DailyChallengeConfig.dayKey(for: date)
+            let score = (defaults.dictionary(forKey: resultKey(for: key))?["score"] as? Int) ?? 0
+            let comps = cal.dateComponents([.month, .day], from: date)
+            let label = String(format: "%d/%d", comps.month!, comps.day!)
+            results.append((dayLabel: label, score: score))
+        }
+        return results
+    }
+
     // MARK: - Dev reset
 
     /// Clears today's played state so the challenge can be replayed.

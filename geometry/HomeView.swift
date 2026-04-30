@@ -27,6 +27,7 @@ struct HomeView: View {
     @State private var heroOffset: CGFloat    = 18
     @State private var fabPulsing             = false
     @State private var rankPulsing            = false
+    @State private var showingLeaderboardPicker = false
 
     var body: some View {
         ZStack {
@@ -77,6 +78,16 @@ struct HomeView: View {
                 statusStrip.padding(.bottom, 32)
             }
         }
+        .overlay {
+            if showingLeaderboardPicker {
+                LeaderboardPickerOverlay(
+                    onDismiss: { showingLeaderboardPicker = false }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                .zIndex(20)
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showingLeaderboardPicker)
         .sheet(isPresented: $showingPlanetTicket) {
             PlanetTicketView(profile: profile)
         }
@@ -114,12 +125,11 @@ struct HomeView: View {
     private var passGhostLayer: some View {
         AstronautProgressCard(profile: profile)
             .frame(width: 360)
-            // Clip to a tall crop — shows the top 60% of the ticket (planet name + efficiency)
             .frame(height: 180, alignment: .top)
             .clipped()
+            .drawingGroup()
             .blur(radius: 18)
             .opacity(0.07)
-            // Slightly tilted + offset — feels like an artifact, not a widget
             .rotationEffect(.degrees(-3))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .offset(x: 18, y: 10)
@@ -494,7 +504,10 @@ struct HomeView: View {
     /// Unauthenticated: trophy outline + "CONNECT" text (tapping triggers GK sign-in).
     private var leaderboardSecondaryButton: some View {
         let isAuth = gcManager.isAuthenticated
-        return Button(action: { SoundManager.play(.tapSecondary); gcManager.openLeaderboards() }) {
+        return Button(action: {
+            SoundManager.play(.tapSecondary)
+            if isAuth { showingLeaderboardPicker = true } else { gcManager.authenticate() }
+        }) {
             HStack(spacing: 10) {
                 // Trophy icon — always present, color conveys auth state
                 Image(systemName: isAuth ? "trophy.fill" : "trophy")
@@ -1836,7 +1849,7 @@ private struct ProgressAnimatedBar: View {
 /// Layout: 16 nodes in a 4×4 deterministic grid with small per-node jitter.
 /// Active nodes (proportional to `activeFrac`) glow orange; one active edge per cycle
 /// sweeps as a "signal flow" — the same visual language as the game board itself.
-/// Driven by TimelineView at 12 fps — imperceptible for slow effects, very cheap.
+/// Driven by TimelineView at 8 fps — imperceptible for slow effects, very cheap.
 private struct MiniNetworkCanvas: View {
     let activeFrac: CGFloat
 
@@ -1871,7 +1884,7 @@ private struct MiniNetworkCanvas: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1.0 / 12.0)) { timeline in
+        TimelineView(.periodic(from: .now, by: 1.0 / 8.0)) { timeline in
             Canvas { ctx, size in
                 let t     = timeline.date.timeIntervalSinceReferenceDate
                 let act   = activeCount
@@ -2006,7 +2019,7 @@ private struct PlayCTAButton: View {
 ///   • Active (completed) nodes glow orange; inactive nodes are dim white
 ///   • Active edges brighter; one edge at a time cycles as a "signal flow" sweep
 ///   • All animation is driven by the system clock — no @State timers, no per-node views
-///   • TimelineView period: 1/15 s → 15 fps, imperceptible for slow effects, very cheap
+///   • TimelineView period: 1/8 s → 8 fps, imperceptible for slow effects, very cheap
 struct MapPreviewBlock: View {
     let completed: Int
     let total: Int
@@ -2090,7 +2103,7 @@ struct MapPreviewBlock: View {
                 .padding(.bottom, 12)
 
                 // ── Node network ─────────────────────────────────────────
-                TimelineView(.periodic(from: .now, by: 1.0 / 15.0)) { timeline in
+                TimelineView(.periodic(from: .now, by: 1.0 / 8.0)) { timeline in
                     Canvas { ctx, size in
                         let t   = timeline.date.timeIntervalSinceReferenceDate
                         let act = activeNodeCount
@@ -2270,6 +2283,1469 @@ private struct GeoTitle: View {
             // --- next idle ---
             let idle = UInt64.random(in: 8_000_000_000...16_000_000_000)
             try? await Task.sleep(nanoseconds: idle)
+        }
+    }
+}
+
+// MARK: - LeaderboardPickerOverlay
+struct LeaderboardPickerOverlay: View {
+    let onDismiss: () -> Void
+
+    @EnvironmentObject private var gcManager: GameCenterManager
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
+    enum Section { case leaderboards, achievements }
+    enum MainCategory { case global, daily, weekly }
+
+    @State private var revealed = false
+    @State private var section: Section = .leaderboards
+    @State private var mainCategory: MainCategory = .global
+    @State private var diffFilter: DifficultyTier? = nil
+    @State private var boards: [String: GameCenterManager.LeaderboardData] = [:]
+    @State private var loadingIDs: Set<String> = []
+    @State private var achievements: [GameCenterManager.AchievementData] = []
+    @State private var achievementsLoaded = false
+    @State private var selectedAchievementID: String? = nil
+    @State private var showingChallengeFlow = false
+
+    // Dark background + sage highlights
+    private let dark   = Color(hex: "171717")
+    private let sage   = Color(hex: "D9E7D8")
+    private let ink    = Color(hex: "2A2A2A")
+    private let light  = Color(hex: "F0EDE8")
+    private let muted  = Color(hex: "9A9A9A")
+    private let orange = Color(hex: "FF6A3D")
+
+    private var activeID: String {
+        switch mainCategory {
+        case .global:
+            guard let tier = diffFilter else { return GameCenterManager.leaderboardTotalScore }
+            return tierBoardID(tier)
+        case .daily:  return GameCenterManager.leaderboardDailyChallenge
+        case .weekly: return GameCenterManager.leaderboardDailyCumulative
+        }
+    }
+
+    private var categoryLabel: String {
+        switch mainCategory {
+        case .global:
+            if let tier = diffFilter {
+                return "\u{25C8} \(S.leaderboardPickerTitle) \u{00B7} \(S.difficultyFullLabel(tier))"
+            }
+            return "\u{25C8} \(S.leaderboardPickerTitle) \u{00B7} \(S.leaderboardGlobalShort)"
+        case .daily:
+            return "\u{25C8} \(S.dailyChallengeContext)"
+        case .weekly:
+            return "\u{25C8} \(S.dailyAccumContext)"
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            dark.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                headerBar
+                sectionToggle
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                Rectangle().fill(light.opacity(0.08)).frame(height: 0.5)
+
+                if section == .leaderboards {
+                    leaderboardContent
+                } else {
+                    if let id = selectedAchievementID,
+                       let ach = achievements.first(where: { $0.identifier == id }) {
+                        achievementDetail(ach)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    } else {
+                        achievementsContent
+                            .transition(.opacity)
+                    }
+                }
+            }
+            .opacity(revealed ? 1 : 0)
+            .offset(y: revealed ? 0 : 10)
+
+            if showingChallengeFlow {
+                ChallengeFlowOverlay(onDismiss: {
+                    withAnimation(.easeInOut(duration: 0.2)) { showingChallengeFlow = false }
+                })
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(5)
+            }
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85).delay(0.08)) {
+                revealed = true
+            }
+            fetchAllBoards()
+        }
+        .onChange(of: gcManager.isAuthenticated) { _, authed in
+            if authed { boards = [:]; fetchAllBoards() }
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerBar: some View {
+        HStack {
+            Button(action: { SoundManager.play(.tapSecondary); onDismiss() }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(light)
+                    .frame(width: 44, height: 44)
+            }
+            Spacer()
+            Text(S.leaderboardPickerTitle)
+                .font(AppTheme.mono(12, weight: .bold))
+                .kerning(1.5)
+                .foregroundStyle(light)
+            Spacer()
+            Button(action: { SoundManager.play(.tapPrimary); gcManager.openChallenges() }) {
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(muted)
+                    .frame(width: 44, height: 44)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    // MARK: - Section toggle
+
+    private var sectionToggle: some View {
+        HStack(spacing: 0) {
+            sectionTab(S.leaderboardPickerTitle, sec: .leaderboards)
+            sectionTab(S.achievements, sec: .achievements)
+        }
+    }
+
+    private func sectionTab(_ label: String, sec: Section) -> some View {
+        let active = section == sec
+        return Button(action: {
+            SoundManager.play(.tapSecondary)
+            withAnimation(.easeInOut(duration: 0.15)) { section = sec }
+            if sec == .leaderboards { selectedAchievementID = nil }
+            if sec == .achievements { fetchAchievements() }
+        }) {
+            Text(label)
+                .font(AppTheme.mono(10, weight: active ? .bold : .medium))
+                .kerning(0.8)
+                .foregroundStyle(active ? light : muted.opacity(0.6))
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .overlay(alignment: .bottom) {
+                    if active {
+                        Rectangle().fill(sage).frame(height: 2)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Leaderboard content
+
+    private var leaderboardContent: some View {
+        VStack(spacing: 0) {
+            segmentedControl
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+            if mainCategory == .global {
+                difficultyPills
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+            }
+
+            if loadingIDs.contains(activeID) {
+                Spacer()
+                ProgressView().tint(sage)
+                Spacer()
+            } else if let data = boards[activeID] {
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            if let rank = data.playerRank {
+                                heroRankCard(data: data, rank: rank)
+                                    .padding(.horizontal, 16)
+                                    .padding(.top, 14)
+                            }
+
+                            if data.totalPlayers > 0 {
+                                HStack {
+                                    Text(S.rankingCount(data.totalPlayers))
+                                        .font(AppTheme.mono(9, weight: .semibold))
+                                        .tracking(0.5)
+                                        .foregroundStyle(muted)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.top, 16)
+                                .padding(.bottom, 6)
+                            }
+
+                            Rectangle().fill(light.opacity(0.08)).frame(height: 1)
+
+                            LazyVStack(spacing: 0) {
+                                ForEach(data.entries, id: \.rank) { entry in
+                                    playerRow(entry: entry)
+                                        .id(entry.rank)
+                                }
+                            }
+                        }
+                    }
+                    .onAppear { scrollToLocal(proxy: proxy) }
+                }
+            } else {
+                Spacer()
+                VStack(spacing: 6) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundStyle(muted.opacity(0.4))
+                    Text(S.leaderboardEmpty)
+                        .font(AppTheme.mono(10, weight: .medium))
+                        .foregroundStyle(muted)
+                }
+                Spacer()
+            }
+
+            Button(action: {
+                SoundManager.play(.tapPrimary)
+                withAnimation(.easeInOut(duration: 0.2)) { showingChallengeFlow = true }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "flag.fill")
+                        .font(.system(size: 12, weight: .bold))
+                    Text(S.inviteFriends)
+                        .font(AppTheme.mono(11, weight: .bold))
+                        .kerning(1)
+                }
+                .foregroundStyle(ink)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(sage)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+        .task(id: activeID) { fetchBoard(activeID) }
+    }
+
+    // MARK: - Segmented control
+
+    private var segmentedControl: some View {
+        HStack(spacing: 0) {
+            segmentButton(S.leaderboardGlobalShort, cat: .global)
+            segmentButton(S.leaderboardDailyShort, cat: .daily)
+            segmentButton(S.leaderboardAccumShort, cat: .weekly)
+        }
+        .background(light.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(light.opacity(0.08), lineWidth: 0.5))
+    }
+
+    private func segmentButton(_ label: String, cat: MainCategory) -> some View {
+        let active = mainCategory == cat
+        return Button(action: {
+            SoundManager.play(.tapSecondary)
+            withAnimation(.easeInOut(duration: 0.15)) {
+                mainCategory = cat
+                diffFilter = nil
+            }
+        }) {
+            Text(label)
+                .font(AppTheme.mono(10, weight: .bold))
+                .kerning(0.5)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .foregroundStyle(active ? ink : light)
+                .padding(.vertical, 10)
+                .frame(maxWidth: .infinity)
+                .background(active ? sage : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Difficulty pills
+
+    private var difficultyPills: some View {
+        HStack(spacing: 6) {
+            diffPill(S.leaderboardAllTiers, tier: nil)
+            ForEach(DifficultyTier.allCases, id: \.self) { tier in
+                diffPill(S.difficultyFullLabel(tier), tier: tier)
+            }
+        }
+    }
+
+    private func diffPill(_ label: String, tier: DifficultyTier?) -> some View {
+        let active = diffFilter == tier
+        return Button(action: {
+            SoundManager.play(.tapSecondary)
+            withAnimation(.easeInOut(duration: 0.15)) { diffFilter = tier }
+        }) {
+            Text(label)
+                .font(AppTheme.mono(8, weight: .bold))
+                .kerning(0.3)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .foregroundStyle(active ? ink : muted)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(active ? sage : Color.clear)
+                .clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(active ? Color.clear : light.opacity(0.1), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Hero rank card (sage green widget card on dark bg)
+
+    private func heroRankCard(data: GameCenterManager.LeaderboardData, rank: Int) -> some View {
+        let localEntry = data.entries.first(where: { $0.isLocalPlayer })
+        let aboveEntry = data.entries.first(where: { $0.rank == rank - 1 })
+        let localScore = localEntry?.score ?? 0
+        let gap = aboveEntry.map { $0.score - localScore }
+        let progress: Float = aboveEntry.map { $0.score > 0 ? Float(localScore) / Float($0.score) : 0 } ?? 1.0
+        let pct = data.totalPlayers > 0 ? max(1, Int(Double(rank) / Double(data.totalPlayers) * 100)) : 0
+        let sageMid = ink.opacity(0.5)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(categoryLabel)
+                    .font(AppTheme.mono(8, weight: .semibold))
+                    .tracking(2)
+                    .foregroundStyle(sageMid)
+                Spacer()
+                Text("\u{2606} SV|\(data.totalPlayers)")
+                    .font(AppTheme.mono(10, weight: .bold))
+                    .foregroundStyle(ink)
+            }
+
+            Rectangle().fill(ink.opacity(0.12)).frame(height: 0.5).padding(.top, 8)
+
+            HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: -6) {
+                    Text("#")
+                        .font(.system(size: 40, weight: .heavy))
+                        .foregroundStyle(ink)
+                        .offset(y: 8)
+                    Text("\(rank)")
+                        .font(.system(size: 96, weight: .heavy))
+                        .foregroundStyle(orange)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.4)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(localScore.formatted())
+                        .font(.system(size: 22, weight: .heavy))
+                        .tracking(-0.8)
+                        .foregroundStyle(ink)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+
+                    if pct > 0 {
+                        Text("TOP \(pct)% \u{00B7} \(S.leaderboardOfTotal(data.totalPlayers))")
+                            .font(AppTheme.mono(8, weight: .semibold))
+                            .tracking(1.5)
+                            .foregroundStyle(sageMid)
+                    }
+                }
+                .padding(.top, 16)
+            }
+            .padding(.top, 4)
+
+            if let gap, gap > 0, rank > 1 {
+                VStack(spacing: 4) {
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(ink.opacity(0.08))
+                            Capsule().fill(orange)
+                                .frame(width: geo.size.width * CGFloat(min(1, max(0, progress))))
+                        }
+                    }
+                    .frame(height: 6)
+                    .clipShape(Capsule())
+
+                    HStack {
+                        Text(S.ptsToNextRank(gap.formatted(), rank - 1))
+                            .font(AppTheme.mono(8, weight: .medium))
+                            .foregroundStyle(orange.opacity(0.8))
+                        Spacer()
+                        Text("\(Int(progress * 100))%")
+                            .font(AppTheme.mono(8, weight: .bold))
+                            .foregroundStyle(sageMid)
+                    }
+                }
+                .padding(.top, 10)
+            }
+        }
+        .padding(16)
+        .background(sage)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    // MARK: - Player row (white text on dark)
+
+    private func playerRow(entry: LeaderboardEntrySnapshot) -> some View {
+        let isLocal = entry.isLocalPlayer
+
+        return HStack(spacing: 0) {
+            Text("#\(entry.rank)")
+                .font(AppTheme.mono(13, weight: .heavy))
+                .foregroundStyle(isLocal ? orange : light)
+                .frame(width: 44, alignment: .leading)
+
+            Text(entry.displayName)
+                .font(AppTheme.mono(13, weight: isLocal ? .bold : .medium))
+                .foregroundStyle(isLocal ? orange : light)
+                .lineLimit(1)
+
+            if isLocal {
+                Text(S.leaderboardYou)
+                    .font(AppTheme.mono(7, weight: .bold))
+                    .foregroundStyle(orange)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(orange.opacity(0.15))
+                    .clipShape(Capsule())
+                    .padding(.leading, 6)
+            }
+
+            Spacer()
+
+            Text(entry.score.formatted())
+                .font(AppTheme.mono(13, weight: .bold))
+                .foregroundStyle(isLocal ? orange : light.opacity(0.7))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(isLocal ? orange.opacity(0.08) : Color.clear)
+    }
+
+    // MARK: - Achievements content (dark bg)
+
+    private var achievementsContent: some View {
+        Group {
+            if !achievementsLoaded {
+                Spacer()
+                ProgressView().tint(sage)
+                Spacer()
+            } else if achievements.isEmpty {
+                Spacer()
+                Text(S.leaderboardEmpty)
+                    .font(AppTheme.mono(10, weight: .medium))
+                    .foregroundStyle(muted)
+                Spacer()
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(achievements) { ach in
+                            Button(action: {
+                                SoundManager.play(.tapSecondary)
+                                withAnimation(.easeInOut(duration: 0.2)) { selectedAchievementID = ach.identifier }
+                            }) {
+                                achievementRow(ach)
+                            }
+                            .buttonStyle(.plain)
+                            Rectangle().fill(light.opacity(0.06)).frame(height: 0.5).padding(.leading, 68)
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+            }
+        }
+    }
+
+    private func achievementRow(_ ach: GameCenterManager.AchievementData) -> some View {
+        HStack(spacing: 12) {
+            if let img = ach.image {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 46, height: 46)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .saturation(ach.isCompleted ? 1 : 0.3)
+                    .opacity(ach.isCompleted ? 1 : 0.5)
+            } else {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(light.opacity(0.04))
+                    .frame(width: 46, height: 46)
+                    .overlay(
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(muted.opacity(0.4))
+                    )
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(ach.title)
+                    .font(AppTheme.mono(11, weight: ach.isCompleted ? .bold : .medium))
+                    .foregroundStyle(ach.isCompleted ? light : muted.opacity(0.6))
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Text(ach.descriptionText)
+                        .font(AppTheme.mono(8, weight: .medium))
+                        .foregroundStyle(muted.opacity(0.5))
+                        .lineLimit(1)
+
+                    if ach.maximumPoints > 0 {
+                        Text(S.achievementPoints(ach.maximumPoints))
+                            .font(AppTheme.mono(7, weight: .bold))
+                            .foregroundStyle(ach.isCompleted ? orange : muted.opacity(0.4))
+                    }
+                }
+            }
+
+            Spacer()
+
+            if ach.isCompleted {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(orange)
+            } else if ach.percentComplete > 0 {
+                Text("\(Int(ach.percentComplete))%")
+                    .font(AppTheme.mono(10, weight: .bold))
+                    .foregroundStyle(orange)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(light.opacity(0.15))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    // MARK: - Achievement detail (sage green card)
+
+    private func achievementDetail(_ ach: GameCenterManager.AchievementData) -> some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button(action: {
+                    SoundManager.play(.tapSecondary)
+                    withAnimation(.easeInOut(duration: 0.2)) { selectedAchievementID = nil }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(S.achievements)
+                            .font(AppTheme.mono(10, weight: .semibold))
+                            .kerning(0.5)
+                    }
+                    .foregroundStyle(muted)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            Rectangle().fill(light.opacity(0.06)).frame(height: 0.5)
+
+            AchievementCard3D(ach: ach, sage: sage, ink: ink, light: light, muted: muted, orange: orange, S: S)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+            Spacer(minLength: 20)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func scrollToLocal(proxy: ScrollViewProxy) {
+        if let rank = boards[activeID]?.playerRank {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                withAnimation(.easeOut(duration: 0.3)) { proxy.scrollTo(rank, anchor: .center) }
+            }
+        }
+    }
+
+    private func tierBoardID(_ tier: DifficultyTier) -> String {
+        switch tier {
+        case .easy:   return GameCenterManager.leaderboardTierEasy
+        case .medium: return GameCenterManager.leaderboardTierMedium
+        case .hard:   return GameCenterManager.leaderboardTierHard
+        case .expert: return GameCenterManager.leaderboardTierExpert
+        }
+    }
+
+    private func fetchBoard(_ id: String) {
+        guard boards[id] == nil, !loadingIDs.contains(id) else { return }
+        loadingIDs.insert(id)
+        Task {
+            var data = await gcManager.fetchLeaderboard(id: id, count: 25)
+            if data == nil {
+                try? await Task.sleep(for: .seconds(1.5))
+                data = await gcManager.fetchLeaderboard(id: id, count: 25)
+            }
+            if let data { boards[id] = data }
+            loadingIDs.remove(id)
+        }
+    }
+
+    private func fetchAllBoards() {
+        fetchBoard(activeID)
+    }
+
+    private func fetchAchievements() {
+        guard !achievementsLoaded else { return }
+        Task {
+            let data = await gcManager.fetchAchievements()
+            achievements = data
+            achievementsLoaded = true
+        }
+    }
+
+}
+
+// MARK: - ChallengeFlowOverlay
+struct ChallengeFlowOverlay: View {
+    let onDismiss: () -> Void
+
+    @EnvironmentObject private var gcManager: GameCenterManager
+    @EnvironmentObject private var settings: SettingsStore
+    private var S: AppStrings { AppStrings(lang: settings.language) }
+
+    @State private var defs: [GameCenterManager.ChallengeDefinitionData] = []
+    @State private var loaded = false
+    @State private var selectedDef: GameCenterManager.ChallengeDefinitionData? = nil
+    @State private var friends: [GameCenterManager.FriendData] = []
+    @State private var friendsLoaded = false
+    @State private var selectedFriendIDs: Set<String> = []
+    @State private var selectedDurationIdx: Int = 0
+
+    private let dark   = Color(hex: "171717")
+    private let sage   = Color(hex: "D9E7D8")
+    private let ink    = Color(hex: "2A2A2A")
+    private let light  = Color(hex: "F0EDE8")
+    private let muted  = Color(hex: "9A9A9A")
+    private let orange = Color(hex: "FF6A3D")
+
+    var body: some View {
+        ZStack {
+            dark.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                headerBar
+
+                Rectangle().fill(light.opacity(0.08)).frame(height: 0.5)
+
+                if let def = selectedDef {
+                    challengeConfigView(def)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                } else {
+                    challengePickerList
+                        .transition(.opacity)
+                }
+            }
+        }
+        .onAppear {
+            Task {
+                defs = await gcManager.fetchChallengeDefinitions()
+                loaded = true
+            }
+            Task {
+                friends = await gcManager.loadChallengableFriends()
+                friendsLoaded = true
+            }
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerBar: some View {
+        HStack {
+            Button(action: {
+                SoundManager.play(.tapSecondary)
+                if selectedDef != nil {
+                    withAnimation(.easeInOut(duration: 0.2)) { selectedDef = nil }
+                } else {
+                    onDismiss()
+                }
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(light)
+                    .frame(width: 44, height: 44)
+            }
+            Spacer()
+            Text(selectedDef != nil ? selectedDef!.title : S.challengeSelectTitle)
+                .font(AppTheme.mono(12, weight: .bold))
+                .kerning(1.5)
+                .foregroundStyle(light)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Spacer()
+            Color.clear.frame(width: 44, height: 44)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    // MARK: - Challenge picker list
+
+    private var challengePickerList: some View {
+        Group {
+            if !loaded {
+                Spacer()
+                ProgressView().tint(sage)
+                Spacer()
+            } else if defs.isEmpty {
+                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "flag.2.crossed")
+                        .font(.system(size: 28, weight: .light))
+                        .foregroundStyle(muted.opacity(0.4))
+                    Text(S.challengeNone)
+                        .font(AppTheme.mono(10, weight: .medium))
+                        .foregroundStyle(muted)
+                }
+                Spacer()
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 14) {
+                        ForEach(defs) { def in
+                            Button(action: {
+                                SoundManager.play(.tapPrimary)
+                                selectedDurationIdx = 0
+                                selectedFriendIDs = []
+                                withAnimation(.easeInOut(duration: 0.2)) { selectedDef = def }
+                            }) {
+                                challengePickerCard(def)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+                }
+            }
+        }
+    }
+
+    private func challengePickerCard(_ def: GameCenterManager.ChallengeDefinitionData) -> some View {
+        let sageMid = ink.opacity(0.5)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("\u{25C8} \(S.challengeLinkedTo.uppercased()) \u{00B7} \(def.leaderboardTitle ?? "")")
+                    .font(AppTheme.mono(7, weight: .semibold))
+                    .tracking(1.5)
+                    .foregroundStyle(sageMid)
+                    .lineLimit(1)
+                Spacer()
+                if def.hasActive {
+                    Text(S.challengeActive)
+                        .font(AppTheme.mono(7, weight: .bold))
+                        .kerning(0.5)
+                        .foregroundStyle(orange)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(orange.opacity(0.15))
+                        .clipShape(Capsule())
+                }
+            }
+
+            Rectangle().fill(ink.opacity(0.08)).frame(height: 0.5).padding(.top, 8)
+
+            HStack(spacing: 14) {
+                if let img = def.image {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 72, height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                } else {
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(ink.opacity(0.06))
+                        .frame(width: 72, height: 72)
+                        .overlay(
+                            Image(systemName: "flag.checkered")
+                                .font(.system(size: 24, weight: .semibold))
+                                .foregroundStyle(orange)
+                        )
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(def.title)
+                        .font(.system(size: 18, weight: .heavy))
+                        .foregroundStyle(ink)
+                        .lineLimit(2)
+
+                    if let details = def.details {
+                        Text(details)
+                            .font(AppTheme.mono(9, weight: .medium))
+                            .foregroundStyle(sageMid)
+                            .lineLimit(2)
+                    }
+                }
+            }
+            .padding(.top, 10)
+
+            if !def.durationOptions.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(Array(def.durationOptions.enumerated()), id: \.offset) { _, dc in
+                        Text(formatDuration(dc))
+                            .font(AppTheme.mono(7, weight: .bold))
+                            .foregroundStyle(sageMid)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(ink.opacity(0.06))
+                            .clipShape(Capsule())
+                    }
+                    if def.isRepeatable {
+                        Image(systemName: "arrow.trianglehead.2.counterclockwise")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(sageMid)
+                    }
+                }
+                .padding(.top, 10)
+            }
+        }
+        .padding(16)
+        .background(sage)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    // MARK: - Challenge config view
+
+    private func challengeConfigView(_ def: GameCenterManager.ChallengeDefinitionData) -> some View {
+        VStack(spacing: 0) {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Hero section
+                    HStack(spacing: 16) {
+                        if let img = def.image {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 64, height: 64)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                                .shadow(color: orange.opacity(0.2), radius: 12, y: 4)
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let details = def.details {
+                                Text(details)
+                                    .font(AppTheme.mono(10, weight: .medium))
+                                    .foregroundStyle(light.opacity(0.7))
+                                    .lineLimit(3)
+                            }
+                            HStack(spacing: 6) {
+                                if let lbTitle = def.leaderboardTitle {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "chart.bar.fill")
+                                            .font(.system(size: 7))
+                                        Text(lbTitle)
+                                            .font(AppTheme.mono(7, weight: .semibold))
+                                    }
+                                    .foregroundStyle(muted)
+                                }
+                                if def.isRepeatable {
+                                    Image(systemName: "arrow.trianglehead.2.counterclockwise")
+                                        .font(.system(size: 7, weight: .semibold))
+                                        .foregroundStyle(muted)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 14)
+
+                    Rectangle().fill(light.opacity(0.06)).frame(height: 0.5)
+
+                    // Duration selector
+                    if !def.durationOptions.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(S.challengeDuration("").replacingOccurrences(of: ": ", with: "").uppercased())
+                                .font(AppTheme.mono(9, weight: .bold))
+                                .kerning(1.5)
+                                .foregroundStyle(muted)
+
+                            HStack(spacing: 0) {
+                                ForEach(Array(def.durationOptions.enumerated()), id: \.offset) { idx, dc in
+                                    Button(action: {
+                                        SoundManager.play(.tapSecondary)
+                                        selectedDurationIdx = idx
+                                    }) {
+                                        Text(formatDuration(dc))
+                                            .font(AppTheme.mono(10, weight: .bold))
+                                            .kerning(0.3)
+                                            .foregroundStyle(selectedDurationIdx == idx ? ink : light)
+                                            .padding(.vertical, 10)
+                                            .frame(maxWidth: .infinity)
+                                            .background(selectedDurationIdx == idx ? sage : Color.clear)
+                                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .background(light.opacity(0.06))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 18)
+                    }
+
+                    // Friends section
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(S.challengeFriends)
+                                .font(AppTheme.mono(9, weight: .bold))
+                                .kerning(1.5)
+                                .foregroundStyle(muted)
+                            Spacer()
+                            if !selectedFriendIDs.isEmpty {
+                                Text("\(selectedFriendIDs.count)")
+                                    .font(AppTheme.mono(10, weight: .bold))
+                                    .foregroundStyle(ink)
+                                    .frame(width: 22, height: 22)
+                                    .background(sage)
+                                    .clipShape(Circle())
+                            }
+                        }
+
+                        if !friendsLoaded {
+                            HStack {
+                                Spacer()
+                                ProgressView().tint(sage)
+                                Spacer()
+                            }
+                            .padding(.vertical, 20)
+                        } else if friends.isEmpty {
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 6) {
+                                    Image(systemName: "person.2.slash")
+                                        .font(.system(size: 20, weight: .light))
+                                        .foregroundStyle(muted.opacity(0.3))
+                                    Text(S.challengeNoFriends)
+                                        .font(AppTheme.mono(9, weight: .medium))
+                                        .foregroundStyle(muted.opacity(0.5))
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 20)
+                        } else {
+                            VStack(spacing: 0) {
+                                ForEach(friends) { friend in
+                                    friendRow(friend)
+                                    if friend.id != friends.last?.id {
+                                        Rectangle().fill(light.opacity(0.04)).frame(height: 0.5)
+                                            .padding(.leading, 60)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 18)
+                }
+            }
+
+            // Sticky CTA at bottom
+            Button(action: {
+                SoundManager.play(.tapPrimary)
+                gcManager.triggerChallenge(identifier: def.identifier)
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "flag.checkered")
+                        .font(.system(size: 13, weight: .bold))
+                    Text(S.challengeStart)
+                        .font(AppTheme.mono(12, weight: .bold))
+                        .kerning(1)
+                }
+                .foregroundStyle(ink)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(sage)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+    }
+
+    // MARK: - Friend row
+
+    private func friendRow(_ friend: GameCenterManager.FriendData) -> some View {
+        let selected = selectedFriendIDs.contains(friend.playerID)
+
+        return Button(action: {
+            SoundManager.play(.tapSecondary)
+            if selected {
+                selectedFriendIDs.remove(friend.playerID)
+            } else {
+                selectedFriendIDs.insert(friend.playerID)
+            }
+        }) {
+            HStack(spacing: 12) {
+                if let avatar = friend.avatar {
+                    Image(uiImage: avatar)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 38, height: 38)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle().strokeBorder(selected ? orange : Color.clear, lineWidth: 2)
+                        )
+                } else {
+                    Circle()
+                        .fill(light.opacity(0.06))
+                        .frame(width: 38, height: 38)
+                        .overlay(
+                            Text(String(friend.displayName.prefix(1)).uppercased())
+                                .font(AppTheme.mono(14, weight: .bold))
+                                .foregroundStyle(muted)
+                        )
+                        .overlay(
+                            Circle().strokeBorder(selected ? orange : Color.clear, lineWidth: 2)
+                        )
+                }
+
+                Text(friend.displayName)
+                    .font(AppTheme.mono(13, weight: selected ? .bold : .medium))
+                    .foregroundStyle(selected ? orange : light)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(selected ? orange : light.opacity(0.12))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(selected ? orange.opacity(0.06) : Color.clear)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Helpers
+
+    private func formatDuration(_ dc: DateComponents) -> String {
+        if let weeks = dc.weekOfYear, weeks > 0 {
+            return weeks == 1 ? "1 week" : "\(weeks) weeks"
+        }
+        if let days = dc.day, days > 0 {
+            return days == 1 ? "1 day" : "\(days) days"
+        }
+        if let hours = dc.hour, hours > 0 {
+            return hours == 1 ? "1 hour" : "\(hours) hours"
+        }
+        return "—"
+    }
+}
+
+// MARK: - AchievementCard3D
+/// Full-screen interactive 3D achievement card — same drag/motion/shine treatment as PlanetPass3DView.
+private struct AchievementCard3D: View {
+    let ach: GameCenterManager.AchievementData
+    let sage: Color
+    let ink: Color
+    let light: Color
+    let muted: Color
+    let orange: Color
+    let S: AppStrings
+
+    // ── Tilt state ────────────────────────────────────────────────────
+    @State private var tilt: CGSize = .zero
+    @State private var isDragging = false
+
+    // ── Idle drift ────────────────────────────────────────────────────
+    @State private var idleTiltX: Double = 0
+    @State private var idleTiltY: Double = 0
+
+    // ── Entry animation ───────────────────────────────────────────────
+    @State private var entryOpacity: Double  = 0
+    @State private var entryOffsetY: CGFloat = 20
+    @State private var entryScale:   CGFloat = 0.92
+    @State private var entryTiltX:   Double  = 4.0
+    @State private var entryTiltY:   Double  = -6.0
+
+    // ── Tap feedback ──────────────────────────────────────────────────
+    @State private var tapScale:     CGFloat = 1.0
+    @State private var tapGlowAlpha: Double  = 0.0
+
+    // ── Sheen sweep ───────────────────────────────────────────────────
+    @State private var sheenX: CGFloat = -0.5
+
+    // ── Device motion ─────────────────────────────────────────────────
+    @ObservedObject private var motion: DeviceMotionManager = .shared
+    @State private var motionDragScale: Double = 1.0
+
+    // ── Constants ─────────────────────────────────────────────────────
+    private let restTiltX:    Double  =  2.5
+    private let restTiltY:    Double  = -3.5
+    private let maxTilt:      Double  =  8.0
+    private let dragScale:    CGFloat =  80
+    private let motionMaxTilt: Double =  5.0
+    private let cornerR:      CGFloat = 20
+
+    private func norm(_ v: CGFloat) -> Double {
+        Double(max(-1.0, min(1.0, v / dragScale)))
+    }
+    private var normX: Double { norm(tilt.width) }
+    private var normY: Double { norm(tilt.height) }
+    private var mX: Double { motion.isAvailable ? motion.tiltX * motionDragScale : 0 }
+    private var mY: Double { motion.isAvailable ? motion.tiltY * motionDragScale : 0 }
+
+    private var activeTiltX: Double { restTiltX + normY * maxTilt + entryTiltX + idleTiltX + mY * motionMaxTilt }
+    private var activeTiltY: Double { restTiltY + normX * maxTilt + entryTiltY + idleTiltY + mX * motionMaxTilt }
+
+    private var glossShiftX: Double { -normX * 0.14 - mX * 0.10 }
+    private var glossShiftY: Double { -normY * 0.10 - mY * 0.08 }
+    private var specularX: Double { 0.30 - normX * 0.18 - mX * 0.14 }
+    private var specularY: Double { 0.20 - normY * 0.12 - mY * 0.10 }
+
+    private var specularIntensity: Double {
+        let dx = specularX - 0.30, dy = specularY - 0.20
+        return max(0.25, 1.0 - sqrt(dx * dx + dy * dy) * 2.4)
+    }
+
+    private var glossIntensity: Double {
+        max(0.55, min(1.2, 1.0 - mX * 0.25 - mY * 0.15))
+    }
+
+    private var bevelLightOpacity: Double {
+        max(0.08, min(0.40, 0.25 + (-normX - normY - mX - mY) * 0.04))
+    }
+    private var bevelDarkOpacity: Double {
+        max(0.06, min(0.32, 0.16 + (normX + normY + mX + mY) * 0.035))
+    }
+
+    private let cardBg = Color(red: 0.070, green: 0.075, blue: 0.085)
+
+    var body: some View {
+        ZStack {
+            // Edge slab — physical card thickness
+            RoundedRectangle(cornerRadius: cornerR)
+                .fill(Color.black.opacity(0.55))
+                .offset(x: 3 + CGFloat(normX) * 4, y: 8 + CGFloat(normY) * 5)
+
+            // Card content
+            cardContent
+                .clipShape(RoundedRectangle(cornerRadius: cornerR, style: .continuous))
+
+            // Inner shadow — surface curvature
+            innerShadow
+
+            // Gloss overlay
+            glossOverlay
+
+            // Specular dot
+            specularDot
+
+            // Bevel stroke
+            bevelOverlay
+
+            // Tap glow
+            RoundedRectangle(cornerRadius: cornerR)
+                .fill(.white.opacity(tapGlowAlpha))
+                .allowsHitTesting(false)
+
+            // Sheen sweep
+            sheenSweep
+        }
+        .rotation3DEffect(.degrees(activeTiltX), axis: (x: 1, y: 0, z: 0), perspective: 0.5)
+        .rotation3DEffect(.degrees(activeTiltY), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+        .shadow(color: .black.opacity(0.50), radius: 5, x: 2, y: 5)
+        .shadow(
+            color: .black.opacity(0.28),
+            radius: 28,
+            x: 5 + CGFloat(normX) * 7 + CGFloat(mX) * 4,
+            y: 16 + CGFloat(normY) * 7 + CGFloat(mY) * 4
+        )
+        .scaleEffect(entryScale * tapScale)
+        .offset(y: entryOffsetY)
+        .opacity(entryOpacity)
+        .onTapGesture { handleTap() }
+        .gesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { value in
+                    if !isDragging {
+                        isDragging = true
+                        SoundManager.play(.ticketMove)
+                        withAnimation(.easeOut(duration: 0.12)) {
+                            idleTiltX = 0; idleTiltY = 0; motionDragScale = 0.15
+                        }
+                    }
+                    tilt = value.translation
+                }
+                .onEnded { _ in
+                    isDragging = false
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) { tilt = .zero }
+                    withAnimation(.spring(response: 0.65, dampingFraction: 0.78).delay(0.30)) { motionDragScale = 1.0 }
+                }
+        )
+        .onAppear { motion.start(); SoundManager.play(.ticketOpen) }
+        .onDisappear { motion.stop() }
+        .task { await runEntry() }
+        .task { await runIdle() }
+    }
+
+    // MARK: - Card content
+
+    private var cardContent: some View {
+        VStack(spacing: 0) {
+            // Hero image
+            ZStack {
+                Color.black.opacity(0.25)
+                Group {
+                    if let img = ach.image {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFit()
+                            .saturation(ach.isCompleted ? 1 : 0.20)
+                            .opacity(ach.isCompleted ? 1 : 0.45)
+                    } else {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 36, weight: .light))
+                            .foregroundStyle(.white.opacity(0.18))
+                    }
+                }
+                .frame(width: 130, height: 130)
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20)
+                        .strokeBorder(
+                            ach.isCompleted ? orange.opacity(0.55) : Color.white.opacity(0.10),
+                            lineWidth: 1.5
+                        )
+                )
+                .shadow(color: ach.isCompleted ? orange.opacity(0.25) : Color.clear, radius: 16, y: 4)
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(1.3, contentMode: .fit)
+
+            Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
+
+            // Info section
+            VStack(spacing: 6) {
+                HStack {
+                    TechLabel(text: "ACHIEVEMENT", color: .white.opacity(0.35))
+                    Spacer()
+                    if ach.isCompleted {
+                        HStack(spacing: 4) {
+                            Circle().fill(orange).frame(width: 5, height: 5)
+                            TechLabel(text: "UNLOCKED", color: orange.opacity(0.85))
+                        }
+                    } else {
+                        TechLabel(text: "LOCKED", color: .white.opacity(0.28))
+                    }
+                }
+
+                Text(ach.title)
+                    .font(.system(size: 18, weight: .heavy))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(ach.descriptionText)
+                    .font(AppTheme.mono(9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.50))
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Rectangle().fill(Color.white.opacity(0.06)).frame(height: 0.5)
+                .padding(.horizontal, 16)
+
+            // Badges + status row
+            HStack(spacing: 6) {
+                if ach.maximumPoints > 0 {
+                    badgePill(S.achievementPoints(ach.maximumPoints), icon: "star.fill", color: orange)
+                }
+                if let rarity = ach.rarityPercent {
+                    badgePill(S.achievementRarity(Int(rarity)), icon: "person.2.fill", color: .white.opacity(0.45))
+                }
+                if ach.isReplayable {
+                    badgePill(S.achievementReplayable, icon: "arrow.trianglehead.2.counterclockwise", color: .white.opacity(0.45))
+                }
+                Spacer(minLength: 0)
+                statusBadge
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+        .background(cardBg)
+    }
+
+    private func badgePill(_ text: String, icon: String, color: Color) -> some View {
+        Label(text, systemImage: icon)
+            .font(AppTheme.mono(7, weight: .bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(color.opacity(0.12))
+            .clipShape(Capsule())
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        if ach.isCompleted {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                Text(S.achievementCompleted)
+                    .font(AppTheme.mono(7, weight: .bold))
+                    .kerning(1)
+            }
+            .foregroundStyle(orange)
+        } else if ach.percentComplete > 0 {
+            Text("\(Int(ach.percentComplete))%")
+                .font(AppTheme.mono(10, weight: .bold))
+                .foregroundStyle(orange)
+        } else {
+            HStack(spacing: 4) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 9, weight: .medium))
+                Text(S.achievementLocked)
+                    .font(AppTheme.mono(7, weight: .bold))
+                    .kerning(1)
+            }
+            .foregroundStyle(.white.opacity(0.28))
+        }
+    }
+
+    // MARK: - Shine layers
+
+    private var innerShadow: some View {
+        ZStack {
+            LinearGradient(
+                colors: [.black.opacity(0.14), .clear],
+                startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.18)
+            )
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.12)],
+                startPoint: UnitPoint(x: 0.5, y: 0.82), endPoint: .bottom
+            )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerR))
+        .allowsHitTesting(false)
+    }
+
+    private var glossOverlay: some View {
+        let g = glossIntensity
+        return RoundedRectangle(cornerRadius: cornerR)
+            .fill(
+                LinearGradient(
+                    stops: [
+                        .init(color: .white.opacity(0.12 * g), location: 0.00),
+                        .init(color: .white.opacity(0.05 * g), location: 0.36),
+                        .init(color: .clear,                    location: 0.54),
+                    ],
+                    startPoint: UnitPoint(x: 0.10 + glossShiftX, y: glossShiftY),
+                    endPoint:   UnitPoint(x: 0.90 + glossShiftX, y: 1.0 + glossShiftY)
+                )
+            )
+            .allowsHitTesting(false)
+    }
+
+    private var specularDot: some View {
+        let a = specularIntensity
+        return RadialGradient(
+            colors: [
+                .white.opacity(0.06 + a * 0.18),
+                .white.opacity(0.02 + a * 0.04),
+                .clear,
+            ],
+            center:      UnitPoint(x: specularX, y: specularY),
+            startRadius: 0,
+            endRadius:   40 + (1.0 - a) * 55
+        )
+        .clipShape(RoundedRectangle(cornerRadius: cornerR))
+        .allowsHitTesting(false)
+    }
+
+    private var bevelOverlay: some View {
+        RoundedRectangle(cornerRadius: cornerR)
+            .strokeBorder(
+                LinearGradient(
+                    stops: [
+                        .init(color: .white.opacity(bevelLightOpacity),        location: 0.00),
+                        .init(color: .white.opacity(bevelLightOpacity * 0.30), location: 0.30),
+                        .init(color: .black.opacity(bevelDarkOpacity * 0.30),  location: 0.70),
+                        .init(color: .black.opacity(bevelDarkOpacity),         location: 1.00),
+                    ],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ),
+                lineWidth: 1.0
+            )
+            .allowsHitTesting(false)
+    }
+
+    private var sheenSweep: some View {
+        GeometryReader { geo in
+            LinearGradient(
+                stops: [
+                    .init(color: .clear,               location: 0.0),
+                    .init(color: .white.opacity(0.22), location: 0.5),
+                    .init(color: .clear,               location: 1.0),
+                ],
+                startPoint: .leading, endPoint: .trailing
+            )
+            .frame(width: 48)
+            .rotationEffect(.degrees(-26), anchor: .center)
+            .offset(x: sheenX * geo.size.width - 24)
+            .frame(maxHeight: .infinity)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: cornerR))
+        .allowsHitTesting(false)
+        .onAppear {
+            withAnimation(.easeIn(duration: 0.55).delay(0.4)) { sheenX = 1.5 }
+        }
+    }
+
+    // MARK: - Animations
+
+    private func handleTap() {
+        HapticsManager.light()
+        withAnimation(.easeOut(duration: 0.09)) { tapScale = 0.96 }
+        Task {
+            try? await Task.sleep(nanoseconds: 90_000_000)
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.50)) { tapScale = 1.0 }
+        }
+        withAnimation(.easeOut(duration: 0.07)) { tapGlowAlpha = 0.09 }
+        Task {
+            try? await Task.sleep(nanoseconds: 110_000_000)
+            withAnimation(.easeOut(duration: 0.26)) { tapGlowAlpha = 0.0 }
+        }
+    }
+
+    private func runEntry() async {
+        withAnimation(.easeOut(duration: 0.35)) {
+            entryOpacity = 1.0; entryOffsetY = 0; entryScale = 1.02
+        }
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        withAnimation(.spring(response: 0.52, dampingFraction: 0.64)) {
+            entryScale = 1.0; entryTiltX = 0; entryTiltY = 0
+        }
+    }
+
+    private func runIdle() async {
+        try? await Task.sleep(nanoseconds: 950_000_000)
+        var flip = false
+        while !Task.isCancelled {
+            if !isDragging {
+                let y: Double = flip ? -0.9 : 0.9
+                let x: Double = flip ? 0.5 : -0.5
+                withAnimation(.easeInOut(duration: 3.2)) { idleTiltY = y }
+                try? await Task.sleep(nanoseconds: 1_600_000_000)
+                guard !Task.isCancelled else { return }
+                if !isDragging {
+                    withAnimation(.easeInOut(duration: 4.5)) { idleTiltX = x }
+                }
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            flip.toggle()
         }
     }
 }

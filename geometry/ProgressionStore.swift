@@ -79,6 +79,9 @@ enum ProgressionStore {
         decoded.migrateScoresIfNeeded()
         if hadScores && !decoded.bestScoreByLevel.isEmpty { needsSave = true }
 
+        // Migration 3: recalibrate scores from efficiency ground truth (v1.0 scoring bug fix)
+        if decoded.recalibrateScoresIfNeeded() { needsSave = true }
+
         if needsSave {
             save(decoded)   // save() also sets _cache
         } else {

@@ -828,7 +828,7 @@ class GameViewModel: ObservableObject {
         var profile = ProgressionStore.profile
         profile.dailyCumulativeScore += score
         ProgressionStore.save(profile)
-        let cumulative = DailyStore.cumulativeScore
+        let cumulative = max(DailyStore.cumulativeScore, profile.dailyCumulativeScore)
         Task {
             await GameCenterManager.shared.submitDailyScores(
                 dailyScore: score,

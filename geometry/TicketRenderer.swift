@@ -593,26 +593,24 @@ enum TicketRenderer {
 // MARK: - TicketCache
 
 /// In-memory cache for rendered ticket images.
-/// Keyed on the fields that affect the rendered output: planet, level, missions, efficiency.
+/// Uses NSCache for automatic eviction under memory pressure.
 /// @MainActor — only accessed from the main thread; no locking needed.
 @MainActor
 final class TicketCache {
     static let shared = TicketCache()
-    private init() {}
-
-    private var store: [String: UIImage] = [:]
+    private let store = NSCache<NSString, UIImage>()
+    private init() { store.countLimit = 12 }
 
     func image(for pass: PlanetPass, language: AppLanguage) -> UIImage? {
-        store[cacheKey(for: pass, language: language)]
+        store.object(forKey: cacheKey(for: pass, language: language) as NSString)
     }
 
     func cache(_ image: UIImage, for pass: PlanetPass, language: AppLanguage) {
-        store[cacheKey(for: pass, language: language)] = image
+        store.setObject(image, forKey: cacheKey(for: pass, language: language) as NSString)
     }
 
-    /// Call when the player's pass data changes (e.g. after a level-up).
     func invalidateAll() {
-        store.removeAll()
+        store.removeAllObjects()
     }
 
     private func cacheKey(for pass: PlanetPass, language: AppLanguage) -> String {
