@@ -358,6 +358,12 @@ private struct SectorCard: View {
                     .foregroundStyle(AppTheme.textPrimary)
                     .monospacedDigit()
                 TechLabel(text: S.missionsLabel, color: AppTheme.textSecondary)
+                if let eff = avgEfficiency {
+                    TechLabel(
+                        text: "\(S.avgEfficiency)  \(Int(eff * 100))%",
+                        color: efficiencyColor(eff).opacity(0.70)
+                    )
+                }
             }
 
         case .completed:
@@ -375,7 +381,7 @@ private struct SectorCard: View {
                 if let eff = avgEfficiency {
                     TechLabel(
                         text: "\(S.avgEfficiency)  \(Int(eff * 100))%",
-                        color: AppTheme.success.opacity(0.70)
+                        color: efficiencyColor(eff).opacity(0.70)
                     )
                 }
             }
@@ -475,6 +481,12 @@ private struct SectorCard: View {
             .foregroundStyle(AppTheme.accentPrimary.opacity(0.65))
         }
         .overlay(alignment: .top) { TechDivider() }
+    }
+
+    private func efficiencyColor(_ eff: Float) -> Color {
+        if eff >= 1.0 { return Color(hex: "FFB800") }
+        if eff >= 0.8 { return AppTheme.success }
+        return AppTheme.textSecondary
     }
 
     // MARK: Left accent bar
