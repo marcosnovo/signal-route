@@ -620,7 +620,7 @@ enum LevelValidationRunner {
         case .easy:   range = "IDs   1– 30"
         case .medium: range = "IDs  31– 70"
         case .hard:   range = "IDs  71–110"
-        case .expert: range = "IDs 111–180"
+        case .expert: range = "IDs 111–330"
         }
         return "── \(diff.fullLabel.uppercased()) (\(range)) "
             + String(repeating: "─", count: max(0, 44 - diff.fullLabel.count))
@@ -668,7 +668,7 @@ struct LevelDifficultyMetrics {
 }
 
 // MARK: - DifficultyDataset
-/// Builds and exports the full difficulty dataset for all 180 levels.
+/// Builds and exports the full difficulty dataset for all 330 levels.
 /// Always wrapped in #if DEBUG — do not call from release code.
 @MainActor
 enum DifficultyDataset {
@@ -1422,7 +1422,7 @@ enum RebalancingEngine {
 
 // MARK: - DifficultyCurveAnalyzer
 
-/// Analyses the global difficulty progression across all 180 levels.
+/// Analyses the global difficulty progression across all 330 levels.
 ///
 /// Responsibilities:
 ///   • Classify levels into 4 game phases and validate each phase's average score
@@ -1438,14 +1438,14 @@ enum DifficultyCurveAnalyzer {
         case early = "EARLY"    // IDs  1– 30
         case mid   = "MID"      // IDs 31– 90
         case late  = "LATE"     // IDs 91–150
-        case end   = "END"      // IDs 151–180
+        case end   = "END"      // IDs 151–330
 
         var levelRange: ClosedRange<Int> {
             switch self {
             case .early: return   1...30
             case .mid:   return  31...90
             case .late:  return  91...150
-            case .end:   return 151...180
+            case .end:   return 151...330
             }
         }
 
@@ -1627,7 +1627,7 @@ enum DifficultyCurveAnalyzer {
         print("     1" + String(repeating: " ", count: sep30 - 1) + "31"
             + String(repeating: " ", count: sep90 - sep30 - 2) + "91"
             + String(repeating: " ", count: sep150 - sep90 - 2) + "151"
-            + String(repeating: " ", count: numBuckets - sep150 - 3) + "180")
+            + String(repeating: " ", count: numBuckets - sep150 - 3) + "330")
 
         // Sparkline (single-line summary)
         let sparks = avgs.map { sparkChar(Double($0)) }

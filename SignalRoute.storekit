@@ -20,17 +20,17 @@
       "internalID" : "6763014141",
       "localizations" : [
         {
-          "description" : "Unlock all 180 missions. No daily limits, ever.",
+          "description" : "Unlock all 330 missions. No daily limits, ever.",
           "displayName" : "Signal Void Full Unlock",
           "locale" : "en_US"
         },
         {
-          "description" : "Desbloquea las 180 misiones. Sin límites diarios.",
+          "description" : "Desbloquea las 330 misiones. Sin límites diarios.",
           "displayName" : "Signal Void Desbloqueo Total",
           "locale" : "es_ES"
         },
         {
-          "description" : "Débloquez les 180 missions. Sans limite quotidienne.",
+          "description" : "Débloquez les 330 missions. Sans limite quotidienne.",
           "displayName" : "Signal Void Déblocage Complet",
           "locale" : "fr_FR"
         }
