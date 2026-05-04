@@ -2586,6 +2586,25 @@ struct LeaderboardPickerOverlay: View {
                                         .tracking(0.5)
                                         .foregroundStyle(muted)
                                     Spacer()
+                                    if let rank = data.playerRank {
+                                        Button(action: {
+                                            SoundManager.play(.tapSecondary)
+                                            shareLeaderboard(data: data, rank: rank)
+                                        }) {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "square.and.arrow.up")
+                                                    .font(.system(size: 9, weight: .bold))
+                                                Text(S.shareLabel)
+                                                    .font(AppTheme.mono(8, weight: .bold))
+                                                    .kerning(1)
+                                            }
+                                            .foregroundStyle(sage)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 5)
+                                            .background(sage.opacity(0.12))
+                                            .clipShape(Capsule())
+                                        }
+                                    }
                                 }
                                 .padding(.horizontal, 16)
                                 .padding(.top, 16)
@@ -2717,6 +2736,31 @@ struct LeaderboardPickerOverlay: View {
     }
 
     // MARK: - Hero rank card (sage green widget card on dark bg)
+
+    private func shareLeaderboard(data: GameCenterManager.LeaderboardData, rank: Int) {
+        let localScore = data.entries.first(where: { $0.isLocalPlayer })?.score ?? 0
+        let total      = data.totalPlayers
+        let pct        = total > 0 ? max(1, Int(Double(rank) / Double(total) * 100)) : 0
+        let boardName  = categoryLabel
+        let playerName = gcManager.displayName
+        let lang       = settings.language
+        HapticsManager.light()
+
+        Task {
+            let image = await Task.detached(priority: .userInitiated) {
+                ShareImageRenderer.renderLeaderboard(
+                    rank: rank, score: localScore, totalPlayers: total,
+                    boardName: boardName, topPercent: pct,
+                    playerName: playerName, language: lang
+                )
+            }.value
+
+            let text = S.shareLeaderboardText(rank: rank, board: boardName)
+                + "\nhttps://apps.apple.com/us/app/signal-void/id6762368239"
+
+            ShareImageRenderer.presentShareSheet(image: image, text: text)
+        }
+    }
 
     private func heroRankCard(data: GameCenterManager.LeaderboardData, rank: Int) -> some View {
         let localEntry = data.entries.first(where: { $0.isLocalPlayer })

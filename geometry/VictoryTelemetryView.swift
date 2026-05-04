@@ -808,55 +808,36 @@ struct VictoryTelemetryView: View {
     // MARK: - Share ticket
     // ══════════════════════════════════════════════════════════════════════
 
-    /// Builds an ephemeral PlanetPass from the current game result + profile.
-    /// Not persisted — exists only for rendering the share image.
-    private func makeEphemeralPass() -> PlanetPass {
-        let profile = ProgressionStore.profile
-        let planet  = profile.currentPlanet
-        return PlanetPass(
-            id:              UUID(),
-            planetName:      planet.name,
-            planetIndex:     planet.id,
-            levelReached:    profile.level,
-            efficiencyScore: vm.gameResult?.efficiency ?? 0,
-            missionCount:    profile.completedMissions,
-            timestamp:       Date()
-        )
-    }
-
-    /// Renders a ticket image on a background thread, then presents the system share sheet.
+    /// Renders a branded victory image on a background thread, then presents the system share sheet
+    /// with localized social text + App Store link.
     private func shareTicket() {
-        let profile = ProgressionStore.profile
-        let pass    = makeEphemeralPass()
+        let profile   = ProgressionStore.profile
+        let lang      = settings.language
+        let missionId = vm.currentLevel.id
+        let planet    = vm.currentLevel.isDailyChallenge
+            ? "DAILY CHALLENGE"
+            : (profile.currentPlanet.name)
+        let eff       = efficiency
+        let score     = vm.score
+        let moves     = vm.movesUsed
+        let minMoves  = vm.currentLevel.minimumRequiredMoves
+        let rank      = S.rankTitle(profile.level)
         HapticsManager.light()
 
         Task {
-            // Heavy CG draw (1080×1080) happens off the main actor.
-            let lang = settings.language
             let image = await Task.detached(priority: .userInitiated) {
-                TicketRenderer.render(pass: pass, profile: profile, language: lang)
+                ShareImageRenderer.renderVictory(
+                    missionId: missionId, planetName: planet,
+                    efficiency: eff, score: score,
+                    movesUsed: moves, minMoves: minMoves,
+                    rankTitle: rank, language: lang
+                )
             }.value
 
-            // Back on main actor for UIKit presentation.
-            let vc = UIActivityViewController(activityItems: [image], applicationActivities: nil)
+            let text = S.shareVictoryText(mission: missionId, efficiency: eff)
+                + "\nhttps://apps.apple.com/us/app/signal-void/id6762368239"
 
-            guard let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first(where: { $0.activationState == .foregroundActive }),
-                  var presenter = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController
-            else { return }
-            while let next = presenter.presentedViewController, !next.isBeingDismissed {
-                presenter = next
-            }
-
-            vc.popoverPresentationController?.sourceView = presenter.view
-            vc.popoverPresentationController?.sourceRect = CGRect(
-                x: presenter.view.bounds.midX,
-                y: presenter.view.bounds.maxY - 80,
-                width: 0, height: 0
-            )
-
-            presenter.present(vc, animated: true)
+            ShareImageRenderer.presentShareSheet(image: image, text: text)
         }
     }
 }

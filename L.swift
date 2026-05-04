@@ -909,6 +909,18 @@ struct AppStrings {
     var maxLabel:        String { t("MAX",                "MÁX",                 "MAX") }
     var retryLabel:      String { t("RETRY",              "REINTENTAR",          "RÉESSAYER") }
     var shareLabel:      String { t("SHARE",              "COMPARTIR",           "PARTAGER") }
+
+    func shareVictoryText(mission: Int, efficiency: Int) -> String {
+        t("Mission #\(mission) complete — \(efficiency)% efficiency! Can you beat my score in Signal Void? 🛰️",
+          "¡Misión #\(mission) completada — \(efficiency)% de eficiencia! ¿Puedes superar mi puntuación en Signal Void? 🛰️",
+          "Mission #\(mission) terminée — \(efficiency)% d'efficacité ! Tu peux battre mon score sur Signal Void ? 🛰️")
+    }
+
+    func shareLeaderboardText(rank: Int, board: String) -> String {
+        t("I'm ranked #\(rank) on the \(board) leaderboard in Signal Void! Think you can beat me? 🏆",
+          "¡Estoy en el puesto #\(rank) en la clasificación \(board) de Signal Void! ¿Crees que puedes superarme? 🏆",
+          "Je suis classé #\(rank) au classement \(board) dans Signal Void ! Tu penses pouvoir me battre ? 🏆")
+    }
     var mapLabel:        String { t("MAP",                "MAPA",                "CARTE") }
 
     func nextMissionLabel(_ displayID: String) -> String {
