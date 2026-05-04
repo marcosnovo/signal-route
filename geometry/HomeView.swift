@@ -2325,6 +2325,8 @@ private struct ConfettiParticle: Identifiable {
 }
 
 struct ConfettiOverlay: View {
+    @Binding var isShowing: Bool
+
     @State private var particles: [ConfettiParticle] = []
     @State private var startDate = Date()
     private let duration: TimeInterval = 3.0
@@ -2364,7 +2366,13 @@ struct ConfettiOverlay: View {
             }
         }
         .allowsHitTesting(false)
-        .onAppear { spawnParticles() }
+        .onAppear {
+            spawnParticles()
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(duration + 0.2))
+                isShowing = false
+            }
+        }
     }
 
     private func spawnParticles() {
@@ -2462,7 +2470,7 @@ struct LeaderboardPickerOverlay: View {
             }
 
             if showConfetti {
-                ConfettiOverlay()
+                ConfettiOverlay(isShowing: $showConfetti)
                     .ignoresSafeArea()
                     .zIndex(10)
             }
@@ -2478,10 +2486,12 @@ struct LeaderboardPickerOverlay: View {
             if authed { boards = [:]; fetchAllBoards() }
         }
         .onChange(of: activeID) { _, newID in
-            showConfetti = false
+            if showConfetti {
+                showConfetti = false
+            }
             if let data = boards[newID], data.playerRank == 1 {
                 Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(50))
+                    try? await Task.sleep(for: .milliseconds(100))
                     showConfetti = true
                 }
             }
