@@ -352,12 +352,12 @@ private struct ProgressLarge: View {
 
             // Sector strip
             VStack(alignment: .leading, spacing: 5) {
-                Text("\(S.sectors) \u{00B7} \(sectorIdx + 1) / 8")
+                Text("\(S.sectors) \u{00B7} \(sectorIdx + 1) / 10")
                     .font(WidgetTheme.mono(7, weight: .semibold))
                     .tracking(1.5)
                     .foregroundStyle(WidgetTheme.sageMid)
                 SectorStrip(
-                    totalSectors: 8,
+                    totalSectors: 10,
                     completedSectors: sectorIdx
                 )
             }

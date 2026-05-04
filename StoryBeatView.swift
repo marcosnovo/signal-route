@@ -65,7 +65,7 @@ struct StoryBeatView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(accentColor.opacity(0.30), lineWidth: 0.5)
+                        .strokeBorder(accentColor.opacity(0.55), lineWidth: 1.2)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .scaleEffect(appeared ? 1.0 : 0.95)
@@ -87,31 +87,38 @@ struct StoryBeatView: View {
 
     // MARK: - Sub-views
 
-    /// 16:9 image banner with slow zoom, bottom gradient fade, and source label.
+    /// 2.5:1 image banner with slow zoom, gradient framing, and source label.
     @ViewBuilder
     private func imageBanner(_ uiImage: UIImage, accent: Color) -> some View {
-        // Color.clear establishes the 16:9 frame; Image fills it as an overlay.
         Color.clear
-            .aspectRatio(CGFloat(16) / CGFloat(9), contentMode: .fit)
+            .aspectRatio(2.5, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .overlay {
                 Image(uiImage: uiImage)
                     .resizable()
                     .scaledToFill()
                     .scaleEffect(imgScale, anchor: .center)
-                    .clipped()
+            }
+            .clipped()
+            .overlay(alignment: .top) {
+                LinearGradient(
+                    colors: [AppTheme.backgroundSecondary.opacity(0.6), .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 40)
             }
             .overlay(alignment: .bottom) {
                 LinearGradient(
                     gradient: Gradient(stops: [
                         .init(color: .clear,                                         location: 0.0),
-                        .init(color: AppTheme.backgroundSecondary.opacity(0.50),     location: 0.65),
+                        .init(color: AppTheme.backgroundSecondary.opacity(0.60),     location: 0.50),
                         .init(color: AppTheme.backgroundSecondary,                   location: 1.0)
                     ]),
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 80)
+                .frame(height: 120)
             }
             .overlay(alignment: .bottomLeading) {
                 HStack(spacing: 5) {

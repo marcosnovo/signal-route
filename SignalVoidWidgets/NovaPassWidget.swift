@@ -80,7 +80,7 @@ struct NovaPassWidgetView: View {
 }
 
 // MARK: - Small
-// Credential face: HUGE earned count, 8 planet dots, clear status.
+// Credential face: HUGE earned count, 10 planet dots, clear status.
 
 private struct NovaPassSmall: View {
     let snap: WidgetDataSnapshot
@@ -111,16 +111,16 @@ private struct NovaPassSmall: View {
                     .tracking(-3)
                     .foregroundStyle(WidgetTheme.accentOrange)
                     .lineLimit(1)
-                Text("/8")
+                Text("/10")
                     .font(WidgetTheme.sans(20, weight: .bold))
                     .foregroundStyle(WidgetTheme.textSecondary)
             }
 
             Spacer(minLength: 6)
 
-            // 8 planet dots — earned = planet color, locked = dim outline
+            // 10 planet dots — earned = planet color, locked = dim outline
             HStack(spacing: 6) {
-                ForEach(0..<8, id: \.self) { i in
+                ForEach(0..<10, id: \.self) { i in
                     let isEarned = snap.passes.contains(where: { $0.planetIndex == i })
                     Circle()
                         .fill(isEarned ? PlanetColors.color(for: i) : Color.white.opacity(0.08))
@@ -161,16 +161,16 @@ private struct NovaPassMedium: View {
                     .tracking(-2)
                     .foregroundStyle(WidgetTheme.textPrimary)
                     .lineLimit(1)
-                Text("/8 \(S.earned)")
+                Text("/10 \(S.earned)")
                     .font(WidgetTheme.mono(7, weight: .semibold))
                     .tracking(1)
                     .foregroundStyle(WidgetTheme.onDarkSub)
 
                 Spacer(minLength: 0)
 
-                // 8 planet dots
+                // 10 planet dots
                 HStack(spacing: 4) {
-                    ForEach(0..<8, id: \.self) { i in
+                    ForEach(0..<10, id: \.self) { i in
                         let isEarned = snap.passes.contains(where: { $0.planetIndex == i })
                         Circle()
                             .fill(isEarned ? PlanetColors.color(for: i) : Color.white.opacity(0.08))
@@ -251,7 +251,7 @@ private struct CredentialRow: View {
 }
 
 // MARK: - Large
-// Full credential gallery: header, 2×4 grid, footer stats, time.
+// Full credential gallery: header, 2×5 grid, footer stats, time.
 
 private struct NovaPassLarge: View {
     let snap: WidgetDataSnapshot
@@ -259,7 +259,7 @@ private struct NovaPassLarge: View {
 
     private var earnedCount: Int { snap.passes.count }
     private var planetSlots: [(index: Int, pass: PassSnapshot?)] {
-        (0..<8).map { i in (i, snap.passes.first(where: { $0.planetIndex == i })) }
+        (0..<10).map { i in (i, snap.passes.first(where: { $0.planetIndex == i })) }
     }
     private var totalMissions: Int { snap.passes.reduce(0) { $0 + $1.missionCount } }
     private var bestEfficiency: Int { snap.passes.map(\.efficiencyPercent).max() ?? 0 }
@@ -279,15 +279,15 @@ private struct NovaPassLarge: View {
                     .tracking(1.5)
                     .foregroundStyle(WidgetTheme.onDarkSub)
                 Spacer()
-                Text("\(earnedCount)/8")
+                Text("\(earnedCount)/10")
                     .font(WidgetTheme.mono(10, weight: .heavy))
                     .foregroundStyle(WidgetTheme.accentOrange)
             }
 
             Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
 
-            // 2×4 credential grid
-            let rows = [Array(planetSlots.prefix(4)), Array(planetSlots.suffix(4))]
+            // 2×5 credential grid
+            let rows = [Array(planetSlots.prefix(5)), Array(planetSlots.suffix(5))]
             ForEach(0..<rows.count, id: \.self) { rowIdx in
                 HStack(spacing: 5) {
                     ForEach(rows[rowIdx], id: \.index) { slot in
@@ -334,7 +334,7 @@ private struct NovaPassLarge: View {
     }
 }
 
-/// Credential card for the 2×4 grid — earned shows full data, locked shows dim state.
+/// Credential card for the 2×5 grid — earned shows full data, locked shows dim state.
 private struct CredentialCard: View {
     let planetIndex: Int
     let pass: PassSnapshot?

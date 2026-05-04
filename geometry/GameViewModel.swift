@@ -284,6 +284,13 @@ class GameViewModel: ObservableObject {
                     attempts:     attemptCount
                 )
                 SessionTracker.shared.recordWin()
+                AchievementEngine.shared.record(event: .levelCleared(
+                    levelId: currentLevel.id,
+                    difficulty: currentLevel.difficulty,
+                    efficiency: result.efficiency,
+                    movesRemaining: movesLeft,
+                    attemptCount: attemptCount
+                ))
             }
         } else if movesLeft == 0 {
             triggerLoss()
@@ -566,6 +573,13 @@ class GameViewModel: ObservableObject {
                     } else if currentLevel.isDailyChallenge {
                         handleDailyWin(score: result.score)
                     }
+                    AchievementEngine.shared.record(event: .levelCleared(
+                        levelId: currentLevel.id,
+                        difficulty: currentLevel.difficulty,
+                        efficiency: result.efficiency,
+                        movesRemaining: movesLeft,
+                        attemptCount: attemptCount
+                    ))
                 }
             }
         }

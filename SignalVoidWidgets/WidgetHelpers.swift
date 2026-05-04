@@ -179,9 +179,9 @@ struct RankLadder: View {
 }
 
 // MARK: - SectorStrip
-/// 8-segment sector completion strip. Completed = dark, current = orange, future = outline.
+/// 10-segment sector completion strip. Completed = dark, current = orange, future = outline.
 struct SectorStrip: View {
-    var totalSectors: Int = 8
+    var totalSectors: Int = 10
     var completedSectors: Int = 2
     var height: CGFloat = 8
 
@@ -235,7 +235,7 @@ enum WidgetRanks {
         return idx < names.count - 1 ? names[idx + 1] : names.last!
     }
 
-    static let planetOrder = ["EARTH ORBIT", "MOON", "MARS", "ASTEROID BELT", "JUPITER", "SATURN", "NEPTUNE", "DEEP SPACE"]
+    static let planetOrder = ["EARTH ORBIT", "MOON", "MARS", "ASTEROID BELT", "JUPITER", "SATURN", "URANUS", "NEPTUNE", "KUIPER BELT", "OORT CLOUD"]
 
     static func sectorIndex(for planetName: String) -> Int {
         planetOrder.firstIndex(of: planetName.uppercased()) ?? 0
@@ -261,6 +261,8 @@ enum PlanetInfo {
         case 5:  return Info(category: "RING SYSTEM TRANSIT", difficulty: "HARD",   level: 13)
         case 6:  return Info(category: "ICE GIANT PATROL",    difficulty: "EXPERT", level: 14)
         case 7:  return Info(category: "DEEP VOID",           difficulty: "EXPERT", level: 15)
+        case 8:  return Info(category: "FROZEN FRONTIER",     difficulty: "EXPERT", level: 22)
+        case 9:  return Info(category: "DEEP VOID NETWORK",   difficulty: "EXPERT", level: 26)
         default: return Info(category: "UNKNOWN SECTOR",      difficulty: "\u{2014}",      level: 0)
         }
     }
@@ -464,9 +466,9 @@ extension WidgetTheme {
 }
 
 // MARK: - DarkSectorStrip
-/// 8-segment sector strip for dark backgrounds. Completed = sage, current = orange, future = dim outline.
+/// 10-segment sector strip for dark backgrounds. Completed = sage, current = orange, future = dim outline.
 struct DarkSectorStrip: View {
-    var totalSectors: Int = 8
+    var totalSectors: Int = 10
     var completedSectors: Int = 2
     var height: CGFloat = 8
 
@@ -494,7 +496,7 @@ enum PreviewSnapshots {
         playerLevel: 5,
         rankTitle: "NAVIGATOR",
         completedMissions: 50,
-        totalMissions: 180,
+        totalMissions: 330,
         averageEfficiencyPercent: 93,
         leaderboardScore: 142850,
         currentPlanetName: "MARS",

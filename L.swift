@@ -82,6 +82,8 @@ struct AppStrings {
         case "SATURN":        return t("SATURN",         "SATURNO",                  "SATURNE")
         case "URANUS":        return t("URANUS",         "URANO",                    "URANUS")
         case "NEPTUNE":       return t("NEPTUNE",        "NEPTUNO",                  "NEPTUNE")
+        case "KUIPER BELT":   return t("KUIPER BELT",    "CINTURÓN DE KUIPER",       "CEINTURE DE KUIPER")
+        case "OORT CLOUD":    return t("OORT CLOUD",     "NUBE DE OORT",             "NUAGE D'OORT")
         default: return name
         }
     }
@@ -96,6 +98,8 @@ struct AppStrings {
         case "SATURN RING":    return t("SATURN RING",    "ANILLOS DE SATURNO",       "ANNEAUX DE SATURNE")
         case "URANUS VOID":    return t("URANUS VOID",    "VACÍO DE URANO",           "VIDE D'URANUS")
         case "NEPTUNE DEEP":   return t("NEPTUNE DEEP",   "NEPTUNO PROFUNDO",         "NEPTUNE PROFOND")
+        case "KUIPER BELT":    return t("KUIPER BELT",    "CINTURÓN DE KUIPER",       "CEINTURE DE KUIPER")
+        case "OORT CLOUD":     return t("OORT CLOUD",     "NUBE DE OORT",             "NUAGE D'OORT")
         default: return name
         }
     }
@@ -112,6 +116,8 @@ struct AppStrings {
         case "ICE GIANT SURVEY":    return t("ICE GIANT SURVEY",    "EXPLORACIÓN GIGANTE HELADO","EXPLORATION DU GÉANT GLACÉ")
         case "DEEP SPACE COMMS":    return t("DEEP SPACE COMMS",    "COMMS ESPACIO PROFUNDO",    "COMMS ESPACE PROFOND")
         case "PHASE 2 OPERATIONS":  return t("PHASE 2 OPERATIONS",  "OPERACIONES FASE 2",        "OPÉRATIONS PHASE 2")
+        case "FROZEN FRONTIER":     return t("FROZEN FRONTIER",     "FRONTERA HELADA",           "FRONTIÈRE GELÉE")
+        case "DEEP VOID NETWORK":   return t("DEEP VOID NETWORK",   "RED DEL VACÍO PROFUNDO",    "RÉSEAU DU VIDE PROFOND")
         default: return brief
         }
     }
@@ -404,6 +410,8 @@ struct AppStrings {
         case "SATURN RING SECTOR OPEN":       return t(hint, "SECTOR ANILLOS DE SATURNO ABIERTO",       "SECTEUR ANNEAUX DE SATURNE OUVERT")
         case "URANUS VOID SECTOR OPEN":       return t(hint, "SECTOR VACÍO DE URANO ABIERTO",           "SECTEUR VIDE D'URANUS OUVERT")
         case "NEPTUNE DEEP SECTOR OPEN":      return t(hint, "SECTOR PROFUNDO DE NEPTUNO ABIERTO",      "SECTEUR PROFOND DE NEPTUNE OUVERT")
+        case "KUIPER BELT SECTOR OPEN":       return t(hint, "SECTOR CINTURÓN DE KUIPER ABIERTO",       "SECTEUR CEINTURE DE KUIPER OUVERT")
+        case "OORT CLOUD SECTOR OPEN":        return t(hint, "SECTOR NUBE DE OORT ABIERTO",             "SECTEUR NUAGE D'OORT OUVERT")
         case "FULL NETWORK OPERATIONAL":      return t(hint, "RED COMPLETA OPERATIVA",                   "RÉSEAU COMPLET OPÉRATIONNEL")
         case "RANK: PILOT":                   return t(hint, "RANGO: PILOTO",                             "RANG: PILOTE")
         case "RANK: NAVIGATOR":               return t(hint, "RANGO: NAVEGANTE",                          "RANG: NAVIGATEUR")
@@ -421,6 +429,8 @@ struct AppStrings {
         case "SATURN RING SECTOR UNLOCKED":   return t(hint, "SECTOR ANILLOS DE SATURNO DESBLOQUEADO",  "SECTEUR ANNEAUX DE SATURNE DÉBLOQUÉ")
         case "URANUS VOID UNLOCKED":          return t(hint, "VACÍO DE URANO DESBLOQUEADO",              "VIDE D'URANUS DÉBLOQUÉ")
         case "NEPTUNE DEEP UNLOCKED":         return t(hint, "PROFUNDO NEPTUNO DESBLOQUEADO",            "NEPTUNE PROFOND DÉBLOQUÉ")
+        case "KUIPER BELT UNLOCKED":          return t(hint, "CINTURÓN DE KUIPER DESBLOQUEADO",          "CEINTURE DE KUIPER DÉBLOQUÉE")
+        case "OORT CLOUD UNLOCKED":           return t(hint, "NUBE DE OORT DESBLOQUEADA",               "NUAGE D'OORT DÉBLOQUÉ")
         case "SECTOR 2 — LUNAR APPROACH":    return t(hint, "SECTOR 2 — LLEGADA LUNAR",                 "SECTEUR 2 — APPROCHE LUNAIRE")
         case "SECTOR 3 — MARS SECTOR":       return t(hint, "SECTOR 3 — SECTOR MARTE",                  "SECTEUR 3 — SECTEUR MARS")
         case "SECTOR 4 — ASTEROID BELT":     return t(hint, "SECTOR 4 — CINTURÓN DE ASTEROIDES",       "SECTEUR 4 — CEINTURE D'ASTÉROÏDES")
@@ -428,6 +438,8 @@ struct AppStrings {
         case "SECTOR 6 — SATURN RING":       return t(hint, "SECTOR 6 — ANILLOS DE SATURNO",           "SECTEUR 6 — ANNEAUX DE SATURNE")
         case "SECTOR 7 — URANUS VOID":       return t(hint, "SECTOR 7 — VACÍO DE URANO",               "SECTEUR 7 — VIDE D'URANUS")
         case "SECTOR 8 — NEPTUNE DEEP":      return t(hint, "SECTOR 8 — NEPTUNO PROFUNDO",             "SECTEUR 8 — NEPTUNE PROFOND")
+        case "SECTOR 9 — KUIPER BELT":       return t(hint, "SECTOR 9 — CINTURÓN DE KUIPER",           "SECTEUR 9 — CEINTURE DE KUIPER")
+        case "SECTOR 10 — OORT CLOUD":       return t(hint, "SECTOR 10 — NUBE DE OORT",                "SECTEUR 10 — NUAGE D'OORT")
         default: return hint
         }
     }
@@ -468,8 +480,8 @@ struct AppStrings {
 
     // MARK: - Paywall
     var paywallTitle:           String { t("Unlock Signal Void",               "Desbloquea Signal Void",                "Débloquez Signal Void") }
-    var paywallSubtitle:        String { t("Play all 180 levels without limits","Juega sin límites los 180 niveles",     "Jouez aux 180 niveaux sans limite") }
-    var paywallFeatureLevels:   String { t("Full access to all 180 levels",    "Acceso completo a los 180 niveles",     "Accès complet aux 180 niveaux") }
+    var paywallSubtitle:        String { t("Play all 330 levels without limits","Juega sin límites los 330 niveles",     "Jouez aux 330 niveaux sans limite") }
+    var paywallFeatureLevels:   String { t("Full access to all 330 levels",    "Acceso completo a los 330 niveles",     "Accès complet aux 330 niveaux") }
     var paywallFeatureNoLimit:  String { t("No daily mission limit",           "Sin límite diario de misiones",         "Aucune limite quotidienne de missions") }
     var paywallFeatureOneTime:  String { t("One-time payment, forever",        "Pago único, para siempre",              "Paiement unique, pour toujours") }
     var paywallFeatureFamily:   String { t("Family Sharing supported",         "Compatible con Compartir en familia",   "Compatible avec le Partage familial") }
@@ -510,6 +522,11 @@ struct AppStrings {
     var achievementReplayable:   String { t("REPEATABLE",                     "REPETIBLE",                             "REJOUABLE") }
     func achievementPoints(_ n: Int) -> String { t("\(n) PTS", "\(n) PTS", "\(n) PTS") }
     func achievementRarity(_ pct: Int) -> String { t("Earned by \(pct)% of players", "Obtenido por el \(pct)% de jugadores", "Obtenu par \(pct)% des joueurs") }
+    var achievementProgress:     String { t("PROGRESS",                       "PROGRESO",                              "PROGRÈS") }
+    var achievementDate:         String { t("DATE",                           "FECHA",                                 "DATE") }
+    var achievementStats:        String { t("STATS",                          "ESTADÍSTICAS",                          "STATISTIQUES") }
+    var achievementComingSoon:   String { t("Coming soon",                    "Próximamente",                          "Bientôt disponible") }
+    func achievementCount(_ done: Int, _ total: Int) -> String { t("\(done) of \(total) unlocked", "\(done) de \(total) desbloqueados", "\(done) sur \(total) débloqués") }
     var achievementChallenge:    String { t("CHALLENGE A FRIEND",             "RETAR A UN AMIGO",                      "DÉFIER UN AMI") }
     var challengesTab:           String { t("CHALLENGES",                     "RETOS",                                 "DÉFIS") }
     var challengeStart:          String { t("START CHALLENGE",                "INICIAR RETO",                          "LANCER LE DÉFI") }
@@ -547,7 +564,7 @@ struct AppStrings {
 
     // MARK: - Purchase states
     var purchaseSuccessTitle:   String { t("Game unlocked!",                   "¡Juego desbloqueado!",                  "Jeu débloqué !") }
-    var purchaseSuccessMessage: String { t("Enjoy all 180 levels without limits.","Disfruta de los 180 niveles sin límites.","Profitez des 180 niveaux sans limite.") }
+    var purchaseSuccessMessage: String { t("Enjoy all 330 levels without limits.","Disfruta de los 330 niveles sin límites.","Profitez des 330 niveaux sans limite.") }
     var purchaseRestoredTitle:  String { t("Purchase restored",                "Compra restaurada",                     "Achat restauré") }
     var purchaseRestoredMessage: String { t("Your full access has been restored.","Tu acceso completo ha sido restaurado.","Votre accès complet a été restauré.") }
     var purchaseErrorTitle:     String { t("Purchase failed",                  "No se pudo completar la compra",        "Échec de l'achat") }

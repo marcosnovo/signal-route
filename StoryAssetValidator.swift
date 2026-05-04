@@ -38,6 +38,12 @@ enum StoryImageManifest {
         "saturn_unlock",
         "uranus_unlock",
         "deep_space_network",
+        "kuiper_belt_hero",
+        "kuiper_approach",
+        "kuiper_complete",
+        "oort_cloud_hero",
+        "oort_approach",
+        "oort_complete",
         // Pass unlocked (dedicated per sector)
         "asteroid_belt_transit",
         "giant_approach",

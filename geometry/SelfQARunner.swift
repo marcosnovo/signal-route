@@ -110,7 +110,7 @@ struct QASummary {
 /// Launch from DevMenuView via "Run Quick QA" or "Run Full QA".
 ///
 /// Quick vs Full difference:
-///   - Gameplay board generation: 7 sample levels vs all 180
+///   - Gameplay board generation: 10 sample levels vs all 330
 ///   - Ticket render: first pass only vs all passes
 final class SelfQARunner: ObservableObject {
 
@@ -152,17 +152,17 @@ final class SelfQARunner: ObservableObject {
         let levels = LevelGenerator.levels
 
         // Catalog count
-        r += pass("Level catalog count = 180", .gameplay,
-                  condition: levels.count == 180,
+        r += pass("Level catalog count = 330", .gameplay,
+                  condition: levels.count == 330,
                   detail:    "\(levels.count) levels",
-                  fix:       "Expected 180 levels in LevelGenerator.levels.")
+                  fix:       "Expected 330 levels in LevelGenerator.levels.")
 
-        // Sequential IDs 1–180
+        // Sequential IDs 1–330
         let ids = levels.map { $0.id }.sorted()
-        r += pass("Level IDs sequential 1–180", .gameplay,
-                  condition: ids == Array(1...180),
+        r += pass("Level IDs sequential 1–330", .gameplay,
+                  condition: ids == Array(1...330),
                   detail:    "first=\(ids.first ?? 0) last=\(ids.last ?? 0) count=\(ids.count)",
-                  fix:       "Level IDs must cover 1–180 with no gaps or duplicates.")
+                  fix:       "Level IDs must cover 1–330 with no gaps or duplicates.")
 
         // Non-negative move buffer
         let negBuf = levels.filter { $0.moveBuffer < 0 }
@@ -200,7 +200,7 @@ final class SelfQARunner: ObservableObject {
                   level:     badTimer.first?.id)
 
         // Board generation
-        let sampleIDs: [Int] = quick ? [1, 30, 60, 90, 120, 150, 180] : Array(1...180)
+        let sampleIDs: [Int] = quick ? [1, 30, 60, 90, 120, 150, 180, 220, 280, 330] : Array(1...330)
         let badBoards = sampleIDs.compactMap { id -> Level? in
             guard let level = levels.first(where: { $0.id == id }) else { return nil }
             let tiles = LevelGenerator.buildBoard(for: level).flatMap { $0 }
@@ -208,7 +208,7 @@ final class SelfQARunner: ObservableObject {
             let tgt = tiles.filter { $0.role == .target }.count
             return (src != 1 || tgt != level.numTargets) ? level : nil
         }
-        let boardLabel = quick ? "Board generation (7 samples)" : "Board generation (all 180)"
+        let boardLabel = quick ? "Board generation (10 samples)" : "Board generation (all 330)"
         r += pass(boardLabel, .gameplay,
                   condition: badBoards.isEmpty,
                   detail:    badBoards.isEmpty
@@ -225,7 +225,7 @@ final class SelfQARunner: ObservableObject {
             guard let level = levels.first(where: { $0.id == id }) else { return nil }
             return LevelGenerator.startsSolved(level: level) ? level : nil
         }
-        let solvedLabel = quick ? "No pre-solved boards (7 samples)" : "No pre-solved boards (all 180)"
+        let solvedLabel = quick ? "No pre-solved boards (10 samples)" : "No pre-solved boards (all 330)"
         r += pass(solvedLabel, .gameplay,
                   condition: preSolved.isEmpty,
                   detail:    preSolved.isEmpty
@@ -327,12 +327,12 @@ final class SelfQARunner: ObservableObject {
                       : "Missing: \(missingTriggers.map { $0.rawValue })",
                   fix:       "Every StoryTrigger case must have at least one beat.")
 
-        // requiredSectorID in 1–8
-        let badSector = beats.filter { b in b.requiredSectorID.map { $0 < 1 || $0 > 8 } ?? false }
-        r += pass("requiredSectorID in [1,8]", .story,
+        // requiredSectorID in 1–10
+        let badSector = beats.filter { b in b.requiredSectorID.map { $0 < 1 || $0 > 10 } ?? false }
+        r += pass("requiredSectorID in [1,10]", .story,
                   condition: badSector.isEmpty,
                   detail:    badSector.isEmpty ? "OK" : "Bad IDs: \(badSector.map { $0.id })",
-                  fix:       "requiredSectorID must be 1–8 to match SpatialRegion.catalog.")
+                  fix:       "requiredSectorID must be 1–10 to match SpatialRegion.catalog.")
 
         // Non-empty title / body
         let emptyContent = beats.filter { $0.title.isEmpty || $0.body.isEmpty }
@@ -510,16 +510,16 @@ final class SelfQARunner: ObservableObject {
         let catalog = SpatialRegion.catalog
         let profile = ProgressionStore.profile
 
-        r += pass("SpatialRegion catalog has 8 sectors", .missionMap,
-                  condition: catalog.count == 8,
+        r += pass("SpatialRegion catalog has 10 sectors", .missionMap,
+                  condition: catalog.count == 10,
                   detail:    "\(catalog.count) sectors",
-                  fix:       "Expected exactly 8 sectors.")
+                  fix:       "Expected exactly 10 sectors.")
 
         let sectorIDs = catalog.map { $0.id }.sorted()
-        r += pass("Sector IDs sequential 1–8", .missionMap,
-                  condition: sectorIDs == [1, 2, 3, 4, 5, 6, 7, 8],
+        r += pass("Sector IDs sequential 1–10", .missionMap,
+                  condition: sectorIDs == Array(1...10),
                   detail:    "\(sectorIDs)",
-                  fix:       "Sector IDs must be sequential 1–8.")
+                  fix:       "Sector IDs must be sequential 1–10.")
 
         // Overlapping ranges
         let ranges  = catalog.map { $0.levelRange }
@@ -531,14 +531,14 @@ final class SelfQARunner: ObservableObject {
                   detail:    overlap ? "OVERLAP DETECTED" : "OK",
                   fix:       "Two or more sectors share level IDs.")
 
-        // Full coverage 1–180
+        // Full coverage 1–330
         let covered = Set(catalog.flatMap { Array($0.levelRange) })
-        let missing = Set(1...180).subtracting(covered)
-        let extra   = covered.subtracting(Set(1...180))
-        r += pass("Sector ranges cover 1–180", .missionMap,
+        let missing = Set(1...330).subtracting(covered)
+        let extra   = covered.subtracting(Set(1...330))
+        r += pass("Sector ranges cover 1–330", .missionMap,
                   condition: missing.isEmpty && extra.isEmpty,
                   detail:    missing.isEmpty && extra.isEmpty ? "OK" : "missing=\(missing.count) extra=\(extra.count)",
-                  fix:       "Every level ID 1–180 must belong to exactly one sector.")
+                  fix:       "Every level ID 1–330 must belong to exactly one sector.")
 
         // Sector 1 always unlocked
         r += pass("Sector 1 always unlocked", .missionMap,

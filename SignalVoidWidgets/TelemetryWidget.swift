@@ -295,7 +295,7 @@ private struct TelemetryLarge: View {
                     TelemetryCell(label: S.position, value: snap.playerRank.map { "#\($0)" } ?? "\u{2014}", color: WidgetTheme.sage)
                 }
                 HStack(spacing: 4) {
-                    TelemetryCell(label: S.sectors, value: "\(sectorIdx + 1)/8", color: WidgetTheme.sage)
+                    TelemetryCell(label: S.sectors, value: "\(sectorIdx + 1)/10", color: WidgetTheme.sage)
                     TelemetryCell(label: S.streak, value: snap.streak.map { "\($0)d" } ?? "\u{2014}", color: WidgetTheme.sage)
                     TelemetryCell(label: S.weekly, value: snap.weeklyRankChange.map { $0 >= 0 ? "\u{25B2} \($0)" : "\u{25BC} \(abs($0))" } ?? "\u{2014}", color: snap.weeklyRankChange.map { $0 >= 0 ? WidgetTheme.success : WidgetTheme.danger } ?? WidgetTheme.textSecondary)
                 }
@@ -305,7 +305,7 @@ private struct TelemetryLarge: View {
 
             // Sector strip + label
             VStack(alignment: .leading, spacing: 4) {
-                DarkSectorStrip(totalSectors: 8, completedSectors: sectorIdx)
+                DarkSectorStrip(totalSectors: 10, completedSectors: sectorIdx)
                 Text(S.sectorCompletion)
                     .font(WidgetTheme.mono(6, weight: .semibold))
                     .tracking(1.2)

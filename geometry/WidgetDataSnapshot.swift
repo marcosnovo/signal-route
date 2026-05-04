@@ -82,6 +82,8 @@ enum PlanetColors {
         5: "E4C87A", // Saturn
         6: "7EC8E3", // Uranus
         7: "4B70DD", // Neptune
+        8: "A8D8EA", // Kuiper Belt
+        9: "9B72CF", // Oort Cloud
     ]
 
     static func color(for index: Int) -> Color {

@@ -412,6 +412,8 @@ struct Planet: Identifiable {
         Planet(id: 5, name: "SATURN",         missionBrief: "RING SYSTEM TRANSIT",  difficulty: .hard,   color: Color(hex: "E4C87A"), requiredLevel: 10),
         Planet(id: 6, name: "URANUS",         missionBrief: "ICE GIANT SURVEY",     difficulty: .expert, color: Color(hex: "7EC8E3"), requiredLevel: 14),
         Planet(id: 7, name: "NEPTUNE",        missionBrief: "DEEP SPACE COMMS",     difficulty: .expert, color: Color(hex: "4B70DD"), requiredLevel: 18),
+        Planet(id: 8, name: "KUIPER BELT",    missionBrief: "FROZEN FRONTIER",      difficulty: .expert, color: Color(hex: "A8D8EA"), requiredLevel: 22),
+        Planet(id: 9, name: "OORT CLOUD",     missionBrief: "DEEP VOID NETWORK",    difficulty: .expert, color: Color(hex: "9B72CF"), requiredLevel: 26),
     ]
 }
 
@@ -430,8 +432,8 @@ struct Planet: Identifiable {
 /// - Required efficiency = 60% + 2% per level, capped at 86%
 ///   Ensures later levels demand consistent quality, not just volume.
 ///
-/// With 180 catalogue levels the practical ceiling is around level 11–12,
-/// requiring nearly all levels completed at high efficiency.
+/// With 330 catalogue levels the practical ceiling is around level 14–15,
+/// requiring most levels completed at high efficiency.
 struct ProgressionRule {
     /// Unique levels (best score ≥ requiredAvgEfficiency) needed to advance.
     let requiredMissions:      Int
@@ -882,16 +884,18 @@ struct SpatialRegion: Identifiable {
         levels.filter { profile.hasCompleted(levelId: $0.id) }.count
     }
 
-    /// The eight mission zones ordered outward from Earth.
+    /// The ten mission zones ordered outward from Earth.
     static let catalog: [SpatialRegion] = [
-        SpatialRegion(id: 1, name: "EARTH ORBIT",    subtitle: "TRAINING ZONE",       levelRange: 1...30,   requiredPlayerLevel: 1,  accentColor: Color(hex: "4DB87A")),
-        SpatialRegion(id: 2, name: "LUNAR APPROACH", subtitle: "PHASE 2 OPERATIONS",  levelRange: 31...50,  requiredPlayerLevel: 2,  accentColor: Color(hex: "D9E7D8")),
-        SpatialRegion(id: 3, name: "MARS SECTOR",    subtitle: "RED PLANET OPS",      levelRange: 51...70,  requiredPlayerLevel: 3,  accentColor: Color(hex: "FF6A3D")),
-        SpatialRegion(id: 4, name: "ASTEROID BELT",  subtitle: "DEBRIS FIELD",        levelRange: 71...90,  requiredPlayerLevel: 5,  accentColor: Color(hex: "FFB800")),
-        SpatialRegion(id: 5, name: "JUPITER RELAY",  subtitle: "GAS GIANT COMMS",     levelRange: 91...110, requiredPlayerLevel: 7,  accentColor: Color(hex: "D4A055")),
-        SpatialRegion(id: 6, name: "SATURN RING",    subtitle: "RING SYSTEM TRANSIT", levelRange: 111...130,requiredPlayerLevel: 10, accentColor: Color(hex: "E4C87A")),
-        SpatialRegion(id: 7, name: "URANUS VOID",    subtitle: "ICE GIANT SURVEY",    levelRange: 131...150,requiredPlayerLevel: 14, accentColor: Color(hex: "7EC8E3")),
-        SpatialRegion(id: 8, name: "NEPTUNE DEEP",   subtitle: "DEEP SPACE COMMS",    levelRange: 151...180,requiredPlayerLevel: 18, accentColor: Color(hex: "4B70DD")),
+        SpatialRegion(id: 1,  name: "EARTH ORBIT",    subtitle: "TRAINING ZONE",       levelRange: 1...30,    requiredPlayerLevel: 1,  accentColor: Color(hex: "4DB87A")),
+        SpatialRegion(id: 2,  name: "LUNAR APPROACH", subtitle: "PHASE 2 OPERATIONS",  levelRange: 31...50,   requiredPlayerLevel: 2,  accentColor: Color(hex: "D9E7D8")),
+        SpatialRegion(id: 3,  name: "MARS SECTOR",    subtitle: "RED PLANET OPS",      levelRange: 51...70,   requiredPlayerLevel: 3,  accentColor: Color(hex: "FF6A3D")),
+        SpatialRegion(id: 4,  name: "ASTEROID BELT",  subtitle: "DEBRIS FIELD",        levelRange: 71...90,   requiredPlayerLevel: 5,  accentColor: Color(hex: "FFB800")),
+        SpatialRegion(id: 5,  name: "JUPITER RELAY",  subtitle: "GAS GIANT COMMS",     levelRange: 91...110,  requiredPlayerLevel: 7,  accentColor: Color(hex: "D4A055")),
+        SpatialRegion(id: 6,  name: "SATURN RING",    subtitle: "RING SYSTEM TRANSIT", levelRange: 111...130, requiredPlayerLevel: 10, accentColor: Color(hex: "E4C87A")),
+        SpatialRegion(id: 7,  name: "URANUS VOID",    subtitle: "ICE GIANT SURVEY",    levelRange: 131...150, requiredPlayerLevel: 14, accentColor: Color(hex: "7EC8E3")),
+        SpatialRegion(id: 8,  name: "NEPTUNE DEEP",   subtitle: "DEEP SPACE COMMS",    levelRange: 151...180, requiredPlayerLevel: 18, accentColor: Color(hex: "4B70DD")),
+        SpatialRegion(id: 9,  name: "KUIPER BELT",    subtitle: "FROZEN FRONTIER",     levelRange: 181...255, requiredPlayerLevel: 22, accentColor: Color(hex: "A8D8EA")),
+        SpatialRegion(id: 10, name: "OORT CLOUD",     subtitle: "DEEP VOID NETWORK",   levelRange: 256...330, requiredPlayerLevel: 26, accentColor: Color(hex: "9B72CF")),
     ]
 }
 

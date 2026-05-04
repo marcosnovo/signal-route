@@ -511,12 +511,12 @@ enum StoryBeatCatalog {
         StoryBeat(
             id:               "sector_8_clear",
             title:            "DEEP SIGNAL",
-            body:             "Neptune sector online. The solar system's relay network is complete. Humanity can now communicate across every known outpost. Mission accomplished.",
+            body:             "Neptune sector online. The inner solar system relay network is complete. But signals from beyond Neptune have been detected — faint, frozen, waiting.",
             source:           "MISSION CONTROL",
             trigger:          .sectorComplete,
             requiredSectorID: 8,
             accentHex:        "4B70DD",
-            footerHint:       "FULL NETWORK OPERATIONAL",
+            footerHint:       "KUIPER BELT SECTOR OPEN",
             imageName:        "deep_space_network",
             priority:         20,
             localizedTitle: LocalizedText(
@@ -525,9 +525,55 @@ enum StoryBeatCatalog {
                 fr: "SIGNAL PROFOND"
             ),
             localizedBody: LocalizedText(
-                en: "Neptune sector online. The solar system's relay network is complete. Humanity can now communicate across every known outpost. Mission accomplished.",
-                es: "Sector Neptuno en línea. La red de retransmisores del sistema solar está completa. La humanidad puede comunicarse con cada puesto conocido. Misión cumplida.",
-                fr: "Secteur Neptune en ligne. Le réseau de relais du système solaire est complet. L'humanité peut désormais communiquer avec chaque poste connu. Mission accomplie."
+                en: "Neptune sector online. The inner solar system relay network is complete. But signals from beyond Neptune have been detected — faint, frozen, waiting.",
+                es: "Sector Neptuno en línea. La red de retransmisores del sistema solar interior está completa. Pero se han detectado señales más allá de Neptuno — débiles, congeladas, esperando.",
+                fr: "Secteur Neptune en ligne. Le réseau de relais du système solaire intérieur est complet. Mais des signaux au-delà de Neptune ont été détectés — faibles, gelés, en attente."
+            )
+        ),
+
+        StoryBeat(
+            id:               "sector_9_clear",
+            title:            "FROZEN FRONTIER",
+            body:             "Kuiper Belt relays stabilized. Signal routes now extend through the frozen debris field. The edge of known space pushes further into the dark.",
+            source:           "COMMAND",
+            trigger:          .sectorComplete,
+            requiredSectorID: 9,
+            accentHex:        "A8D8EA",
+            footerHint:       "OORT CLOUD SECTOR OPEN",
+            imageName:        "kuiper_complete",
+            priority:         20,
+            localizedTitle: LocalizedText(
+                en: "FROZEN FRONTIER",
+                es: "FRONTERA HELADA",
+                fr: "FRONTIÈRE GELÉE"
+            ),
+            localizedBody: LocalizedText(
+                en: "Kuiper Belt relays stabilized. Signal routes now extend through the frozen debris field. The edge of known space pushes further into the dark.",
+                es: "Retransmisores del Cinturón de Kuiper estabilizados. Las rutas de señal se extienden ahora a través del campo de escombros helados. El borde del espacio conocido avanza hacia la oscuridad.",
+                fr: "Relais de la Ceinture de Kuiper stabilisés. Les routes du signal s'étendent désormais à travers le champ de débris gelés. La frontière de l'espace connu recule dans l'obscurité."
+            )
+        ),
+
+        StoryBeat(
+            id:               "sector_10_clear",
+            title:            "BEYOND THE VOID",
+            body:             "Oort Cloud online. The full signal network — from Earth to the outermost reaches — is operational. You've connected humanity across the entire solar system. Mission complete.",
+            source:           "MISSION CONTROL",
+            trigger:          .sectorComplete,
+            requiredSectorID: 10,
+            accentHex:        "9B72CF",
+            footerHint:       "FULL NETWORK OPERATIONAL",
+            imageName:        "oort_complete",
+            priority:         20,
+            localizedTitle: LocalizedText(
+                en: "BEYOND THE VOID",
+                es: "MÁS ALLÁ DEL VACÍO",
+                fr: "AU-DELÀ DU VIDE"
+            ),
+            localizedBody: LocalizedText(
+                en: "Oort Cloud online. The full signal network — from Earth to the outermost reaches — is operational. You've connected humanity across the entire solar system. Mission complete.",
+                es: "Nube de Oort en línea. La red de señal completa — desde la Tierra hasta los confines más lejanos — está operativa. Has conectado a la humanidad a través de todo el sistema solar. Misión cumplida.",
+                fr: "Nuage d'Oort en ligne. Le réseau de signal complet — de la Terre jusqu'aux confins les plus lointains — est opérationnel. Tu as connecté l'humanité à travers tout le système solaire. Mission accomplie."
             )
         ),
 
@@ -978,8 +1024,54 @@ enum StoryBeatCatalog {
             )
         ),
 
+        StoryBeat(
+            id:               "pass_sector_8",
+            title:            "FROZEN ACCESS",
+            body:             "Neptune sector live. Kuiper Belt authorization confirmed. Beyond the known planets lies a frozen expanse of debris and ancient ice. Relay integrity will be tested like never before.",
+            source:           "MISSION CONTROL",
+            trigger:          .passUnlocked,
+            requiredSectorID: 8,
+            accentHex:        "A8D8EA",
+            footerHint:       "KUIPER BELT UNLOCKED",
+            imageName:        "kuiper_belt_hero",
+            priority:         30,
+            localizedTitle: LocalizedText(
+                en: "FROZEN ACCESS",
+                es: "ACCESO HELADO",
+                fr: "ACCÈS GELÉ"
+            ),
+            localizedBody: LocalizedText(
+                en: "Neptune sector live. Kuiper Belt authorization confirmed. Beyond the known planets lies a frozen expanse of debris and ancient ice. Relay integrity will be tested like never before.",
+                es: "Sector Neptuno activo. Autorización para el Cinturón de Kuiper confirmada. Más allá de los planetas conocidos se extiende una vasta extensión helada de escombros y hielo ancestral. La integridad de los retransmisores será puesta a prueba como nunca.",
+                fr: "Secteur Neptune actif. Autorisation pour la Ceinture de Kuiper confirmée. Au-delà des planètes connues s'étend une vaste étendue gelée de débris et de glace ancestrale. L'intégrité des relais sera mise à l'épreuve comme jamais."
+            )
+        ),
+
+        StoryBeat(
+            id:               "pass_sector_9",
+            title:            "FINAL FRONTIER",
+            body:             "Kuiper Belt sector live. Oort Cloud authorization confirmed. This is it — the outermost boundary of the solar system. No engineer has ever routed signals this far. Every relay counts.",
+            source:           "MISSION CONTROL",
+            trigger:          .passUnlocked,
+            requiredSectorID: 9,
+            accentHex:        "9B72CF",
+            footerHint:       "OORT CLOUD UNLOCKED",
+            imageName:        "oort_cloud_hero",
+            priority:         30,
+            localizedTitle: LocalizedText(
+                en: "FINAL FRONTIER",
+                es: "ÚLTIMA FRONTERA",
+                fr: "DERNIÈRE FRONTIÈRE"
+            ),
+            localizedBody: LocalizedText(
+                en: "Kuiper Belt sector live. Oort Cloud authorization confirmed. This is it — the outermost boundary of the solar system. No engineer has ever routed signals this far. Every relay counts.",
+                es: "Sector Cinturón de Kuiper activo. Autorización para la Nube de Oort confirmada. Este es el momento — el límite más exterior del sistema solar. Ningún ingeniero ha enrutado señales tan lejos. Cada retransmisor cuenta.",
+                fr: "Secteur Ceinture de Kuiper actif. Autorisation pour le Nuage d'Oort confirmée. C'est le moment — la frontière la plus lointaine du système solaire. Aucun ingénieur n'a jamais routé des signaux aussi loin. Chaque relais compte."
+            )
+        ),
+
         // ══════════════════════════════════════════════════════════════
-        // ENTERING NEW SECTOR — destination briefing for sectors 2–8
+        // ENTERING NEW SECTOR — destination briefing for sectors 2–10
         // ══════════════════════════════════════════════════════════════
 
         StoryBeat(
@@ -1124,8 +1216,8 @@ enum StoryBeatCatalog {
 
         StoryBeat(
             id:               "enter_sector_8",
-            title:            "FINAL SECTOR",
-            body:             "This is as far as the network reaches. Neptune's relays are the frontier of human infrastructure. What you build here carries our signal to its absolute edge.",
+            title:            "DEEP SPACE",
+            body:             "Neptune's relays are the frontier of the inner solar system. What you build here carries our signal to its edge — and beyond, if you survive.",
             source:           "COMMAND",
             trigger:          .enteringNewSector,
             requiredSectorID: 8,
@@ -1134,14 +1226,60 @@ enum StoryBeatCatalog {
             imageName:        "deep_space_network",
             priority:         40,
             localizedTitle: LocalizedText(
-                en: "FINAL SECTOR",
-                es: "SECTOR FINAL",
-                fr: "SECTEUR FINAL"
+                en: "DEEP SPACE",
+                es: "ESPACIO PROFUNDO",
+                fr: "ESPACE PROFOND"
             ),
             localizedBody: LocalizedText(
-                en: "This is as far as the network reaches. Neptune's relays are the frontier of human infrastructure. What you build here carries our signal to its absolute edge.",
-                es: "Hasta aquí llega la red. Los retransmisores de Neptuno son la frontera de la infraestructura humana. Lo que construyas aquí llevará nuestra señal hasta su límite absoluto.",
-                fr: "C'est aussi loin que le réseau s'étend. Les relais de Neptune sont la frontière de l'infrastructure humaine. Ce que tu bâtis ici porte notre signal jusqu'à son ultime limite."
+                en: "Neptune's relays are the frontier of the inner solar system. What you build here carries our signal to its edge — and beyond, if you survive.",
+                es: "Los retransmisores de Neptuno son la frontera del sistema solar interior. Lo que construyas aquí llevará nuestra señal hasta su límite — y más allá, si sobrevives.",
+                fr: "Les relais de Neptune sont la frontière du système solaire intérieur. Ce que tu bâtis ici porte notre signal jusqu'à sa limite — et au-delà, si tu survis."
+            )
+        ),
+
+        StoryBeat(
+            id:               "enter_sector_9",
+            title:            "FROZEN EXPANSE",
+            body:             "Kuiper Belt: a frozen graveyard of ancient debris between the planets and the void. Relays here must withstand extreme cold and signal degradation. Every connection is fragile.",
+            source:           "ENGINEERING",
+            trigger:          .enteringNewSector,
+            requiredSectorID: 9,
+            accentHex:        "A8D8EA",
+            footerHint:       "SECTOR 9 — KUIPER BELT",
+            imageName:        "kuiper_approach",
+            priority:         40,
+            localizedTitle: LocalizedText(
+                en: "FROZEN EXPANSE",
+                es: "EXTENSIÓN HELADA",
+                fr: "ÉTENDUE GELÉE"
+            ),
+            localizedBody: LocalizedText(
+                en: "Kuiper Belt: a frozen graveyard of ancient debris between the planets and the void. Relays here must withstand extreme cold and signal degradation. Every connection is fragile.",
+                es: "Cinturón de Kuiper: un cementerio helado de escombros ancestrales entre los planetas y el vacío. Los retransmisores aquí deben resistir el frío extremo y la degradación de señal. Cada conexión es frágil.",
+                fr: "Ceinture de Kuiper : un cimetière gelé de débris ancestraux entre les planètes et le vide. Les relais ici doivent résister au froid extrême et à la dégradation du signal. Chaque connexion est fragile."
+            )
+        ),
+
+        StoryBeat(
+            id:               "enter_sector_10",
+            title:            "THE FINAL FRONTIER",
+            body:             "Oort Cloud: the outermost boundary of the solar system. A vast shell of comets and frozen worlds. If you can route signal here, humanity's reach becomes truly interstellar. This is your legacy.",
+            source:           "MISSION CONTROL",
+            trigger:          .enteringNewSector,
+            requiredSectorID: 10,
+            accentHex:        "9B72CF",
+            footerHint:       "SECTOR 10 — OORT CLOUD",
+            imageName:        "oort_approach",
+            priority:         40,
+            localizedTitle: LocalizedText(
+                en: "THE FINAL FRONTIER",
+                es: "LA ÚLTIMA FRONTERA",
+                fr: "LA DERNIÈRE FRONTIÈRE"
+            ),
+            localizedBody: LocalizedText(
+                en: "Oort Cloud: the outermost boundary of the solar system. A vast shell of comets and frozen worlds. If you can route signal here, humanity's reach becomes truly interstellar. This is your legacy.",
+                es: "Nube de Oort: el límite más exterior del sistema solar. Una vasta capa de cometas y mundos helados. Si logras enrutar la señal aquí, el alcance de la humanidad se vuelve verdaderamente interestelar. Este es tu legado.",
+                fr: "Nuage d'Oort : la frontière la plus lointaine du système solaire. Une vaste coquille de comètes et de mondes gelés. Si tu peux router le signal ici, la portée de l'humanité devient véritablement interstellaire. C'est ton héritage."
             )
         ),
     ]

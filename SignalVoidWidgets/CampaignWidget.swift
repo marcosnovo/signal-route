@@ -80,7 +80,7 @@ struct CampaignWidgetView: View {
 }
 
 // MARK: - Small
-// Watch-face: giant %, mission count, 8-segment sector strip at bottom.
+// Watch-face: giant %, mission count, 10-segment sector strip at bottom.
 
 private struct CampaignSmall: View {
     let snap: WidgetDataSnapshot
@@ -119,8 +119,8 @@ private struct CampaignSmall: View {
 
             Spacer(minLength: 6)
 
-            // 8-segment sector strip (more distinctive than 5-segment rail)
-            SectorStrip(totalSectors: 8, completedSectors: sectorIdx)
+            // 10-segment sector strip (more distinctive than 5-segment rail)
+            SectorStrip(totalSectors: 10, completedSectors: sectorIdx)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .widgetURL(URL(string: "signalvoid://missions"))
@@ -203,7 +203,7 @@ private struct CampaignMedium: View {
                 }
 
                 // Sector strip
-                SectorStrip(totalSectors: 8, completedSectors: sectorIdx)
+                SectorStrip(totalSectors: 10, completedSectors: sectorIdx)
                     .padding(.top, 8)
 
                 Spacer(minLength: 4)
@@ -223,7 +223,7 @@ private struct CampaignMedium: View {
 }
 
 // MARK: - Large
-// Full overview: big %, rank badge, 8-sector strip, sector detail, dark KPI footer.
+// Full overview: big %, rank badge, 10-sector strip, sector detail, dark KPI footer.
 
 private struct CampaignLarge: View {
     let snap: WidgetDataSnapshot
@@ -265,16 +265,16 @@ private struct CampaignLarge: View {
                 RankBadge(title: S.rankName(snap.rankTitle), level: snap.playerLevel)
             }
 
-            // 8-segment sector strip + label
+            // 10-segment sector strip + label
             VStack(alignment: .leading, spacing: 4) {
-                SectorStrip(totalSectors: 8, completedSectors: sectorIdx)
+                SectorStrip(totalSectors: 10, completedSectors: sectorIdx)
                 HStack {
                     Text(S.sectorCompletion)
                         .font(WidgetTheme.mono(6, weight: .semibold))
                         .tracking(1.5)
                         .foregroundStyle(WidgetTheme.sageMid)
                     Spacer()
-                    Text("\(sectorIdx + 1)/8")
+                    Text("\(sectorIdx + 1)/10")
                         .font(WidgetTheme.mono(8, weight: .heavy))
                         .foregroundStyle(WidgetTheme.sageInk)
                 }

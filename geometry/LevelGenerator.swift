@@ -23,7 +23,7 @@ struct SeededRNG: RandomNumberGenerator {
 // MARK: - LevelGenerator
 struct LevelGenerator {
 
-    // MARK: - Level catalogue (180 levels, curated progression)
+    // MARK: - Level catalogue (330 levels, curated progression)
     static let levels: [Level] = buildCatalogue()
 
     // MARK: - Intro / tutorial level (id = 0, 3×3 handcrafted)
@@ -216,15 +216,15 @@ struct LevelGenerator {
     /// Applies mechanics to a seeded-random subset of relay path tiles.
     /// Guaranteed safe: maxRotations is always ≥ minTaps + 1, so the puzzle remains solvable.
     ///
-    /// Mechanic unlock thresholds (scaled for a real 1→180 difficulty curve):
-    ///   rotationCap  — id ≥  31 (1 cap) → id ≥  61 (2) → id ≥ 111 (3) → id ≥ 151 (4)
-    ///   overloaded   — id ≥  81 (1 tile) → id ≥ 111 (2) → id ≥ 156 (3)
+    /// Mechanic unlock thresholds (scaled for a real 1→330 difficulty curve):
+    ///   rotationCap  — id ≥  31 (1 cap) → id ≥  61 (2) → id ≥ 111 (3) → id ≥ 151 (4) → id ≥ 256 (5)
+    ///   overloaded   — id ≥  81 (1 tile) → id ≥ 111 (2) → id ≥ 156 (3) → id ≥ 256 (4)
     ///   timeLimit    — set on Level, not tiles (handled in buildCatalogue)
-    ///   autoDrift    — id ≥ 121 (4.0 s), id ≥ 141 (3.5 s); 2nd tile id ≥ 156
-    ///   oneWayRelay  — id ≥ 136 (was 146); blocks one inbound direction per tile
-    ///                  Applied to 2-connection tiles only; blocked direction = exit side at
-    ///                  solved rotation → solvable from source approach direction, but
-    ///                  reverse-flow through the relay is impossible.
+    ///   autoDrift    — id ≥ 121 (4.0 s), id ≥ 141 (3.5 s), id ≥ 256 (3.0 s), id ≥ 311 (2.5 s); 2nd tile id ≥ 156
+    ///   oneWayRelay  — id ≥ 136; blocks one inbound direction per tile
+    ///   fragile      — id ≥ 146 (1) → id ≥ 156 (2) → id ≥ 165 (3) → id ≥ 256 (4)
+    ///   chargeGate   — id ≥ 158 (1) → id ≥ 171 (2) → id ≥ 286 (3)
+    ///   interference — id ≥ 168
     private static func applyMechanics(
         for levelId: Int,
         to grid: inout [[Tile]],
@@ -257,12 +257,14 @@ struct LevelGenerator {
 
         let fragileNeeded: Int = {
             guard levelId >= 146 else { return 0 }
-            if levelId >= 165 { return 3 }   // was 168; moved earlier so L165–167 warm up 3-fragile without interference
+            if levelId >= 256 { return 4 }
+            if levelId >= 165 { return 3 }
             if levelId >= 156 { return 2 }
             return 1
         }()
         let gateNeeded: Int = {
             guard levelId >= 158 else { return 0 }
+            if levelId >= 286 { return 3 }
             return levelId >= 171 ? 2 : 1
         }()
         let mandatoryNeeded = fragileNeeded + gateNeeded
@@ -272,10 +274,11 @@ struct LevelGenerator {
         let mandatoryPool = Array(candidates.suffix(candidates.count - splitPoint))
 
         // Rotation Cap — medium+ (id ≥ 31)
-        // 1 cap, scaling to 4 caps by endgame. maxRotations = minTaps + 1 → 1 slack, always solvable.
+        // 1 cap, scaling to 5 caps in Oort Cloud. maxRotations = minTaps + 1 → 1 slack, always solvable.
         if !earlyPool.isEmpty {
             let capCount: Int
-            if levelId >= 151      { capCount = min(4, earlyPool.count) }
+            if levelId >= 256      { capCount = min(5, earlyPool.count) }
+            else if levelId >= 151 { capCount = min(4, earlyPool.count) }
             else if levelId >= 111 { capCount = min(3, earlyPool.count) }
             else if levelId >= 61  { capCount = min(2, earlyPool.count) }
             else                   { capCount = 1 }
@@ -286,12 +289,13 @@ struct LevelGenerator {
             earlyPool.removeFirst(capCount)
         }
 
-        // Overloaded Relay — mid-hard+ (id ≥ 81, was 91)
+        // Overloaded Relay — mid-hard+ (id ≥ 81)
         // First tap arms, second tap rotates. Costs 2 moves per rotation.
-        // Scales to 3 tiles at id ≥ 156.
+        // Scales to 4 tiles at id ≥ 256.
         if levelId >= 81 {
             let overloadCount: Int
-            if levelId >= 156      { overloadCount = min(3, earlyPool.count) }
+            if levelId >= 256      { overloadCount = min(4, earlyPool.count) }
+            else if levelId >= 156 { overloadCount = min(3, earlyPool.count) }
             else if levelId >= 111 { overloadCount = min(2, earlyPool.count) }
             else                   { overloadCount = min(1, earlyPool.count) }
             for _ in 0..<overloadCount {
@@ -302,15 +306,19 @@ struct LevelGenerator {
             }
         }
 
-        // Auto-Drift — expert mid-tier (id ≥ 121, was 131)
+        // Auto-Drift — expert mid-tier (id ≥ 121)
         // Tile drifts +1 clockwise after a delay; player must sequence timing.
-        // Delay tightens at id ≥ 141. Second drifting tile added at id ≥ 156.
+        // Delay tightens at deeper levels. Second drifting tile added at id ≥ 156.
         if levelId >= 121 && !earlyPool.isEmpty {
             let driftCount = levelId >= 156 ? min(2, earlyPool.count) : 1
             for _ in 0..<driftCount {
                 guard !earlyPool.isEmpty else { break }
                 let info = earlyPool.removeFirst()
-                let delay: Double = levelId >= 141 ? 3.5 : 4.0
+                let delay: Double
+                if levelId >= 311      { delay = 2.5 }
+                else if levelId >= 256 { delay = 3.0 }
+                else if levelId >= 141 { delay = 3.5 }
+                else                   { delay = 4.0 }
                 grid[info.r][info.c].autoDriftDelay = delay
             }
         }
@@ -609,7 +617,7 @@ struct LevelGenerator {
         }
     }
 
-    // MARK: - Catalogue (180 levels, curated progression)
+    // MARK: - Catalogue (330 levels, curated progression)
     //
     // Each spec row: (difficulty, count, gridSize, levelType, numTargets)
     //
@@ -691,6 +699,57 @@ struct LevelGenerator {
             (.expert,  7, 5, .multiTarget, 2),
             // IDs 171–180: dense + double charge gate (id 171) + path interference
             (.expert, 10, 5, .dense,       1),
+
+            // ── KUIPER BELT — HARD TAIL (15 levels, 5×5) ────────────────────
+            // IDs 181–187: hard multi-target re-entry; all mechanics active; 90 s
+            (.hard,  7, 5, .multiTarget, 2),
+            // IDs 188–192: hard branching; tight timer; diverse objectives
+            (.hard,  5, 5, .branching,   1),
+            // IDs 193–195: hard dense; energySaving under time pressure
+            (.hard,  3, 5, .dense,       1),
+
+            // ── KUIPER BELT — EXPERT (60 levels, 5×5) ───────────────────────
+            // IDs 196–203: multi-target 2; 42 s timer; full mechanics
+            (.expert,  8, 5, .multiTarget, 2),
+            // IDs 204–209: branching maxCoverage; autoDrift; 42 s
+            (.expert,  6, 5, .branching,   1),
+            // IDs 210–216: dense energySaving; oneWayRelay; 38 s
+            (.expert,  7, 5, .dense,       1),
+            // IDs 217–222: sparse normal; all mechanics; 38 s
+            (.expert,  6, 5, .sparse,      1),
+            // IDs 223–230: multi-target 3 targets; 38 s — first 3-target levels
+            (.expert,  8, 5, .multiTarget, 3),
+            // IDs 231–237: singlePath; lean routing under brutal timer; 38 s
+            (.expert,  7, 5, .singlePath,  1),
+            // IDs 238–245: dense + interference; 38 s
+            (.expert,  8, 5, .dense,       1),
+            // IDs 246–255: multi-target 2; all mechanics; 38 s — hardest Kuiper
+            (.expert, 10, 5, .multiTarget, 2),
+
+            // ── OORT CLOUD — EXPERT (45 levels, 5×5) ────────────────────────
+            // IDs 256–263: multi-target 2; 36 s; deep mechanics
+            (.expert,  8, 5, .multiTarget, 2),
+            // IDs 264–270: branching; 36 s; aggressive cross-objectives
+            (.expert,  7, 5, .branching,   1),
+            // IDs 271–277: sparse; 36 s; lean routing with full mechanics
+            (.expert,  7, 5, .sparse,      1),
+            // IDs 278–285: dense; 36 s; interference-heavy
+            (.expert,  8, 5, .dense,       1),
+            // IDs 286–293: multi-target 3; 34 s — true endgame
+            (.expert,  8, 5, .multiTarget, 3),
+            // IDs 294–300: singlePath; 34 s; precision under extreme pressure
+            (.expert,  7, 5, .singlePath,  1),
+
+            // ── OORT CLOUD — ENDGAME (30 levels, 5×5) ───────────────────────
+            // Near-zero buffer (×0.08). Maximum mechanics. 30 s timer.
+            // IDs 301–308: multi-target 3; fragile + charge gate + interference
+            (.expert,  8, 5, .multiTarget, 3),
+            // IDs 309–316: dense; double charge gate; path interference
+            (.expert,  8, 5, .dense,       1),
+            // IDs 317–323: multi-target 3; all mechanics maxed
+            (.expert,  7, 5, .multiTarget, 3),
+            // IDs 324–330: dense; ultimate difficulty — final gauntlet
+            (.expert,  7, 5, .dense,       1),
         ]
 
         var catalogue: [Level] = []
@@ -743,17 +802,27 @@ struct LevelGenerator {
     /// Easy / Medium (IDs   1– 70): no timer — learn mechanics first
     /// Hard early    (IDs  71–100): 110 s — first exposure to time pressure
     /// Hard late     (IDs 101–110):  95 s — moderate squeeze
+    /// Hard Kuiper   (IDs 181–195):  90 s — re-entry into hard with all mechanics
     /// Expert tier 1 (IDs 111–120):  72 s — clear skill requirement
     /// Expert tier 2 (IDs 121–130):  62 s — autoDrift era
     /// Expert tier 3 (IDs 131–140):  52 s — oneWayRelay / fragile era
-    /// Expert tier 4 (IDs 141–180):  42 s — endgame mechanics: brutal
+    /// Expert tier 4 (IDs 141–220):  42 s — endgame + Kuiper expert
+    /// Kuiper deep   (IDs 221–255):  38 s — tight Kuiper
+    /// Oort early    (IDs 256–285):  36 s — Oort Cloud entry
+    /// Oort mid      (IDs 286–300):  34 s — deep Oort
+    /// Oort endgame  (IDs 301–330):  30 s — final gauntlet
     private static func timeLimitSeconds(for id: Int, difficulty: DifficultyTier) -> Int? {
         switch difficulty {
         case .easy, .medium:
             return nil
         case .hard:
+            if id >= 181 { return 90 }
             return id >= 101 ? 95 : 110
         case .expert:
+            if id >= 301 { return 30 }
+            if id >= 286 { return 34 }
+            if id >= 256 { return 36 }
+            if id >= 221 { return 38 }
             if id >= 141 { return 42 }
             if id >= 131 { return 52 }
             if id >= 121 { return 62 }
@@ -765,7 +834,7 @@ struct LevelGenerator {
     ///
     /// Phase 1 (IDs  1– 50): fixed objectives — one mechanic, one goal, learn the basics.
     /// Phase 2 (IDs 51–110): cross-objectives introduced occasionally — expect the unexpected.
-    /// Phase 3 (IDs 111–180): aggressive mixing — any archetype can carry any objective,
+    /// Phase 3 (IDs 111–330): aggressive mixing — any archetype can carry any objective,
     ///                         creating trade-off puzzles (efficiency vs coverage vs speed).
     private static func objectiveType(for levelType: LevelType, id: Int) -> LevelObjectiveType {
 
@@ -847,7 +916,9 @@ struct LevelGenerator {
     ///   Hard            — max(2,  min × 0.26)  limited margin for error
     ///   Expert          — max(1,  min × 0.15)  near-optimal required
     ///   Endgame (≥151)  — max(1,  min × 0.08)  essentially perfect play
+    ///   Oort endgame (≥301) — max(1, min × 0.05)  near-perfect play
     private static func movesBuffer(for difficulty: DifficultyTier, minMoves: Int, levelId: Int = 0) -> Int {
+        if levelId >= 301 { return max(1, Int(Double(minMoves) * 0.05)) }
         if levelId >= 151 { return max(1, Int(Double(minMoves) * 0.08)) }
         switch difficulty {
         case .easy:   return max(8, Int(Double(minMoves) * 0.65))

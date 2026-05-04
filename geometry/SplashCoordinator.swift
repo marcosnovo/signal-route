@@ -108,6 +108,6 @@ final class SplashCoordinator {
     /// All reads are UserDefaults + JSON decode — no I/O suspension.
     private func warmSyncStores() {
         _ = ProgressionStore.profile   // pre-decode AstronautProfile JSON
-        _ = LevelGenerator.levels      // pre-build all 180 level boards
+        _ = LevelGenerator.levels      // pre-build all 330 level boards
     }
 }

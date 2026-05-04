@@ -168,7 +168,10 @@ struct ContentView: View {
             } else if let level = activeLevel {
                 GameView(
                     level: level,
-                    onDismiss: { activeLevel = nil },
+                    onDismiss: {
+                        storyQueue.dispatchPendingBatches()
+                        activeLevel = nil
+                    },
                     onNextMission: {
                         // Navigate to the level immediately after the current one in the catalog.
                         // Using the sequential next (not profile.nextMission) keeps the button

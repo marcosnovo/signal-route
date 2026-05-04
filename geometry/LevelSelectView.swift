@@ -419,7 +419,8 @@ private struct SectorCard: View {
             ForEach(region.levels) { level in
                 MissionCell(
                     level: level,
-                    state: cellState(for: level)
+                    state: cellState(for: level),
+                    efficiency: profile.bestEfficiencyByLevel[String(level.id)]
                 ) {
                     onSelect(level)
                 }
@@ -518,6 +519,7 @@ struct MissionCell: View {
 
     let level: Level
     let state: CellState
+    var efficiency: Float? = nil
     let onTap: () -> Void
 
     @EnvironmentObject private var settings: SettingsStore
@@ -550,6 +552,12 @@ struct MissionCell: View {
         }
     }
 
+    private func efficiencyColor(_ eff: Float) -> Color {
+        if eff >= 1.0 { return Color(hex: "FFB800") }
+        if eff >= 0.8 { return AppTheme.success }
+        return AppTheme.textSecondary
+    }
+
     var body: some View {
         Button(action: onTap) {
             ZStack {
@@ -564,9 +572,16 @@ struct MissionCell: View {
                     Group {
                         switch state {
                         case .completed:
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundStyle(AppTheme.success)
+                            VStack(spacing: 1) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 7, weight: .bold))
+                                    .foregroundStyle(AppTheme.success)
+                                if let eff = efficiency {
+                                    Text("\(Int(eff * 100))%")
+                                        .font(AppTheme.mono(6, weight: .bold))
+                                        .foregroundStyle(efficiencyColor(eff))
+                                }
+                            }
                         case .locked:
                             Image(systemName: "lock.fill")
                                 .font(.system(size: 6))

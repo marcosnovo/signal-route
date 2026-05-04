@@ -307,7 +307,7 @@ private struct NavigatorLarge: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
 
             // Sector strip
-            DarkSectorStrip(totalSectors: 8, completedSectors: sectorIdx)
+            DarkSectorStrip(totalSectors: 10, completedSectors: sectorIdx)
 
             Spacer(minLength: 0)
 
