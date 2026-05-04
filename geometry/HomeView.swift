@@ -2472,6 +2472,7 @@ struct LeaderboardPickerOverlay: View {
                 revealed = true
             }
             fetchAllBoards()
+            Task { await gcManager.refreshActiveChallengeCount() }
         }
         .onChange(of: gcManager.isAuthenticated) { _, authed in
             if authed { boards = [:]; fetchAllBoards() }
@@ -2626,6 +2627,14 @@ struct LeaderboardPickerOverlay: View {
                     Text(S.inviteFriends)
                         .font(AppTheme.mono(11, weight: .bold))
                         .kerning(1)
+                    if gcManager.activeChallengeCount > 0 {
+                        Text("\(gcManager.activeChallengeCount)")
+                            .font(AppTheme.mono(9, weight: .black))
+                            .foregroundStyle(.white)
+                            .frame(width: 20, height: 20)
+                            .background(Color(hex: "FF6A3D"))
+                            .clipShape(Circle())
+                    }
                 }
                 .foregroundStyle(ink)
                 .frame(maxWidth: .infinity)
@@ -3018,11 +3027,6 @@ struct ChallengeFlowOverlay: View {
 
     @State private var defs: [GameCenterManager.ChallengeDefinitionData] = []
     @State private var loaded = false
-    @State private var selectedDef: GameCenterManager.ChallengeDefinitionData? = nil
-    @State private var friends: [GameCenterManager.FriendData] = []
-    @State private var friendsLoaded = false
-    @State private var selectedFriendIDs: Set<String> = []
-    @State private var selectedDurationIdx: Int = 0
 
     private let dark   = Color(hex: "171717")
     private let sage   = Color(hex: "D9E7D8")
@@ -3037,26 +3041,14 @@ struct ChallengeFlowOverlay: View {
 
             VStack(spacing: 0) {
                 headerBar
-
                 Rectangle().fill(light.opacity(0.08)).frame(height: 0.5)
-
-                if let def = selectedDef {
-                    challengeConfigView(def)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
-                } else {
-                    challengePickerList
-                        .transition(.opacity)
-                }
+                challengePickerList
             }
         }
         .onAppear {
             Task {
                 defs = await gcManager.fetchChallengeDefinitions()
                 loaded = true
-            }
-            Task {
-                friends = await gcManager.loadChallengableFriends()
-                friendsLoaded = true
             }
         }
     }
@@ -3067,11 +3059,7 @@ struct ChallengeFlowOverlay: View {
         HStack {
             Button(action: {
                 SoundManager.play(.tapSecondary)
-                if selectedDef != nil {
-                    withAnimation(.easeInOut(duration: 0.2)) { selectedDef = nil }
-                } else {
-                    onDismiss()
-                }
+                onDismiss()
             }) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .bold))
@@ -3079,7 +3067,7 @@ struct ChallengeFlowOverlay: View {
                     .frame(width: 44, height: 44)
             }
             Spacer()
-            Text(selectedDef != nil ? selectedDef!.title : S.challengeSelectTitle)
+            Text(S.challengeSelectTitle)
                 .font(AppTheme.mono(12, weight: .bold))
                 .kerning(1.5)
                 .foregroundStyle(light)
@@ -3116,11 +3104,9 @@ struct ChallengeFlowOverlay: View {
                         ForEach(defs) { def in
                             Button(action: {
                                 SoundManager.play(.tapPrimary)
-                                selectedDurationIdx = 0
-                                selectedFriendIDs = []
-                                withAnimation(.easeInOut(duration: 0.2)) { selectedDef = def }
+                                gcManager.triggerChallenge(identifier: def.identifier)
                             }) {
-                                challengePickerCard(def)
+                                challengeCard(def)
                             }
                             .buttonStyle(.plain)
                         }
@@ -3132,26 +3118,31 @@ struct ChallengeFlowOverlay: View {
         }
     }
 
-    private func challengePickerCard(_ def: GameCenterManager.ChallengeDefinitionData) -> some View {
-        let sageMid = ink.opacity(0.5)
-
-        return VStack(alignment: .leading, spacing: 0) {
+    private func challengeCard(_ def: GameCenterManager.ChallengeDefinitionData) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("\u{25C8} \(S.challengeLinkedTo.uppercased()) \u{00B7} \(def.leaderboardTitle ?? "")")
-                    .font(AppTheme.mono(7, weight: .semibold))
-                    .tracking(1.5)
-                    .foregroundStyle(sageMid)
-                    .lineLimit(1)
+                if let lbTitle = def.leaderboardTitle {
+                    Text("\u{25C8} \(lbTitle.uppercased())")
+                        .font(AppTheme.mono(7, weight: .semibold))
+                        .tracking(1.5)
+                        .foregroundStyle(ink.opacity(0.5))
+                        .lineLimit(1)
+                }
                 Spacer()
                 if def.hasActive {
-                    Text(S.challengeActive)
-                        .font(AppTheme.mono(7, weight: .bold))
-                        .kerning(0.5)
-                        .foregroundStyle(orange)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(orange.opacity(0.15))
-                        .clipShape(Capsule())
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(orange)
+                            .frame(width: 5, height: 5)
+                        Text(S.challengeActive)
+                            .font(AppTheme.mono(7, weight: .bold))
+                            .kerning(0.5)
+                            .foregroundStyle(orange)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(orange.opacity(0.15))
+                    .clipShape(Capsule())
                 }
             }
 
@@ -3184,251 +3175,48 @@ struct ChallengeFlowOverlay: View {
                     if let details = def.details {
                         Text(details)
                             .font(AppTheme.mono(9, weight: .medium))
-                            .foregroundStyle(sageMid)
+                            .foregroundStyle(ink.opacity(0.5))
                             .lineLimit(2)
                     }
                 }
             }
             .padding(.top, 10)
 
-            if !def.durationOptions.isEmpty {
-                HStack(spacing: 6) {
+            HStack(spacing: 6) {
+                if !def.durationOptions.isEmpty {
                     ForEach(Array(def.durationOptions.enumerated()), id: \.offset) { _, dc in
                         Text(formatDuration(dc))
                             .font(AppTheme.mono(7, weight: .bold))
-                            .foregroundStyle(sageMid)
+                            .foregroundStyle(ink.opacity(0.5))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
                             .background(ink.opacity(0.06))
                             .clipShape(Capsule())
                     }
-                    if def.isRepeatable {
-                        Image(systemName: "arrow.trianglehead.2.counterclockwise")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(sageMid)
-                    }
                 }
-                .padding(.top, 10)
+                if def.isRepeatable {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.trianglehead.2.counterclockwise")
+                            .font(.system(size: 7, weight: .semibold))
+                        Text(S.challengeRepeatable)
+                            .font(AppTheme.mono(7, weight: .bold))
+                    }
+                    .foregroundStyle(ink.opacity(0.5))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(ink.opacity(0.06))
+                    .clipShape(Capsule())
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(ink.opacity(0.3))
             }
+            .padding(.top, 10)
         }
         .padding(16)
         .background(sage)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-
-    // MARK: - Challenge config view
-
-    private func challengeConfigView(_ def: GameCenterManager.ChallengeDefinitionData) -> some View {
-        VStack(spacing: 0) {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 0) {
-                    // Hero section
-                    HStack(spacing: 16) {
-                        if let img = def.image {
-                            Image(uiImage: img)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 64, height: 64)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                                .shadow(color: orange.opacity(0.2), radius: 12, y: 4)
-                        }
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            if let details = def.details {
-                                Text(details)
-                                    .font(AppTheme.mono(10, weight: .medium))
-                                    .foregroundStyle(light.opacity(0.7))
-                                    .lineLimit(3)
-                            }
-                            HStack(spacing: 6) {
-                                if let lbTitle = def.leaderboardTitle {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "chart.bar.fill")
-                                            .font(.system(size: 7))
-                                        Text(lbTitle)
-                                            .font(AppTheme.mono(7, weight: .semibold))
-                                    }
-                                    .foregroundStyle(muted)
-                                }
-                                if def.isRepeatable {
-                                    Image(systemName: "arrow.trianglehead.2.counterclockwise")
-                                        .font(.system(size: 7, weight: .semibold))
-                                        .foregroundStyle(muted)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 14)
-
-                    Rectangle().fill(light.opacity(0.06)).frame(height: 0.5)
-
-                    // Duration selector
-                    if !def.durationOptions.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(S.challengeDuration("").replacingOccurrences(of: ": ", with: "").uppercased())
-                                .font(AppTheme.mono(9, weight: .bold))
-                                .kerning(1.5)
-                                .foregroundStyle(muted)
-
-                            HStack(spacing: 0) {
-                                ForEach(Array(def.durationOptions.enumerated()), id: \.offset) { idx, dc in
-                                    Button(action: {
-                                        SoundManager.play(.tapSecondary)
-                                        selectedDurationIdx = idx
-                                    }) {
-                                        Text(formatDuration(dc))
-                                            .font(AppTheme.mono(10, weight: .bold))
-                                            .kerning(0.3)
-                                            .foregroundStyle(selectedDurationIdx == idx ? ink : light)
-                                            .padding(.vertical, 10)
-                                            .frame(maxWidth: .infinity)
-                                            .background(selectedDurationIdx == idx ? sage : Color.clear)
-                                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .background(light.opacity(0.06))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 18)
-                    }
-
-                    // Friends section
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text(S.challengeFriends)
-                                .font(AppTheme.mono(9, weight: .bold))
-                                .kerning(1.5)
-                                .foregroundStyle(muted)
-                            Spacer()
-                            if !selectedFriendIDs.isEmpty {
-                                Text("\(selectedFriendIDs.count)")
-                                    .font(AppTheme.mono(10, weight: .bold))
-                                    .foregroundStyle(ink)
-                                    .frame(width: 22, height: 22)
-                                    .background(sage)
-                                    .clipShape(Circle())
-                            }
-                        }
-
-                        if !friendsLoaded {
-                            HStack {
-                                Spacer()
-                                ProgressView().tint(sage)
-                                Spacer()
-                            }
-                            .padding(.vertical, 20)
-                        } else if friends.isEmpty {
-                            HStack {
-                                Spacer()
-                                VStack(spacing: 6) {
-                                    Image(systemName: "person.2.slash")
-                                        .font(.system(size: 20, weight: .light))
-                                        .foregroundStyle(muted.opacity(0.3))
-                                    Text(S.challengeNoFriends)
-                                        .font(AppTheme.mono(9, weight: .medium))
-                                        .foregroundStyle(muted.opacity(0.5))
-                                }
-                                Spacer()
-                            }
-                            .padding(.vertical, 20)
-                        } else {
-                            VStack(spacing: 0) {
-                                ForEach(friends) { friend in
-                                    friendRow(friend)
-                                    if friend.id != friends.last?.id {
-                                        Rectangle().fill(light.opacity(0.04)).frame(height: 0.5)
-                                            .padding(.leading, 60)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 18)
-                }
-            }
-
-            // Sticky CTA at bottom
-            Button(action: {
-                SoundManager.play(.tapPrimary)
-                gcManager.triggerChallenge(identifier: def.identifier)
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "flag.checkered")
-                        .font(.system(size: 13, weight: .bold))
-                    Text(S.challengeStart)
-                        .font(AppTheme.mono(12, weight: .bold))
-                        .kerning(1)
-                }
-                .foregroundStyle(ink)
-                .frame(maxWidth: .infinity)
-                .frame(height: 52)
-                .background(sage)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        }
-    }
-
-    // MARK: - Friend row
-
-    private func friendRow(_ friend: GameCenterManager.FriendData) -> some View {
-        let selected = selectedFriendIDs.contains(friend.playerID)
-
-        return Button(action: {
-            SoundManager.play(.tapSecondary)
-            if selected {
-                selectedFriendIDs.remove(friend.playerID)
-            } else {
-                selectedFriendIDs.insert(friend.playerID)
-            }
-        }) {
-            HStack(spacing: 12) {
-                if let avatar = friend.avatar {
-                    Image(uiImage: avatar)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 38, height: 38)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle().strokeBorder(selected ? orange : Color.clear, lineWidth: 2)
-                        )
-                } else {
-                    Circle()
-                        .fill(light.opacity(0.06))
-                        .frame(width: 38, height: 38)
-                        .overlay(
-                            Text(String(friend.displayName.prefix(1)).uppercased())
-                                .font(AppTheme.mono(14, weight: .bold))
-                                .foregroundStyle(muted)
-                        )
-                        .overlay(
-                            Circle().strokeBorder(selected ? orange : Color.clear, lineWidth: 2)
-                        )
-                }
-
-                Text(friend.displayName)
-                    .font(AppTheme.mono(13, weight: selected ? .bold : .medium))
-                    .foregroundStyle(selected ? orange : light)
-                    .lineLimit(1)
-
-                Spacer()
-
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(selected ? orange : light.opacity(0.12))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(selected ? orange.opacity(0.06) : Color.clear)
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Helpers

@@ -533,12 +533,7 @@ struct AppStrings {
     var challengeActive:         String { t("ACTIVE",                         "ACTIVO",                                "ACTIF") }
     var challengeRepeatable:     String { t("REPEATABLE",                     "REPETIBLE",                             "REJOUABLE") }
     var challengeNone:           String { t("No challenges available",        "No hay retos disponibles",              "Aucun défi disponible") }
-    var challengeLoading:        String { t("Loading challenges…",            "Cargando retos…",                       "Chargement des défis…") }
-    func challengeDuration(_ d: String) -> String { t("Duration: \(d)", "Duración: \(d)", "Durée: \(d)") }
     var challengeSelectTitle:    String { t("SELECT CHALLENGE",               "SELECCIONAR RETO",                      "SÉLECTIONNER DÉFI") }
-    var challengeFriends:        String { t("FRIENDS",                        "AMIGOS",                                "AMIS") }
-    var challengeNoFriends:      String { t("No challengeable friends found", "No se encontraron amigos retables",     "Aucun ami disponible") }
-    var challengeLinkedTo:       String { t("Linked to",                      "Vinculado a",                           "Lié à") }
     var leaderboardGlobalShort:  String { t("GLOBAL",                        "GLOBAL",                                "GLOBAL") }
     var leaderboardDailyShort:   String { t("CHALLENGE",                     "DESAFÍO",                               "DÉFI") }
     var leaderboardAccumShort:   String { t("ACCUMULATED",                   "ACUMULADO",                             "CUMULÉ") }

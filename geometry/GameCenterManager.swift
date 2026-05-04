@@ -31,6 +31,8 @@ final class GameCenterManager: ObservableObject {
     @Published private(set) var rankFeedback: RankFeedback? = nil
     /// Last score submitted to the leaderboard (0–1000 scale). Nil before any submission.
     @Published private(set) var lastSubmittedScore: Int? = nil
+    /// Number of challenge definitions that have at least one active challenge.
+    @Published private(set) var activeChallengeCount: Int = 0
 
     // MARK: - Rank feedback
     enum RankFeedback: Equatable {
@@ -408,8 +410,10 @@ final class GameCenterManager: ObservableObject {
         do {
             let defs = try await GKChallengeDefinition.all
             var results: [ChallengeDefinitionData] = []
+            var activeCount = 0
             for def in defs {
                 let active = (try? await def.hasActiveChallenges) ?? false
+                if active { activeCount += 1 }
                 let img = try? await def.image
                 results.append(ChallengeDefinitionData(
                     identifier: def.identifier,
@@ -422,6 +426,7 @@ final class GameCenterManager: ObservableObject {
                     hasActive: active
                 ))
             }
+            activeChallengeCount = activeCount
             return results
         } catch {
             #if DEBUG
@@ -431,41 +436,26 @@ final class GameCenterManager: ObservableObject {
         }
     }
 
+    func refreshActiveChallengeCount() async {
+        guard isAuthenticated else { return }
+        do {
+            let defs = try await GKChallengeDefinition.all
+            var count = 0
+            for def in defs {
+                if (try? await def.hasActiveChallenges) ?? false { count += 1 }
+            }
+            activeChallengeCount = count
+        } catch {
+            #if DEBUG
+            print("[GameCenter] Active challenge count refresh failed: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
     func triggerChallenge(identifier: String) {
         guard isAuthenticated else { return }
         Task {
             await GKAccessPoint.shared.trigger(challengeDefinitionID: identifier)
-        }
-    }
-
-    // MARK: - Friends — for in-app challenge flow
-
-    struct FriendData: Identifiable {
-        var id: String { playerID }
-        let playerID: String
-        let displayName: String
-        let avatar: UIImage?
-    }
-
-    func loadChallengableFriends() async -> [FriendData] {
-        guard isAuthenticated else { return [] }
-        do {
-            let players = try await GKLocalPlayer.local.loadChallengableFriends()
-            var results: [FriendData] = []
-            for player in players {
-                let photo = try? await player.loadPhoto(for: .small)
-                results.append(FriendData(
-                    playerID: player.gamePlayerID,
-                    displayName: player.displayName,
-                    avatar: photo
-                ))
-            }
-            return results
-        } catch {
-            #if DEBUG
-            print("[GameCenter] Challengable friends load failed: \(error.localizedDescription)")
-            #endif
-            return []
         }
     }
 
