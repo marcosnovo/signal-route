@@ -26,6 +26,7 @@ struct VictoryTelemetryView: View {
     @State private var barHeights: [CGFloat] = Array(repeating: 0, count: 8) // resized on appear
     @State private var metricsVisible = false
     @State private var ctaVisible     = false
+    @State private var showingDailyLeaderboard = false
 
     // ── Constants ──────────────────────────────────────────────────────────
     private static let chartH: CGFloat = 240
@@ -129,6 +130,17 @@ struct VictoryTelemetryView: View {
             }
         }
         .task { await runEntrance() }
+        .overlay {
+            if showingDailyLeaderboard {
+                LeaderboardPickerOverlay(
+                    onDismiss: { showingDailyLeaderboard = false },
+                    initialCategory: .daily
+                )
+                .transition(.opacity)
+                .zIndex(20)
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: showingDailyLeaderboard)
     }
 
     // ══════════════════════════════════════════════════════════════════════
@@ -648,7 +660,7 @@ struct VictoryTelemetryView: View {
                 if vm.currentLevel.isDailyChallenge {
                     Rectangle().fill(AppTheme.sage.opacity(0.18)).frame(width: 0.5, height: 22)
 
-                    Button(action: { SoundManager.play(.tapSecondary); gcManager.openLeaderboards(leaderboardID: GameCenterManager.leaderboardDailyChallenge) }) {
+                    Button(action: { SoundManager.play(.tapSecondary); showingDailyLeaderboard = true }) {
                         secondaryButton(icon: "trophy", label: S.leaderboard,
                                         color: AppTheme.accentPrimary)
                     }

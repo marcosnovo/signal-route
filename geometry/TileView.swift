@@ -65,6 +65,8 @@ struct TileView: View {
     private let fragileRed = Color(hex: "E84040")
     /// Cyan used for charge gate indicators
     private let gateColor = Color(hex: "5BE8C8")
+    /// Violet used for versus-linked tile indicators
+    private let linkedViolet = Color(hex: "9B5DE5")
 
     var body: some View {
         ZStack {
@@ -159,6 +161,15 @@ struct TileView: View {
                             interferenceFlicker = 1.0
                         }
                     }
+            }
+
+            // ── Linked tile: violet pulsing ring (versus-exclusive) ─────────
+            if tile.isLinked {
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                    .strokeBorder(linkedViolet.opacity(0.80), lineWidth: 1.5)
+                    .padding(-2.5)
+                    .shadow(color: linkedViolet.opacity(0.35), radius: 5)
+                    .pulsingGlow(color: linkedViolet, duration: 1.6)
             }
 
             // ── Near-signal energy bias ──────────────────────────────────────
@@ -386,6 +397,18 @@ struct TileView: View {
                 }
                 .padding(3)
             }
+
+            // ── Linked tile badge (top-left, versus-exclusive) ───────────
+            if tile.isLinked {
+                VStack {
+                    HStack {
+                        linkedBadge
+                        Spacer()
+                    }
+                    Spacer()
+                }
+                .padding(4)
+            }
         }
         .frame(width: size, height: size)
         .scaleEffect(tapScale * energyScale)
@@ -565,6 +588,25 @@ struct TileView: View {
                 .foregroundStyle(gateColor)
         }
         .frame(width: size * 0.27, height: size * 0.24)
+    }
+
+    // MARK: - Linked tile badge
+
+    @ViewBuilder
+    private var linkedBadge: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color(hex: "1A0A2E").opacity(0.92))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2)
+                        .strokeBorder(linkedViolet.opacity(0.65), lineWidth: 0.5)
+                )
+            Image(systemName: "link")
+                .font(.system(size: size * 0.13, weight: .bold))
+                .foregroundStyle(linkedViolet)
+        }
+        .frame(width: size * 0.27, height: size * 0.24)
+        .shadow(color: linkedViolet.opacity(0.25), radius: 2)
     }
 
     // MARK: - Derived colours

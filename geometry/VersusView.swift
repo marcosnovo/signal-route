@@ -33,6 +33,12 @@ struct VersusView: View {
     @State private var countdownDigit: Int? = nil
     @State private var findMatchPulsing = false
     @State private var selectedDifficulty: DifficultyTier = .medium
+    @State private var selectedGridSize: Int = 5
+
+    // Mystery box
+    @State private var mysteryBoxOpened = false
+    @State private var mysteryBoxReward: VersusPowerUpType? = nil
+    @State private var showDiscardPicker = false
 
     var body: some View {
         ZStack {
@@ -49,7 +55,11 @@ struct VersusView: View {
             case .playing:
                 versusGameplay
             case .finished:
-                versusResult
+                if versusV3VM.showingWinAnimation {
+                    versusGameplay
+                } else {
+                    versusResult
+                }
             }
 
             // Error toast overlay
@@ -158,6 +168,11 @@ struct VersusView: View {
                 botSection
                     .padding(.horizontal, 20)
 
+                Spacer().frame(height: 20)
+
+                versusFeatureToggles
+                    .padding(.horizontal, 20)
+
                 Spacer().frame(height: 28)
 
                 closeButton()
@@ -203,6 +218,92 @@ struct VersusView: View {
         }
     }
 
+    // MARK: - Feature Toggles
+
+    private var versusFeatureToggles: some View {
+        VStack(spacing: 8) {
+            Text("CONFIG")
+                .font(AppTheme.mono(8, weight: .bold))
+                .kerning(1.5)
+                .foregroundStyle(AppTheme.textSecondary)
+
+            VStack(spacing: 0) {
+                featureToggleRow(
+                    icon: "eye.fill",
+                    label: "RIVAL GHOST",
+                    color: AppTheme.sage,
+                    isOn: Binding(
+                        get: { VersusFeatureFlag.isRivalGhostEnabled },
+                        set: { VersusFeatureFlag.setRivalGhostEnabled($0) }
+                    )
+                )
+            }
+            .background(AppTheme.surface.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(AppTheme.stroke.opacity(0.4), lineWidth: 0.5)
+            )
+        }
+    }
+
+    private func featureToggleRow(icon: String, label: String, color: Color, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(color)
+                .frame(width: 20)
+            Text(label)
+                .font(AppTheme.mono(9, weight: .bold))
+                .kerning(0.6)
+                .foregroundStyle(AppTheme.textPrimary)
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .tint(color)
+                .scaleEffect(0.8)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    // MARK: - Grid Size Picker
+
+    private var gridSizePicker: some View {
+        VStack(spacing: 8) {
+            Text(S.versusBoardSize)
+                .font(AppTheme.mono(8, weight: .bold))
+                .kerning(1.5)
+                .foregroundStyle(AppTheme.textSecondary)
+
+            HStack(spacing: 6) {
+                ForEach([4, 5, 6], id: \.self) { size in
+                    let isSelected = size == selectedGridSize
+                    Button(action: {
+                        SoundManager.play(.tapPrimary)
+                        HapticsManager.light()
+                        selectedGridSize = size
+                    }) {
+                        Text("\(size)×\(size)")
+                            .font(AppTheme.mono(11, weight: isSelected ? .black : .bold))
+                            .kerning(0.6)
+                            .foregroundStyle(isSelected ? AppTheme.backgroundPrimary : AppTheme.textSecondary)
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .background(isSelected ? AppTheme.accentPrimary : AppTheme.surface)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .strokeBorder(
+                                        isSelected ? Color.clear : AppTheme.stroke,
+                                        lineWidth: 0.75
+                                    )
+                            )
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Bot Section
 
     private var botSection: some View {
@@ -214,10 +315,12 @@ struct VersusView: View {
 
             difficultyPicker
 
+            gridSizePicker
+
             HStack(spacing: 8) {
-                botButton(difficulty: .easy, label: S.versusBotEasy, icon: "tortoise.fill")
-                botButton(difficulty: .medium, label: S.versusBotMedium, icon: "cpu")
-                botButton(difficulty: .hard, label: S.versusBotHard, icon: "bolt.fill")
+                botButton(difficulty: .easy, label: S.versusBotEasy, icon: VersusBotDifficulty.easy.botIcon)
+                botButton(difficulty: .medium, label: S.versusBotMedium, icon: VersusBotDifficulty.medium.botIcon)
+                botButton(difficulty: .hard, label: S.versusBotHard, icon: VersusBotDifficulty.hard.botIcon)
             }
 
             Text(S.versusSoloHint)
@@ -232,7 +335,7 @@ struct VersusView: View {
         Button(action: {
             SoundManager.play(.tapPrimary)
             HapticsManager.light()
-            versusManager.startSoloTest(botDifficulty: difficulty, difficulty: selectedDifficulty)
+            versusManager.startSoloTest(botDifficulty: difficulty, difficulty: selectedDifficulty, gridSize: selectedGridSize)
         }) {
             VStack(spacing: 5) {
                 Image(systemName: icon)
@@ -527,7 +630,24 @@ struct VersusView: View {
             resultTitle
                 .padding(.bottom, 6)
             resultReason
-                .padding(.bottom, 28)
+                .padding(.bottom, 12)
+
+            // Score + streak (winner only)
+            if localWon == true && versusV3VM.winScore > 0 {
+                VStack(spacing: 4) {
+                    Text("+\(versusV3VM.winScore) PTS")
+                        .font(AppTheme.mono(22, weight: .black))
+                        .kerning(1.5)
+                        .foregroundStyle(AppTheme.accentPrimary)
+                    if versusV3VM.winStreakMultiplier > 1.0 {
+                        Text("\(versusV3VM.currentStreak) STREAK \u{00D7}\(String(format: "%.1f", versusV3VM.winStreakMultiplier))")
+                            .font(AppTheme.mono(10, weight: .bold))
+                            .kerning(1.0)
+                            .foregroundStyle(AppTheme.sage)
+                    }
+                }
+                .padding(.bottom, 20)
+            }
 
             // Face-off card: player LEFT, opponent RIGHT
             HStack(spacing: 0) {
@@ -571,6 +691,12 @@ struct VersusView: View {
             )
             .padding(.horizontal, 28)
 
+            // Mystery box — every 3 consecutive wins
+            if localWon == true && VersusFeatureFlag.isPowerUpsEnabled {
+                mysteryBoxSection
+                    .padding(.top, 16)
+            }
+
             Spacer()
 
             // Rematch (same opponent) — only if opponent didn't disconnect
@@ -590,6 +716,9 @@ struct VersusView: View {
                         HapticsManager.medium()
                         VersusAnalytics.shared.trackRematchRequested()
                         versusV3VM.resetForRematch()
+                        mysteryBoxOpened = false
+                        mysteryBoxReward = nil
+                        showDiscardPicker = false
                         versusManager.sendRematch()
                     }) {
                         HStack(spacing: 8) {
@@ -659,6 +788,165 @@ struct VersusView: View {
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Mystery Box
+
+    private var shouldShowMysteryBox: Bool {
+        let streak = VersusScoring.winStreak
+        return streak > 0 && streak % 3 == 0
+    }
+
+    @State private var mysteryBoxPulsing = false
+
+    private var mysteryBoxSection: some View {
+        let gold = Color(hex: "FFB800")
+
+        return VStack(spacing: 12) {
+            if shouldShowMysteryBox && !mysteryBoxOpened {
+                Button(action: openMysteryBox) {
+                    VStack(spacing: 8) {
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundStyle(gold)
+                            .shadow(color: gold.opacity(0.6), radius: 8)
+                            .scaleEffect(mysteryBoxPulsing ? 1.08 : 0.95)
+
+                        Text("MYSTERY BOX")
+                            .font(AppTheme.mono(14, weight: .black))
+                            .kerning(2.0)
+                            .foregroundStyle(gold)
+
+                        Text("TAP TO OPEN · \(VersusScoring.winStreak) WIN STREAK")
+                            .font(AppTheme.mono(9, weight: .bold))
+                            .kerning(0.8)
+                            .foregroundStyle(AppTheme.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(gold.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(gold.opacity(0.5), lineWidth: 1.2)
+                    )
+                    .shadow(color: gold.opacity(mysteryBoxPulsing ? 0.25 : 0.08), radius: 12, y: 2)
+                }
+                .padding(.horizontal, 28)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                        mysteryBoxPulsing = true
+                    }
+                }
+            }
+
+            if let reward = mysteryBoxReward, mysteryBoxOpened {
+                if showDiscardPicker {
+                    discardPickerView(newReward: reward)
+                        .padding(.horizontal, 28)
+                } else {
+                    rewardRevealView(reward)
+                        .padding(.horizontal, 28)
+                }
+            }
+        }
+    }
+
+    private func openMysteryBox() {
+        SoundManager.play(.win)
+        HapticsManager.heavy()
+        let reward = VersusPowerUpInventory.randomReward()
+        mysteryBoxReward = reward
+        mysteryBoxOpened = true
+
+        if VersusPowerUpInventory.isFull {
+            showDiscardPicker = true
+        } else {
+            VersusPowerUpInventory.add(reward)
+        }
+    }
+
+    private func rewardRevealView(_ type: VersusPowerUpType) -> some View {
+        let c = Color(hex: type.color)
+        return VStack(spacing: 8) {
+            Image(systemName: type.icon)
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(c)
+                .shadow(color: c.opacity(0.5), radius: 6)
+
+            Text(type.label)
+                .font(AppTheme.mono(16, weight: .black))
+                .kerning(1.5)
+                .foregroundStyle(c)
+
+            Text("ADDED TO INVENTORY (\(VersusPowerUpInventory.items.count)/\(VersusPowerUpInventory.maxSlots))")
+                .font(AppTheme.mono(9, weight: .bold))
+                .kerning(0.5)
+                .foregroundStyle(AppTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(c.opacity(0.1))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(c.opacity(0.4), lineWidth: 1)
+        )
+        .transition(.scale.combined(with: .opacity))
+    }
+
+    private func discardPickerView(newReward: VersusPowerUpType) -> some View {
+        VStack(spacing: 8) {
+            Text("INVENTORY FULL — DISCARD ONE")
+                .font(AppTheme.mono(9, weight: .black))
+                .kerning(1.0)
+                .foregroundStyle(AppTheme.danger)
+
+            ForEach(Array(VersusPowerUpInventory.items.enumerated()), id: \.offset) { idx, type in
+                Button(action: {
+                    VersusPowerUpInventory.remove(at: idx)
+                    VersusPowerUpInventory.add(newReward)
+                    showDiscardPicker = false
+                    HapticsManager.light()
+                }) {
+                    discardRow(type: type, label: "DISCARD")
+                }
+            }
+
+            Button(action: {
+                showDiscardPicker = false
+                HapticsManager.light()
+            }) {
+                discardRow(type: newReward, label: "DISCARD NEW")
+            }
+        }
+        .padding(12)
+        .background(AppTheme.surface.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(AppTheme.danger.opacity(0.3), lineWidth: 0.75)
+        )
+    }
+
+    private func discardRow(type: VersusPowerUpType, label: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: type.icon)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color(hex: type.color))
+            Text(type.label)
+                .font(AppTheme.mono(10, weight: .bold))
+                .foregroundStyle(AppTheme.textPrimary)
+            Spacer()
+            Text(label)
+                .font(AppTheme.mono(8, weight: .bold))
+                .kerning(0.5)
+                .foregroundStyle(AppTheme.danger)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(AppTheme.danger.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
     // MARK: - Shared Subviews

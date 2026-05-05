@@ -21,14 +21,26 @@ struct VersusV3GameplayView: View {
 
             Spacer().frame(height: 8)
 
-            HStack(spacing: 6) {
-                Image(systemName: "scope")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(AppTheme.accentPrimary.opacity(0.5))
-                Text(S.versusReachTarget)
-                    .font(AppTheme.mono(9, weight: .bold))
-                    .kerning(1.5)
-                    .foregroundStyle(AppTheme.accentPrimary.opacity(0.6))
+            if vm.isOvertime {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AppTheme.danger)
+                    Text("SUDDEN DEATH")
+                        .font(AppTheme.mono(10, weight: .black))
+                        .kerning(2.0)
+                        .foregroundStyle(AppTheme.danger)
+                }
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "scope")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(AppTheme.accentPrimary.opacity(0.5))
+                    Text(S.versusReachTarget)
+                        .font(AppTheme.mono(9, weight: .bold))
+                        .kerning(1.5)
+                        .foregroundStyle(AppTheme.accentPrimary.opacity(0.6))
+                }
             }
 
             Spacer().frame(height: 8)
@@ -36,7 +48,14 @@ struct VersusV3GameplayView: View {
             // Standard 5×5 board — same layout as campaign
             boardSection
 
-            Spacer().frame(height: 10)
+            Spacer().frame(height: 6)
+
+            // Power-up buttons
+            if !vm.activePowerUps.isEmpty {
+                powerUpHUD
+            }
+
+            Spacer().frame(height: 6)
 
             // Bottom HUD: avatars + moves + rival progress
             bottomHUD
@@ -48,26 +67,38 @@ struct VersusV3GameplayView: View {
     // MARK: - Timer
 
     private var timerSection: some View {
-        let progress = Double(vm.timeRemaining) / Double(VersusV3ViewModel.gameDuration)
+        let progress = Double(vm.timeRemaining) / Double(VersusV3ViewModel.gameDuration(for: vm.gridSize))
         let timerColor: Color = {
             if vm.timeRemaining <= 5 { return AppTheme.danger }
             if vm.timeRemaining <= 10 { return Color(hex: "FFB800") }
             return AppTheme.accentPrimary
         }()
 
+        let freezeColor = Color(hex: "5BC0EB")
+        let displayColor = vm.isTimerFrozen ? freezeColor : (vm.rushFlash ? AppTheme.danger : timerColor)
+
         return VStack(spacing: 4) {
-            Text("\(vm.timeRemaining)")
-                .font(AppTheme.mono(24, weight: .black))
-                .foregroundStyle(timerColor)
-                .contentTransition(.numericText())
-                .animation(.easeInOut(duration: 0.3), value: vm.timeRemaining)
+            HStack(spacing: 6) {
+                if vm.isTimerFrozen {
+                    Image(systemName: "snowflake")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(freezeColor)
+                        .transition(.scale.combined(with: .opacity))
+                }
+                Text("\(vm.timeRemaining)")
+                    .font(AppTheme.mono(24, weight: .black))
+                    .foregroundStyle(displayColor)
+                    .contentTransition(.numericText())
+                    .animation(.easeInOut(duration: 0.3), value: vm.timeRemaining)
+            }
+            .animation(.easeInOut(duration: 0.3), value: vm.isTimerFrozen)
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 2)
                         .fill(AppTheme.stroke)
                     RoundedRectangle(cornerRadius: 2)
-                        .fill(timerColor)
+                        .fill(displayColor)
                         .frame(width: geo.size.width * progress)
                         .animation(.linear(duration: 1.0), value: vm.timeRemaining)
                 }
@@ -82,22 +113,26 @@ struct VersusV3GameplayView: View {
         GeometryReader { geo in
             let gap: CGFloat     = AppTheme.gap
             let pad: CGFloat     = AppTheme.tilePadding
-            let available        = geo.size.width - pad * 2 - gap * CGFloat(VersusV3ViewModel.gridSize - 1)
-            let tileSize         = available / CGFloat(VersusV3ViewModel.gridSize)
+            let gridSize         = vm.gridSize
+            let available        = geo.size.width - pad * 2 - gap * CGFloat(gridSize - 1)
+            let tileSize         = available / CGFloat(gridSize)
 
             VStack(spacing: 0) {
                 VStack(spacing: gap) {
-                    ForEach(0..<VersusV3ViewModel.gridSize, id: \.self) { row in
+                    ForEach(0..<gridSize, id: \.self) { row in
                         HStack(spacing: gap) {
-                            ForEach(0..<VersusV3ViewModel.gridSize, id: \.self) { col in
+                            ForEach(0..<gridSize, id: \.self) { col in
                                 TileView(
                                     tile:             vm.tiles[row][col],
                                     size:             tileSize,
-                                    winPulse:         false,
-                                    animationDelay:   0,
-                                    signalHighlight:  false,
+                                    winPulse:         vm.winPulse,
+                                    animationDelay:   Double(row + col) * 0.038,
+                                    signalHighlight:  vm.signalFrontRow == row && vm.signalFrontCol == col,
                                     isFailureCulprit: false,
                                     onTap:            { vm.tap(row: row, col: col) }
+                                )
+                                .overlay(
+                                    ghostOverlay(row: row, col: col, size: tileSize)
                                 )
                             }
                         }
@@ -214,6 +249,53 @@ struct VersusV3GameplayView: View {
         if p >= 75 { return AppTheme.danger }
         if p >= 45 { return Color(hex: "FFB800") }
         return AppTheme.sage
+    }
+
+    // MARK: - Power-up HUD
+
+    private var powerUpHUD: some View {
+        HStack(spacing: 10) {
+            ForEach(Array(vm.activePowerUps.enumerated()), id: \.offset) { _, type in
+                let c = Color(hex: type.color)
+                Button(action: { vm.usePowerUp(type) }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: type.icon)
+                            .font(.system(size: 14, weight: .bold))
+                        Text(type.label)
+                            .font(AppTheme.mono(11, weight: .black))
+                            .kerning(0.8)
+                    }
+                    .foregroundStyle(c)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(c.opacity(0.15))
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule().strokeBorder(c.opacity(0.5), lineWidth: 1)
+                    )
+                    .shadow(color: c.opacity(0.2), radius: 4, y: 1)
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .animation(.easeInOut(duration: 0.2), value: vm.activePowerUps.count)
+    }
+
+    // MARK: - Ghost Overlay
+
+    @ViewBuilder
+    private func ghostOverlay(row: Int, col: Int, size: CGFloat) -> some View {
+        if vm.ghostRow == row && vm.ghostCol == col {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.sage.opacity(0.1))
+                Circle()
+                    .strokeBorder(AppTheme.sage.opacity(0.5), lineWidth: 2)
+            }
+            .frame(width: size * 0.8, height: size * 0.8)
+            .transition(.opacity)
+            .animation(.easeOut(duration: 0.5), value: vm.ghostRow)
+        }
     }
 
     // MARK: - Avatar

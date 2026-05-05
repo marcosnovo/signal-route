@@ -23,6 +23,71 @@ enum VersusBotDifficulty: Int, CaseIterable, Identifiable {
         case .hard:   return "BOT HARD"
         }
     }
+
+    var botIcon: String {
+        switch self {
+        case .easy:   return "antenna.radiowaves.left.and.right"
+        case .medium: return "network"
+        case .hard:   return "bolt.shield.fill"
+        }
+    }
+
+    var botAvatarImage: UIImage? {
+        let color: UIColor = switch self {
+        case .easy:   UIColor(Color(hex: "4DB87A"))
+        case .medium: UIColor(Color(hex: "FF6A3D"))
+        case .hard:   UIColor(Color(hex: "E84040"))
+        }
+        let config = UIImage.SymbolConfiguration(pointSize: 28, weight: .bold)
+            .applying(UIImage.SymbolConfiguration(paletteColors: [color]))
+        return UIImage(systemName: botIcon, withConfiguration: config)
+    }
+}
+
+// MARK: - VersusScoring
+
+enum VersusScoring {
+    static func winPoints(timeRemaining: Int, tapCount: Int) -> Int {
+        let base = 1000
+        let timeBonus = timeRemaining * 50
+        let moveBonus = max(0, (20 - tapCount) * 25)
+        return base + timeBonus + moveBonus
+    }
+
+    private static let cumulativeKey = "versus.cumulativeScore"
+    private static let streakKey = "versus.winStreak"
+
+    static var cumulativeScore: Int {
+        get { UserDefaults.standard.integer(forKey: cumulativeKey) }
+        set { UserDefaults.standard.set(newValue, forKey: cumulativeKey) }
+    }
+
+    static var winStreak: Int {
+        get { UserDefaults.standard.integer(forKey: streakKey) }
+        set { UserDefaults.standard.set(newValue, forKey: streakKey) }
+    }
+
+    static func streakMultiplier(for streak: Int) -> Double {
+        switch streak {
+        case 0...1: return 1.0
+        case 2:     return 1.5
+        case 3...4: return 2.0
+        default:    return 3.0
+        }
+    }
+
+    static func recordWin(timeRemaining: Int, tapCount: Int) -> (base: Int, multiplier: Double, total: Int) {
+        winStreak += 1
+        let base = winPoints(timeRemaining: timeRemaining, tapCount: tapCount)
+        let mult = streakMultiplier(for: winStreak)
+        let total = Int(Double(base) * mult)
+        cumulativeScore += total
+        return (base, mult, total)
+    }
+
+    static func recordLoss() {
+        winStreak = 0
+    }
 }
 
 // MARK: - VersusV3ViewModel
@@ -35,8 +100,16 @@ final class VersusV3ViewModel: ObservableObject {
 
     // MARK: - Constants
 
-    static let gridSize = VersusBoardGenerator.gridSize   // 5
-    static let gameDuration = 30                           // seconds
+    static let defaultGridSize = 5
+    static let gameDuration = 30
+
+    static func gameDuration(for gridSize: Int) -> Int {
+        switch gridSize {
+        case 4:  return 20
+        case 6:  return 45
+        default: return 30
+        }
+    }
 
     // MARK: - Published State
 
@@ -47,6 +120,34 @@ final class VersusV3ViewModel: ObservableObject {
 
     @Published var localTapCount: Int = 0
     @Published var remoteTapCount: Int = 0
+    @Published var winScore: Int = 0
+    @Published var winStreakMultiplier: Double = 1.0
+    @Published var currentStreak: Int = 0
+    @Published var isOvertime: Bool = false
+
+    // MARK: - Win Animation
+
+    @Published var winPulse: Bool = false
+    @Published var signalFrontRow: Int = -1
+    @Published var signalFrontCol: Int = -1
+    @Published var showingWinAnimation: Bool = false
+
+    // MARK: - Grid Size (dynamic)
+
+    @Published var gridSize: Int = defaultGridSize
+
+    // MARK: - Rival Ghost
+
+    @Published var ghostRow: Int = -1
+    @Published var ghostCol: Int = -1
+    private var ghostClearTask: Task<Void, Never>?
+
+    // MARK: - Power-ups
+
+    @Published var isTimerFrozen: Bool = false
+    @Published var rushFlash: Bool = false
+    @Published var activePowerUps: [VersusPowerUpType] = []
+    private var freezeTask: Task<Void, Never>?
 
     // MARK: - Dependencies
 
@@ -54,7 +155,7 @@ final class VersusV3ViewModel: ObservableObject {
 
     var rivalProgressPercent: Int {
         let snapshot = matchManager.matchState.remoteSnapshot
-        let totalTiles = Self.gridSize * Self.gridSize
+        let totalTiles = gridSize * gridSize
         guard totalTiles > 0 else { return 0 }
         return min(100, snapshot.activeNodes * 100 / totalTiles)
     }
@@ -64,6 +165,7 @@ final class VersusV3ViewModel: ObservableObject {
     private var timerCancellable: AnyCancellable?
     private var botCancellable: AnyCancellable?
     private var gameEnded = false
+    private var overtimeUsed = false
     private var botProgressTimer: AnyCancellable?
     private var botEnergizedFake: Int = 0
 
@@ -78,12 +180,17 @@ final class VersusV3ViewModel: ObservableObject {
         matchManager.onGameStart = { [weak self] in
             self?.handleGameStart()
         }
-        matchManager.onRemoteAction = nil
+        matchManager.onRemoteAction = { [weak self] action in
+            self?.handleRemoteAction(action)
+        }
         matchManager.onRemoteState = { [weak self] snapshot in
             self?.matchManager.matchState.remoteSnapshot = snapshot
         }
         matchManager.onRemoteResult = { [weak self] outcome in
             self?.handleRemoteResult(outcome)
+        }
+        matchManager.onRemotePowerUp = { [weak self] type in
+            self?.handleRemotePowerUp(type)
         }
         matchManager.onRemoteBoardReady = nil
         matchManager.onRemoteRematch = nil
@@ -92,6 +199,7 @@ final class VersusV3ViewModel: ObservableObject {
     // MARK: - Level Setup
 
     private func handleLevelReady(seed: UInt64, config: VersusLevelConfig) {
+        gridSize = config.gridSize
         let board = VersusBoardGenerator.buildBoard(seed: seed, config: config)
         tiles = board
 
@@ -100,7 +208,7 @@ final class VersusV3ViewModel: ObservableObject {
         gameStatus = .playing
         winner = nil
         gameEnded = false
-        timeRemaining = Self.gameDuration
+        timeRemaining = Self.gameDuration(for: gridSize)
         botEnergizedFake = 0
 
         propagateEnergy()
@@ -109,6 +217,9 @@ final class VersusV3ViewModel: ObservableObject {
 
     private func handleGameStart() {
         VersusAnalytics.shared.trackMatchStarted(seed: matchManager.matchState.sharedSeed)
+        if VersusFeatureFlag.isPowerUpsEnabled {
+            activePowerUps = VersusPowerUpInventory.items
+        }
         startTimer()
         if matchManager.isSoloTest { startBot() }
     }
@@ -117,10 +228,9 @@ final class VersusV3ViewModel: ObservableObject {
 
     func tap(row: Int, col: Int) {
         guard gameStatus == .playing else { return }
-        guard row >= 0, row < Self.gridSize, col >= 0, col < Self.gridSize else { return }
+        guard row >= 0, row < gridSize, col >= 0, col < gridSize else { return }
 
         let tile = tiles[row][col]
-        guard tile.role != .source else { return }
         guard !tile.isBurned else { return }
         if tile.isRotationLocked { return }
 
@@ -152,10 +262,44 @@ final class VersusV3ViewModel: ObservableObject {
         sendLocalSnapshot()
     }
 
+    // MARK: - Remote Action (linked tiles)
+
+    private func handleRemoteAction(_ action: VersusAction) {
+        guard gameStatus == .playing else { return }
+        let row = action.row, col = action.col
+        guard row >= 0, row < gridSize, col >= 0, col < gridSize else { return }
+
+        // Rival ghost overlay
+        if VersusFeatureFlag.isRivalGhostEnabled {
+            ghostRow = row
+            ghostCol = col
+            ghostClearTask?.cancel()
+            ghostClearTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                ghostRow = -1
+                ghostCol = -1
+            }
+        }
+
+        // Linked tile sync
+        guard tiles[row][col].isLinked else {
+            remoteTapCount = action.moveNumber
+            return
+        }
+
+        tiles[row][col].rotate()
+        if tiles[row][col].maxRotations != nil {
+            tiles[row][col].rotationsUsed += 1
+        }
+        remoteTapCount = action.moveNumber
+        propagateEnergy()
+        checkWin()
+    }
+
     // MARK: - Energy Propagation (standard BFS)
 
     private func propagateEnergy() {
-        let size = Self.gridSize
+        let size = gridSize
         var energized = Array(repeating: Array(repeating: false, count: size), count: size)
         var queue: [(Int, Int)] = []
 
@@ -199,7 +343,7 @@ final class VersusV3ViewModel: ObservableObject {
 
     private func checkWin() {
         guard !gameEnded else { return }
-        let size = Self.gridSize
+        let size = gridSize
         for r in 0..<size {
             for c in 0..<size where tiles[r][c].role == .target {
                 if tiles[r][c].isEnergized {
@@ -232,6 +376,7 @@ final class VersusV3ViewModel: ObservableObject {
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self, self.gameStatus == .playing else { return }
+                if self.isTimerFrozen { return }
                 self.timeRemaining -= 1
                 if self.timeRemaining <= 0 {
                     self.timeRemaining = 0
@@ -240,10 +385,22 @@ final class VersusV3ViewModel: ObservableObject {
             }
     }
 
+    static let overtimeDuration = 10
+
     private func resolveTimeout() {
         guard !gameEnded else { return }
         let localEnergized = tiles.flatMap { $0 }.filter(\.isEnergized).count
         let remoteEnergized = matchManager.matchState.remoteSnapshot.activeNodes
+        let diff = abs(localEnergized - remoteEnergized)
+
+        if !overtimeUsed && diff <= 2 {
+            overtimeUsed = true
+            isOvertime = true
+            timeRemaining = Self.overtimeDuration
+            HapticsManager.heavy()
+            return
+        }
+
         if localEnergized > remoteEnergized {
             endGame(localWon: true)
         } else if remoteEnergized > localEnergized {
@@ -262,6 +419,30 @@ final class VersusV3ViewModel: ObservableObject {
         botCancellable?.cancel()
         botProgressTimer?.cancel()
         gameStatus = .won
+
+        if localWon {
+            let result = VersusScoring.recordWin(timeRemaining: timeRemaining, tapCount: localTapCount)
+            winScore = result.total
+            winStreakMultiplier = result.multiplier
+            currentStreak = VersusScoring.winStreak
+            let cumulative = VersusScoring.cumulativeScore
+            #if DEBUG
+            print("[Versus] Win! score=\(result.total) cumulative=\(cumulative) auth=\(GameCenterManager.shared.isAuthenticated)")
+            #endif
+            Task { await GameCenterManager.shared.submitVersusScore(cumulative) }
+
+            let targetEnergized = tiles.flatMap { $0 }.contains { $0.role == .target && $0.isEnergized }
+            if targetEnergized {
+                SoundManager.play(.win)
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                    HapticsManager.heavy()
+                }
+                playWinAnimation()
+            }
+        } else {
+            VersusScoring.recordLoss()
+        }
 
         matchManager.sendResult(localWon ? .won : .lost)
 
@@ -323,7 +504,7 @@ final class VersusV3ViewModel: ObservableObject {
             energizePerTick = 3
         }
 
-        let totalTiles = Self.gridSize * Self.gridSize
+        let totalTiles = gridSize * gridSize
         botProgressTimer = Timer.publish(every: progressInterval, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
@@ -333,6 +514,19 @@ final class VersusV3ViewModel: ObservableObject {
                 }
                 self.botEnergizedFake = min(totalTiles, self.botEnergizedFake + energizePerTick)
                 self.remoteTapCount += 1
+
+                // Simulate a bot tap for rival ghost
+                if VersusFeatureFlag.isRivalGhostEnabled {
+                    let size = self.gridSize
+                    let fakeAction = VersusAction(
+                        row: Int.random(in: 0..<size),
+                        col: Int.random(in: 0..<size),
+                        moveNumber: self.remoteTapCount,
+                        timestamp: Date().timeIntervalSince1970
+                    )
+                    self.handleRemoteAction(fakeAction)
+                }
+
                 self.matchManager.matchState.remoteSnapshot = VersusPlayerSnapshot(
                     movesUsed: self.remoteTapCount,
                     movesLeft: 0,
@@ -378,6 +572,124 @@ final class VersusV3ViewModel: ObservableObject {
         matchManager.sendState(snapshot)
     }
 
+    // MARK: - Win Animation
+
+    private func playWinAnimation() {
+        showingWinAnimation = true
+        let path = computeSignalPath()
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 180_000_000)
+
+            guard !path.isEmpty else {
+                winPulse = true
+                HapticsManager.medium()
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                showingWinAnimation = false
+                return
+            }
+
+            let stepMs = min(110, max(40, 900 / path.count))
+            let stepNs = UInt64(stepMs) * 1_000_000
+
+            for pos in path {
+                signalFrontRow = pos.0
+                signalFrontCol = pos.1
+                if tiles[pos.0][pos.1].role == .target {
+                    HapticsManager.light()
+                }
+                try? await Task.sleep(nanoseconds: stepNs)
+            }
+
+            signalFrontRow = -1
+            signalFrontCol = -1
+
+            winPulse = true
+            HapticsManager.success()
+
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            showingWinAnimation = false
+        }
+    }
+
+    private func computeSignalPath() -> [(Int, Int)] {
+        let size = gridSize
+        var path: [(Int, Int)] = []
+        var visited = Set<Int>()
+        var queue: [(Int, Int)] = []
+
+        for r in 0..<size {
+            for c in 0..<size where tiles[r][c].role == .source {
+                visited.insert(r * size + c)
+                path.append((r, c))
+                queue.append((r, c))
+            }
+        }
+
+        while !queue.isEmpty {
+            let (r, c) = queue.removeFirst()
+            for dir in tiles[r][c].connections {
+                let (nr, nc) = neighborPos(r, c, dir)
+                guard nr >= 0, nr < size, nc >= 0, nc < size else { continue }
+                guard tiles[nr][nc].connections.contains(dir.opposite) else { continue }
+                guard !tiles[nr][nc].isBurned else { continue }
+                guard !tiles[nr][nc].blockedInboundDirections.contains(dir.opposite) else { continue }
+                let key = nr * size + nc
+                guard visited.insert(key).inserted else { continue }
+                path.append((nr, nc))
+                let isBlockedGate = tiles[nr][nc].gateChargesRequired != nil && !tiles[nr][nc].isGateOpen
+                if !isBlockedGate {
+                    queue.append((nr, nc))
+                }
+            }
+        }
+
+        return path
+    }
+
+    // MARK: - Power-ups
+
+    func usePowerUp(_ type: VersusPowerUpType) {
+        guard gameStatus == .playing, !gameEnded else { return }
+        guard let idx = activePowerUps.firstIndex(of: type) else { return }
+        activePowerUps.remove(at: idx)
+        _ = VersusPowerUpInventory.use(type)
+
+        switch type {
+        case .freeze:
+            isTimerFrozen = true
+            HapticsManager.medium()
+            SoundManager.play(.tapPrimary)
+            freezeTask?.cancel()
+            freezeTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                isTimerFrozen = false
+            }
+
+        case .rush:
+            matchManager.sendPowerUp(type)
+            HapticsManager.heavy()
+            SoundManager.play(.tapPrimary)
+        }
+    }
+
+    private func handleRemotePowerUp(_ type: VersusPowerUpType) {
+        guard gameStatus == .playing, !gameEnded else { return }
+        switch type {
+        case .rush:
+            timeRemaining = max(0, timeRemaining - 5)
+            rushFlash = true
+            HapticsManager.heavy()
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                rushFlash = false
+            }
+            if timeRemaining <= 0 { resolveTimeout() }
+        case .freeze:
+            break
+        }
+    }
+
     // MARK: - Helpers
 
     private func neighborPos(_ r: Int, _ c: Int, _ dir: Direction) -> (Int, Int) {
@@ -395,14 +707,30 @@ final class VersusV3ViewModel: ObservableObject {
         timerCancellable?.cancel()
         botCancellable?.cancel()
         botProgressTimer?.cancel()
+        freezeTask?.cancel()
+        ghostClearTask?.cancel()
         tiles = []
-        timeRemaining = Self.gameDuration
+        timeRemaining = Self.gameDuration(for: gridSize)
         gameStatus = .playing
         winner = nil
         gameEnded = false
+        overtimeUsed = false
+        isOvertime = false
         localTapCount = 0
         remoteTapCount = 0
+        winScore = 0
+        winStreakMultiplier = 1.0
+        currentStreak = 0
         botEnergizedFake = 0
+        winPulse = false
+        signalFrontRow = -1
+        signalFrontCol = -1
+        showingWinAnimation = false
+        ghostRow = -1
+        ghostCol = -1
+        isTimerFrozen = false
+        rushFlash = false
+        activePowerUps = []
     }
 
     // MARK: - Cleanup
@@ -411,11 +739,14 @@ final class VersusV3ViewModel: ObservableObject {
         timerCancellable?.cancel()
         botCancellable?.cancel()
         botProgressTimer?.cancel()
+        freezeTask?.cancel()
+        ghostClearTask?.cancel()
         matchManager.onLevelReady = nil
         matchManager.onGameStart = nil
         matchManager.onRemoteAction = nil
         matchManager.onRemoteState = nil
         matchManager.onRemoteResult = nil
+        matchManager.onRemotePowerUp = nil
         matchManager.onRemoteBoardReady = nil
         matchManager.onRemoteRematch = nil
     }

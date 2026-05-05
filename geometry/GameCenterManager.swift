@@ -19,6 +19,7 @@ final class GameCenterManager: ObservableObject {
     static let leaderboardTierExpert = "\(prefix).tier_expert"
     static let leaderboardDailyChallenge  = "\(prefix).daily_challenge"
     static let leaderboardDailyCumulative = "\(prefix).daily_cumulative"
+    static let leaderboardVersus          = "\(prefix).versus"
 
     // MARK: Published state
     @Published private(set) var isAuthenticated: Bool = false
@@ -202,6 +203,26 @@ final class GameCenterManager: ObservableObject {
         await loadRankFeedback(leaderboardID: Self.leaderboardDailyChallenge)
     }
 
+    /// Submit cumulative versus score.
+    func submitVersusScore(_ score: Int) async {
+        guard isAuthenticated, score > 0 else { return }
+        do {
+            try await GKLeaderboard.submitScore(
+                score,
+                context: 0,
+                player: GKLocalPlayer.local,
+                leaderboardIDs: [Self.leaderboardVersus]
+            )
+            #if DEBUG
+            print("[GameCenter] ✓ Versus score submitted: \(score)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("[GameCenter] ✗ Versus score submit failed: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
     /// Clear stale rank feedback (call when a new game session starts).
     func clearRankFeedback() { rankFeedback = nil }
 
@@ -301,6 +322,9 @@ final class GameCenterManager: ObservableObject {
                     isLocalPlayer: true
                 ))
             }
+            #if DEBUG
+            print("[GameCenter] fetchLeaderboard(\(id)) — \(entries.count) entries, localRank=\(localEntry?.rank as Any), total=\(total)")
+            #endif
             return LeaderboardData(
                 entries: entries.sorted { $0.rank < $1.rank },
                 playerRank: localEntry?.rank,
@@ -308,7 +332,7 @@ final class GameCenterManager: ObservableObject {
             )
         } catch {
             print("[GameCenter] ✗ fetchLeaderboard(\(id)) failed: \(error.localizedDescription)")
-            return LeaderboardData(entries: [], playerRank: nil, totalPlayers: 0)
+            return nil
         }
     }
 

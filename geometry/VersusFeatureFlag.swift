@@ -28,25 +28,49 @@ enum VersusFeatureFlag {
     private static let keyEnabled      = "versus.enabled"
     private static let keyVisible      = "versus.visibleInHome"
     private static let keyMatchmaking  = "versus.allowMatchmaking"
+    private static let keyPowerUps     = "versus.powerUpsEnabled"
+    private static let keyRivalGhost   = "versus.rivalGhostEnabled"
+
+    // MARK: - Production defaults
+    // In DEBUG builds, registerDebugDefaults() writes all flags to true.
+    // In RELEASE builds, core flags default to true so versus ships enabled
+    // for new users (UserDefaults.bool returns false for unset keys, so we
+    // use object(forKey:) == nil to detect "never set" and fall back to true).
+
+    private static func flag(_ key: String, productionDefault: Bool = false) -> Bool {
+        let ud = UserDefaults.standard
+        if ud.object(forKey: key) == nil { return productionDefault }
+        return ud.bool(forKey: key)
+    }
 
     // MARK: - Flags
 
     /// Master gate — all versus functionality depends on this.
     /// When OFF: no UI, no matchmaking, no network, no state.
     static var isEnabled: Bool {
-        UserDefaults.standard.bool(forKey: keyEnabled)
+        flag(keyEnabled, productionDefault: true)
     }
 
     /// Whether the "VERSUS 1v1" button appears in HomeView.
     /// Requires `isEnabled`. When OFF, versus is only accessible via DevMenu.
     static var isVisibleInHome: Bool {
-        isEnabled && UserDefaults.standard.bool(forKey: keyVisible)
+        isEnabled && flag(keyVisible, productionDefault: true)
     }
 
     /// Whether GKMatchmaker.findMatch() is allowed.
     /// Requires `isEnabled`. When OFF, the lobby UI renders but matchmaking is blocked.
     static var isMatchmakingAllowed: Bool {
-        isEnabled && UserDefaults.standard.bool(forKey: keyMatchmaking)
+        isEnabled && flag(keyMatchmaking, productionDefault: true)
+    }
+
+    /// Whether power-ups (mystery box, freeze/rush) are active in versus matches.
+    static var isPowerUpsEnabled: Bool {
+        isEnabled && flag(keyPowerUps, productionDefault: true)
+    }
+
+    /// Whether rival ghost (opponent tap overlay) is active in versus matches.
+    static var isRivalGhostEnabled: Bool {
+        isEnabled && flag(keyRivalGhost, productionDefault: false)
     }
 
     /// True when versus is enabled but NOT shown in Home — dev-only access via DevMenu.
@@ -76,6 +100,26 @@ enum VersusFeatureFlag {
         log("isMatchmakingAllowed → \(on) (requires isEnabled=\(isEnabled))")
     }
 
+    static func setPowerUpsEnabled(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: keyPowerUps)
+        log("isPowerUpsEnabled → \(on)")
+    }
+
+    static func setRivalGhostEnabled(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: keyRivalGhost)
+        log("isRivalGhostEnabled → \(on)")
+    }
+
+    // MARK: - Debug Defaults
+
+    static func registerDebugDefaults() {
+        UserDefaults.standard.set(true, forKey: keyEnabled)
+        UserDefaults.standard.set(true, forKey: keyVisible)
+        UserDefaults.standard.set(true, forKey: keyMatchmaking)
+        UserDefaults.standard.set(true, forKey: keyPowerUps)
+        UserDefaults.standard.set(true, forKey: keyRivalGhost)
+    }
+
     // MARK: - Logging
 
     static func log(_ message: String) {
@@ -92,6 +136,8 @@ enum VersusFeatureFlag {
         print("[VersusFlag] isVisibleInHome     = \(isVisibleInHome)")
         print("[VersusFlag] isMatchmakingAllowed = \(isMatchmakingAllowed)")
         print("[VersusFlag] isDevOnly           = \(isDevOnly)")
+        print("[VersusFlag] isPowerUpsEnabled   = \(isPowerUpsEnabled)")
+        print("[VersusFlag] isRivalGhostEnabled = \(isRivalGhostEnabled)")
         print("[VersusFlag] ──────────────────────────")
         #endif
     }

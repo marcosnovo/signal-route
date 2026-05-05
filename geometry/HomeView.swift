@@ -337,7 +337,7 @@ struct HomeView: View {
                 }
             }
 
-            // Row 2: Daily + Versus side by side (or single if only one visible)
+            // Row 2: Daily + Versus side by side
             if showDaily || showVersus {
                 HStack(spacing: 10) {
                     if showDaily {
@@ -362,34 +362,22 @@ struct HomeView: View {
         let played = DailyStore.hasPlayedToday
         if played {
             let won = DailyStore.todayResult?.success == true
-            HStack(spacing: 10) {
+            VStack(spacing: 3) {
                 Image(systemName: won ? "checkmark.circle.fill" : "clock.badge.checkmark")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(AppTheme.sage.opacity(0.5))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(won ? S.dailyChallengeCompleted : S.dailyChallengePlayed)
-                        .font(AppTheme.mono(9, weight: .bold))
-                        .kerning(0.6)
-                        .foregroundStyle(AppTheme.sage.opacity(0.55))
-                    Text(S.dailyChallengeNextIn)
-                        .font(AppTheme.mono(7, weight: .medium))
-                        .kerning(0.4)
-                        .foregroundStyle(AppTheme.sage.opacity(0.35))
-                }
-                Spacer(minLength: 0)
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     let secs = max(0, DailyChallengeConfig.secondsUntilNext)
                     let h = Int(secs) / 3600
                     let m = (Int(secs) % 3600) / 60
                     let s = Int(secs) % 60
                     Text(String(format: "%02d:%02d:%02d", h, m, s))
-                        .font(AppTheme.mono(13, weight: .black))
-                        .kerning(1.0)
+                        .font(AppTheme.mono(10, weight: .black))
+                        .kerning(0.6)
                         .foregroundStyle(AppTheme.sage.opacity(0.5))
                         .monospacedDigit()
                 }
             }
-            .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, minHeight: 50)
             .background(AppTheme.surface.opacity(0.4))
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
@@ -1036,7 +1024,7 @@ struct HomeView: View {
                 Rectangle().fill(AppTheme.sage.opacity(0.14)).frame(width: 0.5, height: 18)
 
                 // System version  [secret zone 0]
-                TechLabel(text: "SYS  ·  v1.1.0", color: AppTheme.sage.opacity(0.78))
+                TechLabel(text: "SYS  ·  v1.2.0", color: AppTheme.sage.opacity(0.78))
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
                     #if DEBUG
@@ -2311,84 +2299,82 @@ private struct GeoTitle: View {
 
 // MARK: - ConfettiOverlay
 
-private struct ConfettiParticle: Identifiable {
+private struct ConfettiPiece: Identifiable {
     let id: Int
-    var x: CGFloat
-    var y: CGFloat
-    let vx: CGFloat
-    let vy: CGFloat
-    let size: CGFloat
-    let rotation: Double
-    let rotationSpeed: Double
+    let x: CGFloat
     let color: Color
+    let width: CGFloat
+    let height: CGFloat
+    let drift: CGFloat
+    let spin: Double
+    let duration: Double
+    let delay: Double
     let isCircle: Bool
 }
 
 struct ConfettiOverlay: View {
-    @Binding var isShowing: Bool
+    @State private var pieces: [ConfettiPiece] = []
+    @State private var falling = false
 
-    @State private var particles: [ConfettiParticle] = []
-    @State private var startDate = Date()
-    private let duration: TimeInterval = 3.0
-    private let particleCount = 80
-    private let orange = Color(hex: "FF6A3D")
-    private let sage = Color(hex: "4DB87A")
+    private static let palette: [Color] = [
+        AppTheme.accentPrimary,
+        AppTheme.accentSecondary,
+        AppTheme.sage,
+        AppTheme.success,
+        AppTheme.textPrimary,
+    ]
 
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let elapsed = timeline.date.timeIntervalSince(startDate)
-            Canvas { context, size in
-                for p in particles {
-                    let t = CGFloat(elapsed)
-                    let x = p.x * size.width + p.vx * t
-                    let y = p.y * size.height + p.vy * t + 120 * t * t
-                    let alpha = max(0, 1.0 - CGFloat(elapsed / duration))
-
-                    guard y < size.height + 20, alpha > 0 else { continue }
-
-                    var ctx = context
-                    ctx.opacity = Double(alpha)
-                    let angle = Angle.degrees(p.rotation + p.rotationSpeed * elapsed)
-                    ctx.translateBy(x: x, y: y)
-                    ctx.rotate(by: angle)
-
-                    if p.isCircle {
-                        let r = p.size / 2
-                        let circle = Path(ellipseIn: CGRect(x: -r, y: -r, width: p.size, height: p.size))
-                        ctx.fill(circle, with: .color(p.color))
-                    } else {
-                        let w = p.size * 0.5
-                        let h = p.size
-                        let rect = Path(CGRect(x: -w / 2, y: -h / 2, width: w, height: h))
-                        ctx.fill(rect, with: .color(p.color))
+        GeometryReader { geo in
+            ZStack {
+                ForEach(pieces) { p in
+                    Group {
+                        if p.isCircle {
+                            Circle().fill(p.color)
+                                .frame(width: p.width, height: p.width)
+                        } else {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(p.color)
+                                .frame(width: p.width, height: p.height)
+                        }
                     }
+                    .shadow(color: p.color.opacity(0.8), radius: 6)
+                    .rotationEffect(.degrees(falling ? p.spin : 0))
+                    .position(
+                        x: p.x * geo.size.width + (falling ? p.drift : 0),
+                        y: falling ? geo.size.height + 80 : -30
+                    )
+                    .opacity(falling ? 0 : 1)
+                    .animation(
+                        .easeIn(duration: p.duration).delay(p.delay),
+                        value: falling
+                    )
                 }
             }
         }
         .allowsHitTesting(false)
-        .onAppear {
-            spawnParticles()
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(duration + 0.2))
-                isShowing = false
-            }
+        .task {
+            pieces = Self.makePieces()
+            try? await Task.sleep(for: .milliseconds(50))
+            guard !Task.isCancelled else { return }
+            falling = true
         }
     }
 
-    private func spawnParticles() {
-        startDate = Date()
-        particles = (0..<particleCount).map { i in
-            ConfettiParticle(
+    private static func makePieces() -> [ConfettiPiece] {
+        (0..<200).map { i in
+            let isCircle = Int.random(in: 0...3) == 0
+            return ConfettiPiece(
                 id: i,
-                x: CGFloat.random(in: 0.1...0.9),
-                y: CGFloat.random(in: -0.15...(-0.02)),
-                vx: CGFloat.random(in: -60...60),
-                vy: CGFloat.random(in: 20...180),
-                size: CGFloat.random(in: 4...9),
-                rotation: Double.random(in: 0...360),
-                rotationSpeed: Double.random(in: -360...360),
-                color: Bool.random() ? orange : sage,
-                isCircle: Bool.random()
+                x: CGFloat.random(in: -0.05...1.05),
+                color: palette[i % palette.count],
+                width: isCircle ? CGFloat.random(in: 6...14) : CGFloat.random(in: 6...12),
+                height: CGFloat.random(in: 12...24),
+                drift: CGFloat.random(in: -160...160),
+                spin: Double.random(in: 360...1800) * (Bool.random() ? 1 : -1),
+                duration: Double.random(in: 1.4...3.0),
+                delay: Double.random(in: 0...0.3),
+                isCircle: isCircle
             )
         }
     }
@@ -2397,13 +2383,14 @@ struct ConfettiOverlay: View {
 // MARK: - LeaderboardPickerOverlay
 struct LeaderboardPickerOverlay: View {
     let onDismiss: () -> Void
+    var initialCategory: MainCategory = .global
 
     @EnvironmentObject private var gcManager: GameCenterManager
     @EnvironmentObject private var settings: SettingsStore
     private var S: AppStrings { AppStrings(lang: settings.language) }
 
     enum Section { case leaderboards, achievements }
-    enum MainCategory { case global, daily, weekly }
+    enum MainCategory { case global, daily, weekly, versus }
 
     @State private var revealed = false
     @State private var section: Section = .leaderboards
@@ -2415,7 +2402,6 @@ struct LeaderboardPickerOverlay: View {
     @State private var achievementsLoaded = false
     @State private var selectedAchievementID: String? = nil
     @State private var showingChallengeFlow = false
-    @State private var showConfetti = false
 
     // Dark background + sage highlights
     private let dark   = Color(hex: "171717")
@@ -2430,8 +2416,9 @@ struct LeaderboardPickerOverlay: View {
         case .global:
             guard let tier = diffFilter else { return GameCenterManager.leaderboardTotalScore }
             return tierBoardID(tier)
-        case .daily:  return GameCenterManager.leaderboardDailyChallenge
-        case .weekly: return GameCenterManager.leaderboardDailyCumulative
+        case .daily:   return GameCenterManager.leaderboardDailyChallenge
+        case .weekly:  return GameCenterManager.leaderboardDailyCumulative
+        case .versus:  return GameCenterManager.leaderboardVersus
         }
     }
 
@@ -2446,6 +2433,8 @@ struct LeaderboardPickerOverlay: View {
             return "\u{25C8} \(S.dailyChallengeContext)"
         case .weekly:
             return "\u{25C8} \(S.dailyAccumContext)"
+        case .versus:
+            return "\u{25C8} \(S.leaderboardPickerTitle) \u{00B7} VERSUS"
         }
     }
 
@@ -2469,13 +2458,15 @@ struct LeaderboardPickerOverlay: View {
                 .zIndex(5)
             }
 
-            if showConfetti {
-                ConfettiOverlay(isShowing: $showConfetti)
+            if boards[activeID]?.playerRank == 1 {
+                ConfettiOverlay()
+                    .id(activeID)
                     .ignoresSafeArea()
                     .zIndex(10)
             }
         }
         .onAppear {
+            mainCategory = initialCategory
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85).delay(0.08)) {
                 revealed = true
             }
@@ -2484,17 +2475,6 @@ struct LeaderboardPickerOverlay: View {
         }
         .onChange(of: gcManager.isAuthenticated) { _, authed in
             if authed { boards = [:]; fetchAllBoards() }
-        }
-        .onChange(of: activeID) { _, newID in
-            if showConfetti {
-                showConfetti = false
-            }
-            if let data = boards[newID], data.playerRank == 1 {
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(100))
-                    showConfetti = true
-                }
-            }
         }
     }
 
@@ -2582,11 +2562,6 @@ struct LeaderboardPickerOverlay: View {
                                 heroRankCard(data: data, rank: rank)
                                     .padding(.horizontal, 16)
                                     .padding(.top, 14)
-                                    .onAppear {
-                                        if rank == 1 {
-                                            showConfetti = true
-                                        }
-                                    }
                             }
 
                             if data.totalPlayers > 0 {
@@ -2684,6 +2659,7 @@ struct LeaderboardPickerOverlay: View {
             segmentButton(S.leaderboardGlobalShort, cat: .global)
             segmentButton(S.leaderboardDailyShort, cat: .daily)
             segmentButton(S.leaderboardAccumShort, cat: .weekly)
+            segmentButton("VERSUS", cat: .versus)
         }
         .background(light.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -3051,7 +3027,9 @@ struct LeaderboardPickerOverlay: View {
                 try? await Task.sleep(for: .seconds(1.5))
                 data = await gcManager.fetchLeaderboard(id: id, count: 25)
             }
-            if let data { boards[id] = data }
+            if let data, !data.entries.isEmpty {
+                boards[id] = data
+            }
             loadingIDs.remove(id)
         }
     }

@@ -6092,6 +6092,26 @@ struct DevMenuView: View {
                         tint: AppTheme.accentPrimary,
                         disabled: !VersusFeatureFlag.isEnabled
                     )
+                    versusFlagRow(
+                        title: "POWER-UPS",
+                        subtitle: "Mystery box (3-win streak), freeze/rush abilities",
+                        isOn: Binding(
+                            get: { VersusFeatureFlag.isPowerUpsEnabled },
+                            set: { VersusFeatureFlag.setPowerUpsEnabled($0); refreshID = UUID() }
+                        ),
+                        tint: Color(hex: "FFB800"),
+                        disabled: !VersusFeatureFlag.isEnabled
+                    )
+                    versusFlagRow(
+                        title: "RIVAL GHOST",
+                        subtitle: "Show opponent tap overlay on your board",
+                        isOn: Binding(
+                            get: { VersusFeatureFlag.isRivalGhostEnabled },
+                            set: { VersusFeatureFlag.setRivalGhostEnabled($0); refreshID = UUID() }
+                        ),
+                        tint: AppTheme.sage,
+                        disabled: !VersusFeatureFlag.isEnabled
+                    )
                 }
                 .padding(.horizontal, 16).padding(.vertical, 12)
 

@@ -2726,3 +2726,1340 @@ struct PremiumStateTransitionTests {
         #expect(s.activeCodeID == nil, "Disable must clear activeCodeID")
     }
 }
+
+// MARK: - ═══════════════════════════════════════════════════════════════════
+// MARK: - Integration Tests
+// MARK: - ═══════════════════════════════════════════════════════════════════
+
+// MARK: - VersusMessage Codable Roundtrip Tests
+@Suite("VersusMessage — Codable Roundtrips")
+struct VersusMessageCodableTests {
+
+    @Test("VersusLevelConfig encodes and decodes with all fields preserved")
+    func configRoundtrip() throws {
+        let config = VersusLevelConfig(
+            gridSize: 5, difficultyRaw: 3, maxMoves: 25,
+            numTargets: 2, objectiveType: "normal",
+            levelType: "LINEAR", isV3: true
+        )
+        let data = try JSONEncoder().encode(config)
+        let decoded = try JSONDecoder().decode(VersusLevelConfig.self, from: data)
+        #expect(decoded.gridSize == 5)
+        #expect(decoded.difficultyRaw == 3)
+        #expect(decoded.maxMoves == 25)
+        #expect(decoded.numTargets == 2)
+        #expect(decoded.objectiveType == "normal")
+        #expect(decoded.levelType == "LINEAR")
+        #expect(decoded.isV3 == true)
+    }
+
+    @Test("VersusLevelConfig missing isV3 field decodes as false (backward compat)")
+    func configMissingIsV3DefaultsFalse() throws {
+        let json = """
+        {"gridSize":5,"difficultyRaw":2,"maxMoves":20,"numTargets":1,"objectiveType":"normal","levelType":"BRANCH"}
+        """
+        let decoded = try JSONDecoder().decode(VersusLevelConfig.self, from: Data(json.utf8))
+        #expect(decoded.isV3 == false)
+        #expect(decoded.gridSize == 5)
+    }
+
+    @Test("VersusAction encodes and decodes correctly")
+    func actionRoundtrip() throws {
+        let action = VersusAction(row: 3, col: 2, moveNumber: 7, timestamp: 1234567890.5)
+        let data = try JSONEncoder().encode(action)
+        let decoded = try JSONDecoder().decode(VersusAction.self, from: data)
+        #expect(decoded.row == 3)
+        #expect(decoded.col == 2)
+        #expect(decoded.moveNumber == 7)
+        #expect(decoded.timestamp == 1234567890.5)
+    }
+
+    @Test("VersusPlayerSnapshot.idle has expected default values")
+    func snapshotIdleDefaults() {
+        let idle = VersusPlayerSnapshot.idle
+        #expect(idle.movesUsed == 0)
+        #expect(idle.movesLeft == 0)
+        #expect(idle.targetsOnline == 0)
+        #expect(idle.totalTargets == 0)
+        #expect(idle.activeNodes == 0)
+        #expect(idle.status == "playing")
+    }
+
+    @Test("VersusPlayerSnapshot Codable roundtrip preserves all fields")
+    func snapshotRoundtrip() throws {
+        let snap = VersusPlayerSnapshot(
+            movesUsed: 5, movesLeft: 10, targetsOnline: 2,
+            totalTargets: 3, activeNodes: 8, status: "won"
+        )
+        let data = try JSONEncoder().encode(snap)
+        let decoded = try JSONDecoder().decode(VersusPlayerSnapshot.self, from: data)
+        #expect(decoded.movesUsed == 5)
+        #expect(decoded.targetsOnline == 2)
+        #expect(decoded.status == "won")
+    }
+
+    @Test("VersusOutcome all cases roundtrip")
+    func outcomeRoundtrip() throws {
+        for outcome in [VersusOutcome.won, .lost, .disconnected] {
+            let data = try JSONEncoder().encode(outcome)
+            let decoded = try JSONDecoder().decode(VersusOutcome.self, from: data)
+            #expect(decoded == outcome)
+        }
+    }
+
+    @Test("VersusMessage.ready roundtrips through encoded()/decode(from:)")
+    func messageReadyRoundtrip() throws {
+        let config = VersusLevelConfig(
+            gridSize: 6, difficultyRaw: 4, maxMoves: 30,
+            numTargets: 2, objectiveType: "maxCoverage",
+            levelType: "DENSE", isV3: true
+        )
+        let payload = VersusReadyPayload(seed: 42, config: config)
+        let msg = VersusMessage.ready(payload: payload)
+        guard let data = msg.encoded(),
+              let decoded = VersusMessage.decode(from: data) else {
+            Issue.record("ready message encode/decode returned nil")
+            return
+        }
+        if case .ready(let p) = decoded {
+            #expect(p.seed == 42)
+            #expect(p.config.gridSize == 6)
+            #expect(p.config.isV3 == true)
+        } else {
+            Issue.record("Decoded message is not .ready")
+        }
+    }
+
+    @Test("VersusMessage.action roundtrips through encoded()/decode(from:)")
+    func messageActionRoundtrip() throws {
+        let action = VersusAction(row: 1, col: 4, moveNumber: 3, timestamp: 100.0)
+        let msg = VersusMessage.action(payload: action)
+        guard let data = msg.encoded(),
+              let decoded = VersusMessage.decode(from: data) else {
+            Issue.record("action message encode/decode returned nil")
+            return
+        }
+        if case .action(let a) = decoded {
+            #expect(a.row == 1)
+            #expect(a.col == 4)
+            #expect(a.moveNumber == 3)
+        } else {
+            Issue.record("Decoded message is not .action")
+        }
+    }
+
+    @Test("VersusMessage.powerUp roundtrips through encoded()/decode(from:)")
+    func messagePowerUpRoundtrip() throws {
+        let puAction = VersusPowerUpAction(type: .freeze)
+        let msg = VersusMessage.powerUp(payload: puAction)
+        guard let data = msg.encoded(),
+              let decoded = VersusMessage.decode(from: data) else {
+            Issue.record("powerUp message encode/decode returned nil")
+            return
+        }
+        if case .powerUp(let p) = decoded {
+            #expect(p.type == .freeze)
+        } else {
+            Issue.record("Decoded message is not .powerUp")
+        }
+    }
+
+    @Test("VersusMessage.result roundtrips through encoded()/decode(from:)")
+    func messageResultRoundtrip() throws {
+        let msg = VersusMessage.result(payload: .won)
+        guard let data = msg.encoded(),
+              let decoded = VersusMessage.decode(from: data) else {
+            Issue.record("result message encode/decode returned nil")
+            return
+        }
+        if case .result(let o) = decoded {
+            #expect(o == .won)
+        } else {
+            Issue.record("Decoded message is not .result")
+        }
+    }
+
+    @Test("VersusMessage.decode returns nil for garbage data")
+    func decodeGarbageReturnsNil() {
+        let garbage = Data([0xFF, 0xFE, 0x00, 0x01])
+        #expect(VersusMessage.decode(from: garbage) == nil)
+    }
+}
+
+// MARK: - Versus Board Generation — Determinism & Solvability
+@Suite("VersusBoardGenerator — Determinism & Solvability")
+struct VersusBoardGeneratorTests {
+
+    private func makeConfig(gridSize: Int = 5, difficulty: DifficultyTier = .medium) -> VersusLevelConfig {
+        VersusLevelConfig(
+            gridSize: gridSize, difficultyRaw: difficulty.rawValue,
+            maxMoves: 999, numTargets: 2,
+            objectiveType: LevelObjectiveType.normal.rawValue,
+            levelType: LevelType.singlePath.rawValue, isV3: true
+        )
+    }
+
+    @Test("Same seed + config produces identical boards (determinism)")
+    func sameSeeedSameBoard() {
+        let seed: UInt64 = 123456789
+        let config = makeConfig()
+        let board1 = VersusBoardGenerator.buildBoard(seed: seed, config: config)
+        let board2 = VersusBoardGenerator.buildBoard(seed: seed, config: config)
+        for r in 0..<config.gridSize {
+            for c in 0..<config.gridSize {
+                #expect(board1[r][c].type == board2[r][c].type,
+                        "Tile (\(r),\(c)) type mismatch between identical seeds")
+                #expect(board1[r][c].rotation == board2[r][c].rotation,
+                        "Tile (\(r),\(c)) rotation mismatch between identical seeds")
+                #expect(board1[r][c].role == board2[r][c].role,
+                        "Tile (\(r),\(c)) role mismatch between identical seeds")
+            }
+        }
+    }
+
+    @Test("Different seeds produce different boards")
+    func differentSeedsDifferentBoards() {
+        let config = makeConfig()
+        let board1 = VersusBoardGenerator.buildBoard(seed: 111, config: config)
+        let board2 = VersusBoardGenerator.buildBoard(seed: 999, config: config)
+        var differences = 0
+        for r in 0..<config.gridSize {
+            for c in 0..<config.gridSize {
+                if board1[r][c].type != board2[r][c].type || board1[r][c].rotation != board2[r][c].rotation {
+                    differences += 1
+                }
+            }
+        }
+        #expect(differences > 0, "Two different seeds must produce different boards")
+    }
+
+    @Test("Generated board has correct dimensions", arguments: [4, 5, 6])
+    func boardDimensions(size: Int) {
+        let config = makeConfig(gridSize: size)
+        let board = VersusBoardGenerator.buildBoard(seed: 42, config: config)
+        #expect(board.count == size, "Board should have \(size) rows")
+        for row in board {
+            #expect(row.count == size, "Each row should have \(size) columns")
+        }
+    }
+
+    @Test("Generated board has exactly one source")
+    func boardHasOneSource() {
+        let config = makeConfig()
+        let board = VersusBoardGenerator.buildBoard(seed: 777, config: config)
+        let sources = board.flatMap { $0 }.filter { $0.role == .source }
+        #expect(sources.count == 1, "Board must have exactly 1 source, found \(sources.count)")
+    }
+
+    @Test("Generated board has at least one target")
+    func boardHasTargets() {
+        let config = makeConfig()
+        let board = VersusBoardGenerator.buildBoard(seed: 777, config: config)
+        let targets = board.flatMap { $0 }.filter { $0.role == .target }
+        #expect(targets.count >= 1, "Board must have at least 1 target")
+    }
+
+    @Test("Board generation works across all grid sizes", arguments: [4, 5, 6])
+    func boardGenerationAllSizes(size: Int) {
+        let config = makeConfig(gridSize: size)
+        for seed: UInt64 in [1, 42, 999, 12345] {
+            let board = VersusBoardGenerator.buildBoard(seed: seed, config: config)
+            let hasSource = board.flatMap { $0 }.contains { $0.role == .source }
+            let hasTarget = board.flatMap { $0 }.contains { $0.role == .target }
+            #expect(hasSource, "seed=\(seed) size=\(size): missing source")
+            #expect(hasTarget, "seed=\(seed) size=\(size): missing target")
+        }
+    }
+}
+
+// MARK: - VersusLevelFactory Tests
+@Suite("VersusLevelFactory — Level Creation")
+struct VersusLevelFactoryTests {
+
+    @Test("makeLevel produces level with id == -1")
+    func levelIdIsMinusOne() {
+        let config = VersusLevelConfig(
+            gridSize: 5, difficultyRaw: 3, maxMoves: 20,
+            numTargets: 1, objectiveType: "normal",
+            levelType: "LINEAR", isV3: true
+        )
+        let level = VersusLevelFactory.makeLevel(seed: 42, config: config)
+        #expect(level.id == -1)
+    }
+
+    @Test("makeLevel maps config fields correctly")
+    func levelFieldMapping() {
+        let config = VersusLevelConfig(
+            gridSize: 6, difficultyRaw: 4, maxMoves: 30,
+            numTargets: 2, objectiveType: "maxCoverage",
+            levelType: "DENSE", isV3: true
+        )
+        let level = VersusLevelFactory.makeLevel(seed: 100, config: config)
+        #expect(level.gridSize == 6)
+        #expect(level.difficulty == .expert)
+        #expect(level.maxMoves == 30)
+        #expect(level.numTargets == 2)
+        #expect(level.objectiveType == .maxCoverage)
+        #expect(level.levelType == .dense)
+        #expect(level.timeLimit == nil)
+    }
+
+    @Test("makeLevel falls back to defaults for invalid enum rawValues")
+    func levelFallbackForInvalidRawValues() {
+        let config = VersusLevelConfig(
+            gridSize: 5, difficultyRaw: 99, maxMoves: 15,
+            numTargets: 1, objectiveType: "INVALID",
+            levelType: "NOPE", isV3: false
+        )
+        let level = VersusLevelFactory.makeLevel(seed: 1, config: config)
+        #expect(level.difficulty == .medium, "Invalid difficultyRaw should fall back to .medium")
+        #expect(level.objectiveType == .normal, "Invalid objectiveType should fall back to .normal")
+        #expect(level.levelType == .branching, "Invalid levelType should fall back to .branching")
+    }
+}
+
+// MARK: - Daily Challenge Config Tests
+@Suite("DailyChallengeConfig — Seed & Day Boundary")
+struct DailyChallengeConfigTests {
+
+    @Test("Same day key produces same seed (deterministic FNV-1a)")
+    func sameDayKeySameSeed() {
+        let seed1 = DailyChallengeConfig.seed(for: "2026-05-05")
+        let seed2 = DailyChallengeConfig.seed(for: "2026-05-05")
+        #expect(seed1 == seed2)
+    }
+
+    @Test("Different day keys produce different seeds")
+    func differentDayKeysDifferentSeeds() {
+        let seed1 = DailyChallengeConfig.seed(for: "2026-05-05")
+        let seed2 = DailyChallengeConfig.seed(for: "2026-05-06")
+        #expect(seed1 != seed2)
+    }
+
+    @Test("Seed is non-zero for any reasonable day key")
+    func seedNonZero() {
+        for day in ["2026-01-01", "2026-06-15", "2026-12-31"] {
+            #expect(DailyChallengeConfig.seed(for: day) != 0,
+                    "Seed must be non-zero for '\(day)'")
+        }
+    }
+
+    @Test("dayKey at 07:59 Madrid is yesterday, at 08:00 is today")
+    func dayBoundary8AM() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Europe/Madrid")!
+
+        var comps = DateComponents()
+        comps.year = 2026; comps.month = 5; comps.day = 15
+        comps.hour = 7; comps.minute = 59; comps.second = 0
+        let before8 = cal.date(from: comps)!
+
+        comps.hour = 8; comps.minute = 0
+        let at8 = cal.date(from: comps)!
+
+        let keyBefore = DailyChallengeConfig.dayKey(for: before8)
+        let keyAt = DailyChallengeConfig.dayKey(for: at8)
+
+        #expect(keyBefore == "2026-05-14", "Before 8AM Madrid should map to yesterday")
+        #expect(keyAt == "2026-05-15", "At 8AM Madrid should map to today")
+    }
+
+    @Test("Constants have expected values")
+    func constants() {
+        #expect(DailyChallengeConfig.levelID == -2)
+        #expect(DailyChallengeConfig.gridSize == 5)
+        #expect(DailyChallengeConfig.resetHour == 8)
+    }
+
+    @Test("nextChallengeDate is in the future")
+    func nextChallengeDateIsFuture() {
+        #expect(DailyChallengeConfig.nextChallengeDate > Date())
+    }
+
+    @Test("secondsUntilNext is non-negative")
+    func secondsUntilNextNonNegative() {
+        #expect(DailyChallengeConfig.secondsUntilNext >= 0)
+    }
+}
+
+// MARK: - DailyLevelFactory Tests
+@Suite("DailyLevelFactory — Level Generation")
+struct DailyLevelFactoryTests {
+
+    @Test("todayLevel has id == -2")
+    func todayLevelId() {
+        #expect(DailyLevelFactory.todayLevel.id == -2)
+    }
+
+    @Test("todayLevel is always 5×5")
+    func todayLevelGridSize() {
+        #expect(DailyLevelFactory.todayLevel.gridSize == 5)
+    }
+
+    @Test("todayLevel difficulty is hard or expert")
+    func todayLevelDifficulty() {
+        let diff = DailyLevelFactory.todayLevel.difficulty
+        #expect(diff == .hard || diff == .expert,
+                "Daily challenge must be hard or expert, got \(diff)")
+    }
+
+    @Test("todayLevel has a time limit")
+    func todayLevelHasTimer() {
+        #expect(DailyLevelFactory.todayLevel.timeLimit != nil,
+                "Daily challenge must always be timed")
+    }
+
+    @Test("Same seed produces same daily level (determinism)")
+    func sameSeeedSameLevel() {
+        let seed: UInt64 = 7777777
+        let level1 = DailyLevelFactory.makeLevel(seed: seed)
+        let level2 = DailyLevelFactory.makeLevel(seed: seed)
+        #expect(level1.difficulty == level2.difficulty)
+        #expect(level1.levelType == level2.levelType)
+        #expect(level1.objectiveType == level2.objectiveType)
+        #expect(level1.maxMoves == level2.maxMoves)
+        #expect(level1.timeLimit == level2.timeLimit)
+    }
+
+    @Test("makeLevel move buffer is positive")
+    func moveBufferPositive() {
+        for seed: UInt64 in [1, 42, 999, 54321, 1000000] {
+            let level = DailyLevelFactory.makeLevel(seed: seed)
+            #expect(level.moveBuffer > 0,
+                    "seed=\(seed): moveBuffer=\(level.moveBuffer) must be positive")
+        }
+    }
+}
+
+// MARK: - Full Campaign Catalogue Integration Tests
+@Suite("Campaign Catalogue — Integrity")
+struct CampaignCatalogueTests {
+
+    private static let levels = LevelGenerator.levels
+
+    @Test("Catalogue has exactly 330 levels")
+    func catalogueCount() {
+        #expect(Self.levels.count == 330)
+    }
+
+    @Test("Level IDs are sequential from 1 to 330")
+    func levelIDsSequential() {
+        for (idx, level) in Self.levels.enumerated() {
+            #expect(level.id == idx + 1,
+                    "Level at index \(idx) has id=\(level.id), expected \(idx + 1)")
+        }
+    }
+
+    @Test("All levels have positive moveBuffer")
+    func allPositiveMoveBuffer() {
+        let broken = Self.levels.filter { $0.moveBuffer <= 0 }.map { $0.id }
+        #expect(broken.isEmpty, "Levels with non-positive moveBuffer: \(broken)")
+    }
+
+    @Test("All levels have minimumRequiredMoves > 0")
+    func allRequireAtLeastOneTap() {
+        let zero = Self.levels.filter { $0.minimumRequiredMoves == 0 }.map { $0.id }
+        #expect(zero.isEmpty, "Levels with minimumRequiredMoves=0: \(zero)")
+    }
+
+    @Test("No level starts pre-solved (full sweep)")
+    func noPresentSolvedBoards() {
+        let broken = Self.levels.filter { LevelGenerator.startsSolved(level: $0) }.map { $0.id }
+        #expect(broken.isEmpty, "Pre-solved levels: \(broken)")
+    }
+
+    @Test("Difficulty tiers appear in expected order")
+    func difficultyOrdering() {
+        let first = Self.levels.first!
+        let last = Self.levels.last!
+        #expect(first.difficulty == .easy, "First level must be easy")
+        #expect(last.difficulty.rawValue >= DifficultyTier.expert.rawValue,
+                "Last level must be expert or harder")
+    }
+
+    @Test("Easy levels have no time limit")
+    func easyLevelsNoTimer() {
+        let timedEasy = Self.levels.filter { $0.difficulty == .easy && $0.timeLimit != nil }
+        #expect(timedEasy.isEmpty, "Easy levels should not have time limits")
+    }
+
+    @Test("Expert+ levels have time limits")
+    func expertLevelsHaveTimer() {
+        let untimedExpert = Self.levels.filter {
+            $0.difficulty == .expert && $0.id >= 111 && $0.timeLimit == nil
+        }
+        #expect(untimedExpert.isEmpty,
+                "Expert levels (id ≥ 111) should have time limits")
+    }
+
+    @Test("Kuiper Belt levels exist (IDs 181–255)")
+    func kuiperBeltLevels() {
+        let kuiper = Self.levels.filter { $0.id >= 181 && $0.id <= 255 }
+        #expect(kuiper.count == 75, "Kuiper Belt should have 75 levels, found \(kuiper.count)")
+    }
+
+    @Test("Oort Cloud levels exist (IDs 256–330)")
+    func oortCloudLevels() {
+        let oort = Self.levels.filter { $0.id >= 256 && $0.id <= 330 }
+        #expect(oort.count == 75, "Oort Cloud should have 75 levels, found \(oort.count)")
+    }
+
+    @Test("Grid size is 4×4 for easy/early-medium, 5×5 for everything else")
+    func gridSizeDistribution() {
+        for level in Self.levels {
+            if level.id <= 50 {
+                #expect(level.gridSize == 4 || level.gridSize == 5,
+                        "L\(level.id): early level should be 4×4 or 5×5, got \(level.gridSize)")
+            } else {
+                #expect(level.gridSize == 5,
+                        "L\(level.id): post-50 level should be 5×5, got \(level.gridSize)")
+            }
+        }
+    }
+}
+
+// MARK: - AstronautProfile Codable Safety Tests
+@Suite("AstronautProfile — Codable Safety")
+struct AstronautProfileCodableTests {
+
+    @Test("Default-initialized profile encodes and decodes without loss")
+    func defaultProfileRoundtrip() throws {
+        let profile = AstronautProfile()
+        let data = try JSONEncoder().encode(profile)
+        let decoded = try JSONDecoder().decode(AstronautProfile.self, from: data)
+        #expect(decoded.level == 1)
+        #expect(decoded.totalScore == 0)
+        #expect(decoded.bestEfficiencyByLevel.isEmpty)
+        #expect(decoded.dailyCumulativeScore == 0)
+    }
+
+    @Test("Profile with populated fields roundtrips correctly")
+    func populatedProfileRoundtrip() throws {
+        var profile = AstronautProfile()
+        profile.level = 15
+        profile.totalScore = 50000
+        profile.bestEfficiencyByLevel = ["1": 0.95, "2": 0.80]
+        profile.lastEfficiencyByLevel = ["1": 0.90, "2": 0.75]
+        profile.bestScoreByLevel = ["1": 1200, "2": 980]
+        profile.dailyCumulativeScore = 12000
+
+        let data = try JSONEncoder().encode(profile)
+        let decoded = try JSONDecoder().decode(AstronautProfile.self, from: data)
+        #expect(decoded.level == 15)
+        #expect(decoded.totalScore == 50000)
+        #expect(decoded.bestEfficiencyByLevel["1"] == 0.95)
+        #expect(decoded.lastEfficiencyByLevel["2"] == 0.75)
+        #expect(decoded.bestScoreByLevel["1"] == 1200)
+        #expect(decoded.dailyCumulativeScore == 12000)
+    }
+
+    @Test("Profile decodes gracefully from minimal JSON (missing fields get defaults)")
+    func minimalJSONDecodes() throws {
+        let json = "{}"
+        let data = Data(json.utf8)
+        let profile = try JSONDecoder().decode(AstronautProfile.self, from: data)
+        #expect(profile.level == 1)
+        #expect(profile.totalScore == 0)
+        #expect(profile.bestEfficiencyByLevel.isEmpty)
+        #expect(profile.dailyCumulativeScore == 0)
+    }
+
+    @Test("Profile decodes from legacy JSON missing newer fields (no crash)")
+    func legacyJSONMissingNewFields() throws {
+        let json = """
+        {"level": 5, "totalScore": 10000, "currentPlanetIndex": 2}
+        """
+        let data = Data(json.utf8)
+        let profile = try JSONDecoder().decode(AstronautProfile.self, from: data)
+        #expect(profile.level == 5)
+        #expect(profile.totalScore == 10000)
+        #expect(profile.bestEfficiencyByLevel.isEmpty)
+        #expect(profile.dailyCumulativeScore == 0)
+    }
+}
+
+// MARK: - SpatialRegion & Planet Catalogue Integrity
+@Suite("Region & Planet Catalogues — Integrity")
+struct RegionPlanetCatalogueTests {
+
+    @Test("SpatialRegion catalogue covers level IDs 1–330 without gaps")
+    func regionsCoverFullRange() {
+        let regions = SpatialRegion.catalog
+        var covered = Set<Int>()
+        for region in regions {
+            for id in region.levelRange {
+                covered.insert(id)
+            }
+        }
+        for id in 1...330 {
+            #expect(covered.contains(id),
+                    "Level ID \(id) is not covered by any SpatialRegion")
+        }
+    }
+
+    @Test("SpatialRegion IDs are unique")
+    func regionIDsUnique() {
+        let ids = SpatialRegion.catalog.map { $0.id }
+        #expect(Set(ids).count == ids.count, "Duplicate region IDs found")
+    }
+
+    @Test("Planet catalogue has entries for all required levels")
+    func planetCatalogueCoversProgression() {
+        let planets = Planet.catalog
+        #expect(planets.count >= 8, "Expected at least 8 planets, found \(planets.count)")
+        #expect(planets.first!.requiredLevel == 1, "First planet should require level 1")
+    }
+
+    @Test("Planet IDs are sequential")
+    func planetIDsSequential() {
+        for (idx, planet) in Planet.catalog.enumerated() {
+            #expect(planet.id == idx,
+                    "Planet at index \(idx) has id=\(planet.id), expected \(idx)")
+        }
+    }
+}
+
+// MARK: - ═══════════════════════════════════════════════════════════════════
+// MARK: - General Unit Tests
+// MARK: - ═══════════════════════════════════════════════════════════════════
+
+// MARK: - Direction Rotation Tests
+@Suite("Direction — Rotation Arithmetic")
+struct DirectionRotationTests {
+
+    @Test("opposite returns cardinal opposite")
+    func oppositeDirections() {
+        #expect(Direction.north.opposite == .south)
+        #expect(Direction.south.opposite == .north)
+        #expect(Direction.east.opposite == .west)
+        #expect(Direction.west.opposite == .east)
+    }
+
+    @Test("rotated(by: 0) returns same direction")
+    func rotateBy0() {
+        for dir in Direction.allCases {
+            #expect(dir.rotated(by: 0) == dir)
+        }
+    }
+
+    @Test("rotated(by: 4) returns same direction (full circle)")
+    func rotateBy4IsIdentity() {
+        for dir in Direction.allCases {
+            #expect(dir.rotated(by: 4) == dir)
+        }
+    }
+
+    @Test("rotated(by: 1) rotates clockwise: N→E→S→W→N")
+    func rotateClockwise() {
+        #expect(Direction.north.rotated(by: 1) == .east)
+        #expect(Direction.east.rotated(by: 1) == .south)
+        #expect(Direction.south.rotated(by: 1) == .west)
+        #expect(Direction.west.rotated(by: 1) == .north)
+    }
+
+    @Test("rotated(by: 2) equals opposite")
+    func rotateBy2IsOpposite() {
+        for dir in Direction.allCases {
+            #expect(dir.rotated(by: 2) == dir.opposite)
+        }
+    }
+
+    @Test("rotated handles negative steps (counterclockwise)")
+    func rotateNegative() {
+        #expect(Direction.north.rotated(by: -1) == .west)
+        #expect(Direction.east.rotated(by: -1) == .north)
+    }
+}
+
+// MARK: - TileType Connection Tests
+@Suite("TileType — Connection Rotations")
+struct TileTypeConnectionTests {
+
+    @Test("straight base connections are N-S")
+    func straightBase() {
+        #expect(TileType.straight.baseConnections == Set([.north, .south]))
+    }
+
+    @Test("curve base connections are N-E")
+    func curveBase() {
+        #expect(TileType.curve.baseConnections == Set([.north, .east]))
+    }
+
+    @Test("tShape base connections are N-E-W")
+    func tShapeBase() {
+        #expect(TileType.tShape.baseConnections == Set([.north, .east, .west]))
+    }
+
+    @Test("cross base connections are all four")
+    func crossBase() {
+        #expect(TileType.cross.baseConnections == Set(Direction.allCases))
+    }
+
+    @Test("rotatedConnections has 4 entries per type")
+    func rotatedConnectionsCount() {
+        for type in [TileType.straight, .curve, .tShape, .cross] {
+            let rotations = TileType.rotatedConnections[type]!
+            #expect(rotations.count == 4,
+                    "\(type) should have 4 rotation entries")
+        }
+    }
+
+    @Test("cross connections are identical for all rotations")
+    func crossAllRotationsIdentical() {
+        let rotations = TileType.rotatedConnections[.cross]!
+        for rot in rotations {
+            #expect(rot == Set(Direction.allCases))
+        }
+    }
+
+    @Test("straight has exactly 2 distinct connection sets (0° == 180°, 90° == 270°)")
+    func straightSymmetry() {
+        let rotations = TileType.rotatedConnections[.straight]!
+        #expect(rotations[0] == rotations[2], "straight 0° must equal 180°")
+        #expect(rotations[1] == rotations[3], "straight 90° must equal 270°")
+        #expect(rotations[0] != rotations[1], "straight 0° must differ from 90°")
+    }
+
+    @Test("curve has 4 distinct connection sets")
+    func curveFourDistinct() {
+        let rotations = TileType.rotatedConnections[.curve]!
+        let unique = Set(rotations.map { $0 })
+        #expect(unique.count == 4, "curve should have 4 unique connection sets")
+    }
+}
+
+// MARK: - Tile Mechanics Tests
+@Suite("Tile — Mechanics & State")
+struct TileMechanicsTests {
+
+    @Test("New tile has no rotation lock by default")
+    func noRotationLockByDefault() {
+        let tile = Tile(type: .straight)
+        #expect(!tile.isRotationLocked)
+        #expect(tile.rotationsRemaining == nil)
+    }
+
+    @Test("Tile with maxRotations becomes locked after that many uses")
+    func rotationLockAfterMaxUses() {
+        var tile = Tile(type: .curve)
+        tile.maxRotations = 3
+        tile.rotationsUsed = 2
+        #expect(!tile.isRotationLocked)
+        #expect(tile.rotationsRemaining == 1)
+        tile.rotationsUsed = 3
+        #expect(tile.isRotationLocked)
+        #expect(tile.rotationsRemaining == 0)
+    }
+
+    @Test("rotate() cycles through 0→1→2→3→0")
+    func rotateCycles() {
+        var tile = Tile(type: .curve)
+        #expect(tile.rotation == 0)
+        tile.rotate()
+        #expect(tile.rotation == 1)
+        tile.rotate()
+        #expect(tile.rotation == 2)
+        tile.rotate()
+        #expect(tile.rotation == 3)
+        tile.rotate()
+        #expect(tile.rotation == 0)
+    }
+
+    @Test("connections match type's rotated connections at current rotation")
+    func connectionsMatchRotation() {
+        var tile = Tile(type: .curve)
+        for rot in 0..<4 {
+            tile.rotation = rot
+            #expect(tile.connections == TileType.rotatedConnections[.curve]![rot])
+        }
+    }
+
+    @Test("Fragile tile tracking works correctly")
+    func fragileChargeTracking() {
+        var tile = Tile(type: .straight)
+        tile.fragileCharges = 3
+        #expect(tile.fragileChargesRemaining == 3)
+        tile.fragileChargesUsed = 2
+        #expect(tile.fragileChargesRemaining == 1)
+        tile.fragileChargesUsed = 3
+        #expect(tile.fragileChargesRemaining == 0)
+    }
+
+    @Test("Overloaded tile starts unarmed")
+    func overloadedStartsUnarmed() {
+        var tile = Tile(type: .straight)
+        tile.isOverloaded = true
+        #expect(!tile.overloadArmed)
+    }
+
+    @Test("Charge gate starts closed")
+    func chargeGateStartsClosed() {
+        var tile = Tile(type: .straight)
+        tile.gateChargesRequired = 2
+        #expect(!tile.isGateOpen)
+        #expect(tile.gateChargesReceived == 0)
+    }
+}
+
+// MARK: - Level Property Tests
+@Suite("Level — Derived Properties")
+struct LevelPropertyTests {
+
+    @Test("moveBuffer = maxMoves - minimumRequiredMoves")
+    func moveBufferComputation() {
+        let level = Level(
+            id: 1, seed: 0, maxMoves: 15, minimumRequiredMoves: 10,
+            difficulty: .medium, gridSize: 5, levelType: .singlePath,
+            numTargets: 1, timeLimit: nil, objectiveType: .normal,
+            solutionPathLength: 8
+        )
+        #expect(level.moveBuffer == 5)
+    }
+
+    @Test("energySavingLimit = solutionPathLength + 2")
+    func energySavingLimitComputation() {
+        let level = Level(
+            id: 1, seed: 0, maxMoves: 15, minimumRequiredMoves: 10,
+            difficulty: .medium, gridSize: 5, levelType: .singlePath,
+            numTargets: 1, timeLimit: nil, objectiveType: .energySaving,
+            solutionPathLength: 12
+        )
+        #expect(level.energySavingLimit == 14)
+    }
+
+    @Test("isDailyChallenge is true only for id == -2")
+    func isDailyChallenge() {
+        let daily = Level(
+            id: -2, seed: 0, maxMoves: 10, minimumRequiredMoves: 5,
+            difficulty: .hard, gridSize: 5, levelType: .dense,
+            numTargets: 1, timeLimit: 90, objectiveType: .normal,
+            solutionPathLength: 8
+        )
+        let campaign = Level(
+            id: 50, seed: 0, maxMoves: 10, minimumRequiredMoves: 5,
+            difficulty: .medium, gridSize: 5, levelType: .dense,
+            numTargets: 1, timeLimit: nil, objectiveType: .normal,
+            solutionPathLength: 8
+        )
+        #expect(daily.isDailyChallenge)
+        #expect(!campaign.isDailyChallenge)
+    }
+}
+
+// MARK: - DailyScoring Formula Tests
+@Suite("DailyScoring — Score Computation")
+struct DailyScoringTests {
+
+    @Test("Expert base is higher than hard base")
+    func expertBaseHigherThanHard() {
+        let expert = DailyScoring.computeScore(
+            difficulty: .expert, timeRemaining: 0, movesLeft: 0,
+            objectiveType: .normal, energyRating: 0
+        )
+        let hard = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 0, movesLeft: 0,
+            objectiveType: .normal, energyRating: 0
+        )
+        #expect(expert > hard, "Expert base (\(expert)) must exceed hard base (\(hard))")
+    }
+
+    @Test("Time bonus increases score")
+    func timeBonusIncreasesScore() {
+        let noTime = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 0, movesLeft: 0,
+            objectiveType: .normal, energyRating: 0
+        )
+        let withTime = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 30, movesLeft: 0,
+            objectiveType: .normal, energyRating: 0
+        )
+        #expect(withTime == noTime + 300, "30 seconds × 10 = 300 bonus")
+    }
+
+    @Test("Move bonus increases score")
+    func moveBonusIncreasesScore() {
+        let noMoves = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 0, movesLeft: 0,
+            objectiveType: .normal, energyRating: 0
+        )
+        let withMoves = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 0, movesLeft: 5,
+            objectiveType: .normal, energyRating: 0
+        )
+        #expect(withMoves == noMoves + 250, "5 moves × 50 = 250 bonus")
+    }
+
+    @Test("Normal objective gives no bonus")
+    func normalObjectiveNoBonus() {
+        let score = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 0, movesLeft: 0,
+            objectiveType: .normal, energyRating: 1.0
+        )
+        let base = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 0, movesLeft: 0,
+            objectiveType: .normal, energyRating: 0.0
+        )
+        #expect(score == base, "Normal objective should give no bonus regardless of energyRating")
+    }
+
+    @Test("maxCoverage/energySaving objectives add bonus based on energyRating")
+    func objectiveBonusAddsValue() {
+        let base = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 0, movesLeft: 0,
+            objectiveType: .maxCoverage, energyRating: 0.0
+        )
+        let withRating = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 0, movesLeft: 0,
+            objectiveType: .maxCoverage, energyRating: 1.0
+        )
+        #expect(withRating > base)
+        #expect(withRating == base + 50)
+    }
+
+    @Test("Negative time and moves are clamped to 0")
+    func negativesClamped() {
+        let score = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: -10, movesLeft: -5,
+            objectiveType: .normal, energyRating: 0
+        )
+        let baseOnly = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 0, movesLeft: 0,
+            objectiveType: .normal, energyRating: 0
+        )
+        #expect(score == baseOnly, "Negative values should be clamped to 0")
+    }
+
+    @Test("Expert and hard score ranges do not overlap")
+    func tierScoresNoOverlap() {
+        let expertMin = DailyScoring.computeScore(
+            difficulty: .expert, timeRemaining: 0, movesLeft: 0,
+            objectiveType: .normal, energyRating: 0
+        )
+        let hardMax = DailyScoring.computeScore(
+            difficulty: .hard, timeRemaining: 120, movesLeft: 20,
+            objectiveType: .energySaving, energyRating: 1.0
+        )
+        #expect(expertMin >= hardMax,
+                "Expert minimum (\(expertMin)) should be ≥ hard theoretical max (\(hardMax))")
+    }
+}
+
+// MARK: - GameResult Derived Properties Tests
+@Suite("GameResult — Derived Properties")
+struct GameResultDerivedTests {
+
+    private func makeResult(efficiency: Float, success: Bool = true) -> GameResult {
+        GameResult(
+            levelId: 1, success: success, movesUsed: 10,
+            efficiency: efficiency, nodesActivated: 20,
+            totalNodes: 25, score: 5000,
+            moveRating: 0.8, energyRating: 0.7, timeRating: 0.9,
+            attemptCount: 1
+        )
+    }
+
+    @Test("efficiencyPercent is efficiency × 100 truncated to Int")
+    func efficiencyPercent() {
+        #expect(makeResult(efficiency: 0.95).efficiencyPercent == 95)
+        #expect(makeResult(efficiency: 1.0).efficiencyPercent == 100)
+        #expect(makeResult(efficiency: 0.0).efficiencyPercent == 0)
+    }
+
+    @Test("isOptimalRoute is true at ≥ 0.95 efficiency")
+    func optimalRoute() {
+        #expect(makeResult(efficiency: 0.95).isOptimalRoute)
+        #expect(makeResult(efficiency: 1.0).isOptimalRoute)
+        #expect(!makeResult(efficiency: 0.94).isOptimalRoute)
+    }
+
+    @Test("routeRating returns correct tier label")
+    func routeRatingTiers() {
+        #expect(makeResult(efficiency: 1.0).routeRating == "OPTIMAL")
+        #expect(makeResult(efficiency: 0.95).routeRating == "OPTIMAL")
+        #expect(makeResult(efficiency: 0.80).routeRating == "EFFICIENT")
+        #expect(makeResult(efficiency: 0.60).routeRating == "ADEQUATE")
+        #expect(makeResult(efficiency: 0.30).routeRating == "SUBOPTIMAL")
+    }
+
+    @Test("filledBlocks is clamped between 0 and 5")
+    func filledBlocksClamped() {
+        #expect(makeResult(efficiency: 0.0).filledBlocks >= 0)
+        #expect(makeResult(efficiency: 1.0).filledBlocks <= 5)
+        #expect(makeResult(efficiency: 1.0).filledBlocks == 5)
+    }
+}
+
+// MARK: - Achievement Catalogue Invariants
+@Suite("AchievementCatalog — Invariants")
+struct AchievementCatalogInvariantTests {
+
+    @Test("All achievement IDs are unique")
+    func uniqueIDs() {
+        let ids = AchievementCatalog.all.map { $0.id }
+        #expect(Set(ids).count == ids.count, "Duplicate achievement IDs found")
+    }
+
+    @Test("All GC identifiers are unique")
+    func uniqueGCIdentifiers() {
+        let gcIDs = AchievementCatalog.all.map { $0.gcIdentifier }
+        #expect(Set(gcIDs).count == gcIDs.count, "Duplicate GC identifiers found")
+    }
+
+    @Test("All targets are positive")
+    func positiveTargets() {
+        for a in AchievementCatalog.all {
+            #expect(a.target > 0, "Achievement '\(a.id)' has target=\(a.target)")
+        }
+    }
+
+    @Test("All achievement titles are non-empty in all three languages")
+    func nonEmptyTitles() {
+        for a in AchievementCatalog.all {
+            #expect(!a.titleEN.isEmpty, "'\(a.id)' EN title is empty")
+            #expect(!a.titleES.isEmpty, "'\(a.id)' ES title is empty")
+            #expect(!a.titleFR.isEmpty, "'\(a.id)' FR title is empty")
+        }
+    }
+
+    @Test("All achievement subtitles are non-empty in all three languages")
+    func nonEmptySubtitles() {
+        for a in AchievementCatalog.all {
+            #expect(!a.subtitleEN.isEmpty, "'\(a.id)' EN subtitle is empty")
+            #expect(!a.subtitleES.isEmpty, "'\(a.id)' ES subtitle is empty")
+            #expect(!a.subtitleFR.isEmpty, "'\(a.id)' FR subtitle is empty")
+        }
+    }
+
+    @Test("find() returns the correct achievement")
+    func findReturnsCorrect() {
+        let a = AchievementCatalog.find("first_level")
+        #expect(a != nil)
+        #expect(a?.target == 1)
+    }
+
+    @Test("find() returns nil for unknown ID")
+    func findNilForUnknown() {
+        #expect(AchievementCatalog.find("NONEXISTENT_ACHIEVEMENT_XYZ") == nil)
+    }
+
+    @Test("complete_all target matches catalogue count (330)")
+    func completeAllMatchesCatalogueCount() {
+        let a = AchievementCatalog.find("complete_all")
+        #expect(a != nil)
+        #expect(a?.target == 330,
+                "complete_all target (\(a?.target ?? 0)) must match catalogue count (330)")
+    }
+}
+
+// MARK: - VersusPowerUpType Property Tests
+@Suite("VersusPowerUpType — Properties")
+struct VersusPowerUpTypeTests {
+
+    @Test("All cases have non-empty label")
+    func labelsNonEmpty() {
+        for type in VersusPowerUpType.allCases {
+            #expect(!type.label.isEmpty, "\(type) has empty label")
+        }
+    }
+
+    @Test("All cases have non-empty SF Symbol icon")
+    func iconsNonEmpty() {
+        for type in VersusPowerUpType.allCases {
+            #expect(!type.icon.isEmpty, "\(type) has empty icon")
+        }
+    }
+
+    @Test("All cases have valid hex color (6 characters)")
+    func colorsValidHex() {
+        for type in VersusPowerUpType.allCases {
+            #expect(type.color.count == 6, "\(type) color '\(type.color)' is not 6 hex chars")
+        }
+    }
+
+    @Test("freeze and rush have distinct properties")
+    func distinctProperties() {
+        #expect(VersusPowerUpType.freeze.label != VersusPowerUpType.rush.label)
+        #expect(VersusPowerUpType.freeze.icon != VersusPowerUpType.rush.icon)
+        #expect(VersusPowerUpType.freeze.color != VersusPowerUpType.rush.color)
+    }
+
+    @Test("VersusPowerUpType Codable roundtrip")
+    func codableRoundtrip() throws {
+        for type in VersusPowerUpType.allCases {
+            let data = try JSONEncoder().encode(type)
+            let decoded = try JSONDecoder().decode(VersusPowerUpType.self, from: data)
+            #expect(decoded == type)
+        }
+    }
+}
+
+// MARK: - VersusPowerUpInventory Tests
+#if DEBUG
+@Suite("VersusPowerUpInventory — CRUD", .serialized)
+struct VersusPowerUpInventoryTests {
+
+    init() {
+        VersusPowerUpInventory.items = []
+    }
+
+    @Test("Starts empty after reset")
+    func startsEmpty() {
+        #expect(VersusPowerUpInventory.items.isEmpty)
+        #expect(!VersusPowerUpInventory.isFull)
+    }
+
+    @Test("add() appends an item")
+    func addAppendsItem() {
+        VersusPowerUpInventory.add(.freeze)
+        #expect(VersusPowerUpInventory.items.count == 1)
+        #expect(VersusPowerUpInventory.items[0] == .freeze)
+    }
+
+    @Test("isFull returns true at maxSlots (3)")
+    func isFullAtMax() {
+        VersusPowerUpInventory.add(.freeze)
+        VersusPowerUpInventory.add(.rush)
+        VersusPowerUpInventory.add(.freeze)
+        #expect(VersusPowerUpInventory.isFull)
+        #expect(VersusPowerUpInventory.items.count == 3)
+    }
+
+    @Test("use() removes first matching item and returns true")
+    func useRemovesFirst() {
+        VersusPowerUpInventory.add(.freeze)
+        VersusPowerUpInventory.add(.rush)
+        VersusPowerUpInventory.add(.freeze)
+        let result = VersusPowerUpInventory.use(.freeze)
+        #expect(result == true)
+        #expect(VersusPowerUpInventory.items.count == 2)
+        #expect(VersusPowerUpInventory.items == [.rush, .freeze])
+    }
+
+    @Test("use() returns false when item not in inventory")
+    func useReturnsFalseWhenMissing() {
+        VersusPowerUpInventory.add(.freeze)
+        let result = VersusPowerUpInventory.use(.rush)
+        #expect(result == false)
+        #expect(VersusPowerUpInventory.items.count == 1)
+    }
+
+    @Test("remove(at:) handles valid index")
+    func removeAtValidIndex() {
+        VersusPowerUpInventory.add(.freeze)
+        VersusPowerUpInventory.add(.rush)
+        VersusPowerUpInventory.remove(at: 0)
+        #expect(VersusPowerUpInventory.items == [.rush])
+    }
+
+    @Test("remove(at:) is safe for out-of-bounds index")
+    func removeAtOutOfBounds() {
+        VersusPowerUpInventory.add(.freeze)
+        VersusPowerUpInventory.remove(at: 99)
+        #expect(VersusPowerUpInventory.items.count == 1)
+    }
+
+    @Test("randomReward returns a valid VersusPowerUpType")
+    func randomRewardValid() {
+        let reward = VersusPowerUpInventory.randomReward()
+        #expect(VersusPowerUpType.allCases.contains(reward))
+    }
+
+    @Test("randomReward produces both types over 10 draws (anti-streak)")
+    func randomRewardVariety() {
+        UserDefaults.standard.removeObject(forKey: "versus.lastPowerUpReward")
+        var seen = Set<VersusPowerUpType>()
+        for _ in 0..<10 {
+            seen.insert(VersusPowerUpInventory.randomReward())
+        }
+        #expect(seen.count == 2, "Over 10 draws both freeze and rush should appear")
+    }
+
+    @Test("Items persist to UserDefaults and reload correctly")
+    func persistenceRoundtrip() {
+        VersusPowerUpInventory.add(.rush)
+        VersusPowerUpInventory.add(.freeze)
+        let reloaded = VersusPowerUpInventory.items
+        #expect(reloaded == [.rush, .freeze])
+    }
+}
+#endif
+
+// MARK: - VersusFeatureFlag Tests
+#if DEBUG
+@Suite("VersusFeatureFlag — Hierarchy & Cascade", .serialized)
+struct VersusFeatureFlagTests {
+
+    init() {
+        VersusFeatureFlag.setEnabled(false)
+    }
+
+    @Test("All sub-flags are false when master is disabled")
+    func subFlagsFalseWhenMasterOff() {
+        VersusFeatureFlag.setEnabled(false)
+        VersusFeatureFlag.setPowerUpsEnabled(true)
+        VersusFeatureFlag.setRivalGhostEnabled(true)
+        #expect(!VersusFeatureFlag.isEnabled)
+        #expect(!VersusFeatureFlag.isPowerUpsEnabled,
+                "Power-ups must be false when master is off")
+        #expect(!VersusFeatureFlag.isRivalGhostEnabled,
+                "Rival ghost must be false when master is off")
+        #expect(!VersusFeatureFlag.isVisibleInHome)
+        #expect(!VersusFeatureFlag.isMatchmakingAllowed)
+    }
+
+    @Test("Sub-flags work when master is enabled")
+    func subFlagsWorkWhenMasterOn() {
+        VersusFeatureFlag.setEnabled(true)
+        VersusFeatureFlag.setPowerUpsEnabled(true)
+        VersusFeatureFlag.setRivalGhostEnabled(true)
+        #expect(VersusFeatureFlag.isPowerUpsEnabled)
+        #expect(VersusFeatureFlag.isRivalGhostEnabled)
+    }
+
+    @Test("setEnabled(false) cascades to visible and matchmaking")
+    func disableCascades() {
+        VersusFeatureFlag.setEnabled(true)
+        VersusFeatureFlag.setVisibleInHome(true)
+        VersusFeatureFlag.setMatchmakingAllowed(true)
+        #expect(VersusFeatureFlag.isVisibleInHome)
+        #expect(VersusFeatureFlag.isMatchmakingAllowed)
+
+        VersusFeatureFlag.setEnabled(false)
+        #expect(!VersusFeatureFlag.isVisibleInHome,
+                "setEnabled(false) must cascade to isVisibleInHome")
+        #expect(!VersusFeatureFlag.isMatchmakingAllowed,
+                "setEnabled(false) must cascade to isMatchmakingAllowed")
+    }
+
+    @Test("isDevOnly is true when enabled but not visible in home")
+    func devOnlyFlag() {
+        VersusFeatureFlag.setEnabled(true)
+        VersusFeatureFlag.setVisibleInHome(false)
+        #expect(VersusFeatureFlag.isDevOnly)
+
+        VersusFeatureFlag.setVisibleInHome(true)
+        #expect(!VersusFeatureFlag.isDevOnly)
+    }
+}
+#endif
+
+// MARK: - SeededRNG Tests
+@Suite("SeededRNG — Determinism")
+struct SeededRNGTests {
+
+    @Test("Same seed produces same sequence")
+    func deterministic() {
+        var rng1 = SeededRNG(seed: 12345)
+        var rng2 = SeededRNG(seed: 12345)
+        for _ in 0..<100 {
+            #expect(rng1.next() == rng2.next())
+        }
+    }
+
+    @Test("Different seeds produce different sequences")
+    func differentSeeds() {
+        var rng1 = SeededRNG(seed: 111)
+        var rng2 = SeededRNG(seed: 222)
+        var matches = 0
+        for _ in 0..<100 {
+            if rng1.next() == rng2.next() { matches += 1 }
+        }
+        #expect(matches < 5, "Different seeds should produce mostly different values")
+    }
+
+    @Test("nextInt(n) returns values in range [0, n)")
+    func nextIntRange() {
+        var rng = SeededRNG(seed: 42)
+        for _ in 0..<200 {
+            let val = rng.nextInt(10)
+            #expect(val >= 0 && val < 10,
+                    "nextInt(10) returned \(val), expected 0..<10")
+        }
+    }
+
+    @Test("Seed 0 is handled (uses fallback)")
+    func seed0Handled() {
+        var rng = SeededRNG(seed: 0)
+        let val = rng.next()
+        #expect(val != 0, "Seed 0 should use a fallback and produce non-zero output")
+    }
+}
+
+// MARK: - Intro Board Tests
+@Suite("LevelGenerator — Intro Board")
+struct IntroBoardTests {
+
+    @Test("Intro level has id == 0 and grid size 3")
+    func introLevelProperties() {
+        #expect(LevelGenerator.introLevel.id == 0)
+        #expect(LevelGenerator.introLevel.gridSize == 3)
+        #expect(LevelGenerator.introLevel.difficulty == .easy)
+    }
+
+    @Test("Intro board is 3×3 with source, relay, and target")
+    func introBoardLayout() {
+        let board = LevelGenerator.buildBoard(for: LevelGenerator.introLevel)
+        #expect(board.count == 3)
+        #expect(board[0].count == 3)
+
+        let flat = board.flatMap { $0 }
+        let sources = flat.filter { $0.role == .source }
+        let targets = flat.filter { $0.role == .target }
+        let relays = flat.filter { $0.role == .relay }
+        #expect(sources.count == 1, "Intro board needs exactly 1 source")
+        #expect(targets.count == 1, "Intro board needs exactly 1 target")
+        #expect(relays.count >= 1, "Intro board needs at least 1 relay")
+    }
+}
+
+// MARK: - ═══════════════════════════════════════════════════════════════════
+// MARK: - Performance Tests (XCTest)
+// MARK: - ═══════════════════════════════════════════════════════════════════
+
+import XCTest
+
+final class PerformanceTests: XCTestCase {
+
+    func testStartsSolvedRegressionPerformance() {
+        let levels = LevelGenerator.levels
+        measure {
+            for level in levels.prefix(30) {
+                _ = LevelGenerator.startsSolved(level: level)
+            }
+        }
+    }
+
+    func testSingleBoardBuildPerformance() {
+        let level = LevelGenerator.levels[99]
+        measure {
+            _ = LevelGenerator.buildBoard(for: level)
+        }
+    }
+
+    func testVersusBoardGenerationPerformance() {
+        let config = VersusLevelConfig(
+            gridSize: 5, difficultyRaw: 3, maxMoves: 999,
+            numTargets: 2, objectiveType: "normal",
+            levelType: "LINEAR", isV3: true
+        )
+        measure {
+            _ = VersusBoardGenerator.buildBoard(seed: 42, config: config)
+        }
+    }
+
+    func testStartsSolvedFullSweepPerformance() {
+        let levels = LevelGenerator.levels
+        measure {
+            for level in levels {
+                _ = LevelGenerator.startsSolved(level: level)
+            }
+        }
+    }
+
+    func testDailyLevelGenerationPerformance() {
+        measure {
+            _ = DailyLevelFactory.makeLevel(seed: 7777777)
+        }
+    }
+
+}

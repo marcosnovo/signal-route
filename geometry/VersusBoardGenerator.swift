@@ -9,19 +9,18 @@ import Foundation
 /// Deterministic: same seed → identical board on both devices.
 enum VersusBoardGenerator {
 
-    static let gridSize = 5
-
     private static let versusMechanics: [MechanicType] = []
 
     // MARK: - Public API
 
-    /// Build a 5×5 solvable board from a seed and config.
+    /// Build a solvable board from a seed and config. Grid size comes from config (4, 5, or 6).
     static func buildBoard(seed: UInt64, config: VersusLevelConfig) -> [[Tile]] {
+        let size = config.gridSize
         for attempt in 0..<10 {
-            let grid = buildBoardAttempt(seed: seed &+ UInt64(attempt), config: config)
-            if verifySolvable(grid) {
+            let grid = buildBoardAttempt(seed: seed &+ UInt64(attempt), config: config, size: size)
+            if verifySolvable(grid, size: size) {
                 #if DEBUG
-                print("[VersusBoard] Attempt \(attempt) solvable ✓")
+                print("[VersusBoard] Attempt \(attempt) solvable ✓ (\(size)×\(size))")
                 #endif
                 return grid
             }
@@ -29,14 +28,13 @@ enum VersusBoardGenerator {
             print("[VersusBoard] Attempt \(attempt) unsolvable — retrying")
             #endif
         }
-        return buildBoardAttempt(seed: seed, config: config)
+        return buildBoardAttempt(seed: seed, config: config, size: size)
     }
 
     // MARK: - Board Generation
 
-    private static func buildBoardAttempt(seed: UInt64, config: VersusLevelConfig) -> [[Tile]] {
+    private static func buildBoardAttempt(seed: UInt64, config: VersusLevelConfig, size: Int) -> [[Tile]] {
         var rng = SeededRNG(seed: seed)
-        let size = gridSize
 
         let sourceRow = rng.nextInt(size)
         let targetRow = rng.nextInt(size)
@@ -77,18 +75,20 @@ enum VersusBoardGenerator {
 
         // Apply mechanics based on difficulty
         let difficulty = DifficultyTier(rawValue: config.difficultyRaw) ?? .medium
-        applyMechanics(to: &grid, rng: &rng, difficulty: difficulty)
+        applyMechanics(to: &grid, size: size, rng: &rng, difficulty: difficulty)
+
+        // Place linked tiles on path relays (versus-exclusive)
+        placeLinkedTiles(in: &grid, size: size, pathConnMap: connMap, rng: &rng, difficulty: difficulty)
 
         // Rescue if already solved at initial state
-        rescueIfSolved(&grid, rng: &rng)
+        rescueIfSolved(&grid, size: size, rng: &rng)
 
         return grid
     }
 
     // MARK: - Solvability Verification
 
-    private static func verifySolvable(_ grid: [[Tile]]) -> Bool {
-        let size = gridSize
+    private static func verifySolvable(_ grid: [[Tile]], size: Int) -> Bool {
         var test = grid
         var solved = Set<Int>()
 
@@ -146,7 +146,7 @@ enum VersusBoardGenerator {
 
     // MARK: - Mechanics
 
-    private static func applyMechanics(to grid: inout [[Tile]], rng: inout SeededRNG, difficulty: DifficultyTier) {
+    private static func applyMechanics(to grid: inout [[Tile]], size: Int, rng: inout SeededRNG, difficulty: DifficultyTier) {
         var pool = versusMechanics
         let count: Int
         switch difficulty {
@@ -163,12 +163,11 @@ enum VersusBoardGenerator {
         }
 
         for mechanic in selected {
-            applyMechanic(mechanic, grid: &grid, rng: &rng)
+            applyMechanic(mechanic, grid: &grid, size: size, rng: &rng)
         }
     }
 
-    private static func applyMechanic(_ mechanic: MechanicType, grid: inout [[Tile]], rng: inout SeededRNG) {
-        let size = gridSize
+    private static func applyMechanic(_ mechanic: MechanicType, grid: inout [[Tile]], size: Int, rng: inout SeededRNG) {
         var relays: [(Int, Int)] = []
         for r in 0..<size {
             for c in 0..<size where grid[r][c].role == .relay {
@@ -195,21 +194,65 @@ enum VersusBoardGenerator {
         }
     }
 
+    // MARK: - Linked Tiles (versus-exclusive)
+
+    private static func placeLinkedTiles(
+        in grid: inout [[Tile]],
+        size: Int,
+        pathConnMap: [[Set<Direction>]],
+        rng: inout SeededRNG,
+        difficulty: DifficultyTier
+    ) {
+        let count: Int
+        switch difficulty {
+        case .easy:   count = 0
+        case .medium: count = 1
+        case .hard:   count = 1 + rng.nextInt(2)
+        case .expert: count = 2
+        }
+        guard count > 0 else { return }
+
+        var candidates: [(Int, Int)] = []
+        for r in 0..<size {
+            for c in 0..<size {
+                guard !pathConnMap[r][c].isEmpty && grid[r][c].role == .relay else { continue }
+                guard grid[r][c].maxRotations == nil
+                    && !grid[r][c].isOverloaded
+                    && !grid[r][c].hasInterference
+                else { continue }
+                candidates.append((r, c))
+            }
+        }
+
+        for i in stride(from: candidates.count - 1, through: 1, by: -1) {
+            candidates.swapAt(i, rng.nextInt(i + 1))
+        }
+
+        let placed = min(count, candidates.count)
+        for i in 0..<placed {
+            grid[candidates[i].0][candidates[i].1].isLinked = true
+        }
+        #if DEBUG
+        if placed > 0 {
+            let positions = (0..<placed).map { "(\(candidates[$0].0),\(candidates[$0].1))" }.joined(separator: ", ")
+            print("[VersusBoard] Placed \(placed) linked tile(s) at \(positions)")
+        }
+        #endif
+    }
+
     // MARK: - Rescue (break starts-solved boards)
 
-    private static func rescueIfSolved(_ grid: inout [[Tile]], rng: inout SeededRNG) {
-        guard isSolvedAtInitialState(grid) else { return }
-        let size = gridSize
+    private static func rescueIfSolved(_ grid: inout [[Tile]], size: Int, rng: inout SeededRNG) {
+        guard isSolvedAtInitialState(grid, size: size) else { return }
         for r in 0..<size {
             for c in 0..<size where grid[r][c].role == .relay {
                 grid[r][c].rotation = (grid[r][c].rotation + 1) % 4
-                if !isSolvedAtInitialState(grid) { return }
+                if !isSolvedAtInitialState(grid, size: size) { return }
             }
         }
     }
 
-    private static func isSolvedAtInitialState(_ grid: [[Tile]]) -> Bool {
-        let size = gridSize
+    private static func isSolvedAtInitialState(_ grid: [[Tile]], size: Int) -> Bool {
         var energized = Array(repeating: Array(repeating: false, count: size), count: size)
         var queue: [(Int, Int)] = []
 

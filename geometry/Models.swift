@@ -114,6 +114,10 @@ struct Tile: Identifiable {
     /// True = visual static overlay applied; makes tile orientation harder to read.
     var hasInterference: Bool = false
 
+    // MARK: — Versus-exclusive: Linked Tile
+    /// True = quantum-linked between opponents. Rotating it on one board also rotates it on the other.
+    var isLinked: Bool = false
+
     /// Pre-computed blocked inbound directions for each rotation (0–3).
     /// Avoids Set allocation in hot BFS loop.
     var _blockedByRotation: [Set<Direction>] = [[], [], [], []]

@@ -56,6 +56,10 @@ enum ShareImageRenderer {
 
         var globalScore: String { t("GLOBAL SCORE", "PUNTUACIÓN GLOBAL", "SCORE GLOBAL") }
 
+        var yourScore: String { t("YOUR SCORE", "TU PUNTUACIÓN", "VOTRE SCORE") }
+
+        var leaderboard: String { t("LEADERBOARD", "CLASIFICACIÓN", "CLASSEMENT") }
+
         func topPercent(_ pct: Int, total: Int) -> String {
             t("TOP \(pct)%  ·  of \(total) players",
               "TOP \(pct)%  ·  de \(total) jugadores",
@@ -237,6 +241,7 @@ enum ShareImageRenderer {
     }
 
     // MARK: - Leaderboard — Full Draw
+    // Replicates the small LeaderboardWidget: sage rounded card on dark bg.
 
     private static func drawLeaderboard(
         rank: Int, score: Int, totalPlayers: Int, boardName: String,
@@ -244,77 +249,106 @@ enum ShareImageRenderer {
         language: AppLanguage, in size: CGSize
     ) {
         let S = Strings(lang: language)
+        let sageInk = UIColor(red: 0.165, green: 0.165, blue: 0.165, alpha: 1) // #2A2A2A
+        let sageMid = sageInk.withAlphaComponent(0.50)
 
-        // Background
+        // ── Dark background ──────────────────────────────────────────────────────
         bgColor.setFill()
         UIRectFill(CGRect(origin: .zero, size: size))
 
-        // Top brand strip
+        // ── Top dark brand strip ─────────────────────────────────────────────────
         drawTopStrip(in: size)
 
-        // ── Main content (centered) ──────────────────────────────────────────────
-        let centerX = size.width / 2.0
-        var y: CGFloat = 160
+        // ── Sage rounded card (widget replica) ───────────────────────────────────
+        let cardMargin: CGFloat = 40
+        let cardTop: CGFloat = 100
+        let cardBottom: CGFloat = size.height - 90
+        let cardRect = CGRect(x: cardMargin, y: cardTop,
+                              width: size.width - cardMargin * 2,
+                              height: cardBottom - cardTop)
+        let cardPath = UIBezierPath(roundedRect: cardRect, cornerRadius: 36)
+        sage.setFill()
+        cardPath.fill()
 
-        // Board name
-        let boardAttr = attr(boardName.uppercased(), size: 12, weight: .regular, color: midGray, kern: 3)
-        let boardW = boardAttr.size().width
-        boardAttr.draw(at: CGPoint(x: centerX - boardW / 2, y: y))
-        y += 48
+        // Card inner padding
+        let px: CGFloat = cardRect.minX + 50
+        let cardInnerRight = cardRect.maxX - 50
 
-        // Huge rank: "#" + number
+        // ── Header — board label (boardName already formatted with ◈ prefix) ────
+        var y: CGFloat = cardTop + 46
+        draw(boardName.uppercased(), at: CGPoint(x: px, y: y),
+             size: 12, weight: .semibold, color: sageMid, kern: 2.5)
+        y += 34
+
+        // ── Giant rank "#" + number (dominates the card like the widget) ─────────
+        let rankFontSize: CGFloat = rank < 10 ? 320 : (rank < 100 ? 280 : (rank < 1000 ? 220 : 170))
+        let hashFontSize: CGFloat = rankFontSize * 0.38
+
         let hashAttr = NSAttributedString(string: "#", attributes: [
-            .font: UIFont.systemFont(ofSize: 60, weight: .heavy),
-            .foregroundColor: cream,
+            .font: UIFont.systemFont(ofSize: hashFontSize, weight: .heavy),
+            .foregroundColor: sageInk,
             .kern: 0 as NSNumber
         ])
         let rankNumAttr = NSAttributedString(string: "\(rank)", attributes: [
-            .font: UIFont.systemFont(ofSize: 160, weight: .heavy),
+            .font: UIFont.systemFont(ofSize: rankFontSize, weight: .heavy),
             .foregroundColor: orange,
-            .kern: -3.0
+            .kern: NSNumber(value: -rankFontSize * 0.025)
         ])
+
+        let rankH = rankNumAttr.size().height
+        let hashH = hashAttr.size().height
         let hashW = hashAttr.size().width
-        let rankW = rankNumAttr.size().width
-        let totalRankW = hashW + rankW + 4
-        let rankStartX = centerX - totalRankW / 2
-        // Baseline-align the "#" with the rank number (offset upward from the large number)
-        hashAttr.draw(at: CGPoint(x: rankStartX, y: y + 68))
-        rankNumAttr.draw(at: CGPoint(x: rankStartX + hashW + 4, y: y))
-        y += 196
 
-        // Score value
-        let scoreAttr = NSAttributedString(string: "\(score)", attributes: [
-            .font: UIFont.systemFont(ofSize: 32, weight: .heavy),
-            .foregroundColor: cream,
-            .kern: 1.0
-        ])
-        let scoreW = scoreAttr.size().width
-        scoreAttr.draw(at: CGPoint(x: centerX - scoreW / 2, y: y))
-        y += 52
+        // Vertically center the rank block between header bottom and score section
+        let rankZoneTop = y + 10
+        let rankZoneBottom = cardBottom - 260
+        let rankBlockY = rankZoneTop + (rankZoneBottom - rankZoneTop - rankH) / 2
 
-        // "TOP X% · of Y players"
-        let topAttr = attr(S.topPercent(topPercent, total: totalPlayers),
-                           size: 12, weight: .regular, color: midGray, kern: 2)
-        let topW = topAttr.size().width
-        topAttr.draw(at: CGPoint(x: centerX - topW / 2, y: y))
-        y += 48
+        hashAttr.draw(at: CGPoint(x: px, y: rankBlockY + (rankH - hashH) * 0.35))
+        rankNumAttr.draw(at: CGPoint(x: px + hashW - 10, y: rankBlockY))
 
-        // Divider
-        let divW: CGFloat = 400
-        hairline(x: centerX - divW / 2, y: y, width: divW, color: dividerColor)
-        y += 40
+        // ── Bottom section: player info + score (anchored to card bottom) ────────
+        let bottomSectionY = cardBottom - 220
 
         // Player name
         let nameAttr = NSAttributedString(string: playerName, attributes: [
-            .font: UIFont.systemFont(ofSize: 18, weight: .bold),
-            .foregroundColor: sage,
-            .kern: 1.0
+            .font: UIFont.systemFont(ofSize: 22, weight: .bold),
+            .foregroundColor: sageInk,
+            .kern: 1.5 as NSNumber
         ])
-        let nameW = nameAttr.size().width
-        nameAttr.draw(at: CGPoint(x: centerX - nameW / 2, y: y))
+        nameAttr.draw(at: CGPoint(x: px, y: bottomSectionY))
 
-        // Bottom sage strip
-        drawBottomStrip(S: S, in: size)
+        // "TOP X% · of Y players"
+        draw(S.topPercent(topPercent, total: totalPlayers),
+             at: CGPoint(x: px, y: bottomSectionY + 38),
+             size: 11, weight: .regular, color: sageMid, kern: 2)
+
+        // Separator
+        let sepY = bottomSectionY + 76
+        sageInk.withAlphaComponent(0.12).setFill()
+        UIRectFill(CGRect(x: px, y: sepY, width: cardInnerRight - px, height: 0.5))
+
+        // "YOUR SCORE" label
+        draw(S.yourScore, at: CGPoint(x: px, y: sepY + 24),
+             size: 11, weight: .semibold, color: sageMid, kern: 3)
+
+        // Score value
+        let scoreAttr = NSAttributedString(string: score.formatted(), attributes: [
+            .font: UIFont.systemFont(ofSize: 46, weight: .heavy),
+            .foregroundColor: sageInk,
+            .kern: -0.8 as NSNumber
+        ])
+        scoreAttr.draw(at: CGPoint(x: px, y: sepY + 52))
+
+        // ── Bottom dark CTA strip ────────────────────────────────────────────────
+        let ctaY = size.height - 56
+        let ctaAttr = NSAttributedString(string: S.downloadCTA, attributes: [
+            .font: UIFont.monospacedSystemFont(ofSize: 10, weight: .bold),
+            .foregroundColor: midGray,
+            .kern: 1.0 as NSNumber
+        ])
+        let ctaW = ctaAttr.size().width
+        ctaAttr.draw(at: CGPoint(x: size.width / 2 - ctaW / 2, y: ctaY))
     }
 
     // MARK: - Shared Components

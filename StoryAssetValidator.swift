@@ -10,6 +10,15 @@ import UIKit
 ///
 /// Update this list whenever you add or remove story images from the asset catalog.
 enum StoryImageManifest {
+    /// Images intentionally shared by multiple beats (suppress duplicate warnings).
+    static let intentionalDuplicates: Set<String> = [
+        "deep_space_network",
+        "rank_up_promotion",
+        "sector_earth_complete",
+        "sector_lunar_unlock",
+        "sector_mars_unlock",
+    ]
+
     static let allNames: Set<String> = [
         // First launch / onboarding
         "intro_console",
@@ -157,7 +166,7 @@ enum StoryAssetValidator {
             imageToBeats[name, default: []].append(beat.id)
         }
         let duplicates = imageToBeats
-            .filter  { $0.value.count > 1 }
+            .filter  { $0.value.count > 1 && !StoryImageManifest.intentionalDuplicates.contains($0.key) }
             .map     { DuplicateMapping(imageName: $0.key, beatIDs: $0.value.sorted()) }
             .sorted  { $0.imageName < $1.imageName }
         #if DEBUG

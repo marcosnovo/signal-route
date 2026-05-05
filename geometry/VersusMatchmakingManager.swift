@@ -52,6 +52,9 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
     /// Callback fired when the remote player requests a rematch.
     var onRemoteRematch: (() -> Void)?
 
+    /// Callback fired when the remote player uses a power-up that affects us.
+    var onRemotePowerUp: ((VersusPowerUpType) -> Void)?
+
     /// Selected difficulty for the next match (used by host when generating seed).
     var selectedDifficulty: DifficultyTier = .medium
 
@@ -153,6 +156,10 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
         send(.action(payload: action))
     }
 
+    func sendPowerUp(_ type: VersusPowerUpType) {
+        send(.powerUp(payload: VersusPowerUpAction(type: type)))
+    }
+
     /// Send the local player's current board snapshot.
     func sendState(_ snapshot: VersusPlayerSnapshot) {
         matchState.localSnapshot = snapshot
@@ -200,7 +207,7 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
     var soloBotDifficulty: VersusBotDifficulty = .medium
 
     /// Start a local solo test match against a bot. No GKMatch needed.
-    func startSoloTest(botDifficulty: VersusBotDifficulty = .medium, difficulty: DifficultyTier = .medium) {
+    func startSoloTest(botDifficulty: VersusBotDifficulty = .medium, difficulty: DifficultyTier = .medium, gridSize: Int = 5) {
         guard matchState.phase == .idle || matchState.phase == .finished else { return }
         isSoloTest = true
         soloBotDifficulty = botDifficulty
@@ -208,9 +215,10 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
         matchState.phase = .matched
         matchState.isHost = true
         matchState.opponentDisplayName = botDifficulty.botName
+        matchState.opponentAvatar = botDifficulty.botAvatarImage
 
         let seed = UInt64.random(in: 1...UInt64.max)
-        let config = VersusLevelConfig.v3(difficulty: difficulty)
+        let config = VersusLevelConfig.v3(difficulty: difficulty, gridSize: gridSize)
         matchState.sharedSeed = seed
         matchState.sharedConfig = config
 
@@ -480,6 +488,9 @@ extension VersusMatchmakingManager: GKMatchDelegate {
             print("[Versus] Remote wants rematch (local=\(matchState.localWantsRematch))")
             #endif
             if matchState.bothWantRematch { handleBothWantRematch() }
+
+        case .powerUp(let action):
+            onRemotePowerUp?(action.type)
         }
     }
 }
@@ -508,10 +519,10 @@ extension VersusLevelConfig {
         isV3:          true
     )
 
-    /// V3 with selectable difficulty.
-    static func v3(difficulty: DifficultyTier) -> VersusLevelConfig {
+    /// V3 with selectable difficulty and grid size.
+    static func v3(difficulty: DifficultyTier, gridSize: Int = 5) -> VersusLevelConfig {
         VersusLevelConfig(
-            gridSize:      5,
+            gridSize:      gridSize,
             difficultyRaw: difficulty.rawValue,
             maxMoves:      999,
             numTargets:    5,

@@ -18,6 +18,8 @@ enum VersusMessage: Codable {
     case result(payload: VersusOutcome)
     /// Either → Either: request a same-opponent rematch after the game ends.
     case rematch
+    /// Either → Either: a power-up was used that affects the opponent.
+    case powerUp(payload: VersusPowerUpAction)
 }
 
 // MARK: - Ready Payload
@@ -101,6 +103,98 @@ enum VersusOutcome: String, Codable {
     case won
     case lost
     case disconnected
+}
+
+// MARK: - Power-Up Types
+
+enum VersusPowerUpType: String, Codable, CaseIterable, Identifiable {
+    case freeze
+    case rush
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .freeze: return "FREEZE"
+        case .rush:   return "RUSH"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .freeze: return "snowflake"
+        case .rush:   return "flame.fill"
+        }
+    }
+
+    var color: String {
+        switch self {
+        case .freeze: return "5BC0EB"
+        case .rush:   return "FF6A3D"
+        }
+    }
+}
+
+struct VersusPowerUpAction: Codable {
+    let type: VersusPowerUpType
+}
+
+enum VersusPowerUpInventory {
+    private static let key = "versus.powerUpInventory"
+    static let maxSlots = 3
+
+    static var items: [VersusPowerUpType] {
+        get {
+            guard let data = UserDefaults.standard.data(forKey: key),
+                  let arr = try? JSONDecoder().decode([VersusPowerUpType].self, from: data)
+            else { return [] }
+            return arr
+        }
+        set {
+            let data = try? JSONEncoder().encode(newValue)
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    static var isFull: Bool { items.count >= maxSlots }
+
+    static func add(_ type: VersusPowerUpType) {
+        var inv = items
+        inv.append(type)
+        items = inv
+    }
+
+    static func remove(at index: Int) {
+        var inv = items
+        guard index < inv.count else { return }
+        inv.remove(at: index)
+        items = inv
+    }
+
+    static func use(_ type: VersusPowerUpType) -> Bool {
+        var inv = items
+        guard let idx = inv.firstIndex(of: type) else { return false }
+        inv.remove(at: idx)
+        items = inv
+        return true
+    }
+
+    private static let lastRewardKey = "versus.lastPowerUpReward"
+
+    static func randomReward() -> VersusPowerUpType {
+        let last = UserDefaults.standard.string(forKey: lastRewardKey)
+        let pool: [VersusPowerUpType]
+        if last == VersusPowerUpType.rush.rawValue {
+            pool = [.freeze, .freeze, .rush]
+        } else if last == VersusPowerUpType.freeze.rawValue {
+            pool = [.rush, .rush, .freeze]
+        } else {
+            pool = Array(VersusPowerUpType.allCases)
+        }
+        let reward = pool.randomElement()!
+        UserDefaults.standard.set(reward.rawValue, forKey: lastRewardKey)
+        return reward
+    }
 }
 
 // MARK: - Encoding Helpers

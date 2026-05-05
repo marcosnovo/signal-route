@@ -1067,4 +1067,5 @@ struct AppStrings {
     var versusDifficulty: String   { t("DIFFICULTY",                "DIFICULTAD",                  "DIFFICULTÉ") }
     var versusRivalProgress: String { t("RIVAL PROGRESS",           "PROGRESO RIVAL",              "PROGRESSION RIVAL") }
     var versusChooseBot: String    { t("PLAY VS BOT",               "JUGAR VS BOT",                "JOUER VS BOT") }
+    var versusBoardSize: String    { t("BOARD SIZE",                "TAMAÑO",                      "TAILLE") }
 }
