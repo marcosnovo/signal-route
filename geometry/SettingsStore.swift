@@ -3,13 +3,21 @@ import Combine
 
 // MARK: - AppLanguage
 enum AppLanguage: String, CaseIterable, Codable {
-    case en, es, fr
+    case en, es, fr, ja
 
     var displayName: String {
         switch self {
         case .en: return "English"
         case .es: return "Español"
         case .fr: return "Français"
+        case .ja: return "日本語"
+        }
+    }
+
+    var isCJK: Bool {
+        switch self {
+        case .ja: return true
+        default:  return false
         }
     }
 }

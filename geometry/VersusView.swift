@@ -88,7 +88,7 @@ struct VersusView: View {
                 .foregroundStyle(AppTheme.danger)
             Text(message.uppercased())
                 .font(AppTheme.mono(9, weight: .bold))
-                .kerning(0.5)
+                .adaptiveKerning(0.5)
                 .foregroundStyle(AppTheme.textPrimary)
                 .lineLimit(2)
             Spacer()
@@ -141,7 +141,7 @@ struct VersusView: View {
                             .font(.system(size: 14, weight: .bold))
                         Text(S.findMatch)
                             .font(AppTheme.mono(14, weight: .bold))
-                            .kerning(1.2)
+                            .adaptiveKerning(1.2)
                     }
                     .foregroundStyle(AppTheme.backgroundPrimary)
                     .frame(width: 260, height: 50)
@@ -187,7 +187,7 @@ struct VersusView: View {
         VStack(spacing: 8) {
             Text(S.versusDifficulty)
                 .font(AppTheme.mono(8, weight: .bold))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
                 .foregroundStyle(AppTheme.textSecondary)
 
             HStack(spacing: 6) {
@@ -200,7 +200,7 @@ struct VersusView: View {
                     }) {
                         Text(S.difficultyFullLabel(tier))
                             .font(AppTheme.mono(9, weight: isSelected ? .black : .bold))
-                            .kerning(0.6)
+                            .adaptiveKerning(0.6)
                             .foregroundStyle(isSelected ? AppTheme.backgroundPrimary : AppTheme.textSecondary)
                             .frame(maxWidth: .infinity, minHeight: 34)
                             .background(isSelected ? AppTheme.accentPrimary : AppTheme.surface)
@@ -224,7 +224,7 @@ struct VersusView: View {
         VStack(spacing: 8) {
             Text("CONFIG")
                 .font(AppTheme.mono(8, weight: .bold))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
                 .foregroundStyle(AppTheme.textSecondary)
 
             VStack(spacing: 0) {
@@ -255,7 +255,7 @@ struct VersusView: View {
                 .frame(width: 20)
             Text(label)
                 .font(AppTheme.mono(9, weight: .bold))
-                .kerning(0.6)
+                .adaptiveKerning(0.6)
                 .foregroundStyle(AppTheme.textPrimary)
             Spacer()
             Toggle("", isOn: isOn)
@@ -273,7 +273,7 @@ struct VersusView: View {
         VStack(spacing: 8) {
             Text(S.versusBoardSize)
                 .font(AppTheme.mono(8, weight: .bold))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
                 .foregroundStyle(AppTheme.textSecondary)
 
             HStack(spacing: 6) {
@@ -286,7 +286,7 @@ struct VersusView: View {
                     }) {
                         Text("\(size)×\(size)")
                             .font(AppTheme.mono(11, weight: isSelected ? .black : .bold))
-                            .kerning(0.6)
+                            .adaptiveKerning(0.6)
                             .foregroundStyle(isSelected ? AppTheme.backgroundPrimary : AppTheme.textSecondary)
                             .frame(maxWidth: .infinity, minHeight: 34)
                             .background(isSelected ? AppTheme.accentPrimary : AppTheme.surface)
@@ -310,7 +310,7 @@ struct VersusView: View {
         VStack(spacing: 10) {
             Text(S.versusChooseBot)
                 .font(AppTheme.mono(8, weight: .bold))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
                 .foregroundStyle(AppTheme.textSecondary)
 
             difficultyPicker
@@ -325,7 +325,7 @@ struct VersusView: View {
 
             Text(S.versusSoloHint)
                 .font(AppTheme.mono(7, weight: .medium))
-                .kerning(0.5)
+                .adaptiveKerning(0.5)
                 .foregroundStyle(AppTheme.textSecondary)
                 .multilineTextAlignment(.center)
         }
@@ -342,8 +342,9 @@ struct VersusView: View {
                     .font(.system(size: 14, weight: .bold))
                 Text(label)
                     .font(AppTheme.mono(8, weight: .bold))
-                    .kerning(0.5)
+                    .adaptiveKerning(0.5)
                     .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     .minimumScaleFactor(0.7)
             }
             .foregroundStyle(AppTheme.sage)
@@ -366,7 +367,7 @@ struct VersusView: View {
             // Small header
             Text(S.versus)
                 .font(AppTheme.mono(16, weight: .black))
-                .kerning(3.0)
+                .adaptiveKerning(3.0)
                 .foregroundStyle(AppTheme.accentPrimary.opacity(0.6))
 
             Spacer().frame(height: 32)
@@ -387,7 +388,7 @@ struct VersusView: View {
 
             Text(matchState.localPlayerName.uppercased())
                 .font(AppTheme.mono(11, weight: .bold))
-                .kerning(1.0)
+                .adaptiveKerning(1.0)
                 .foregroundStyle(AppTheme.textPrimary)
 
             Spacer().frame(height: 28)
@@ -397,7 +398,7 @@ struct VersusView: View {
                 ScanningDots()
                 Text(S.searchingForOpponent)
                     .font(AppTheme.mono(11, weight: .bold))
-                    .kerning(1.5)
+                    .adaptiveKerning(1.5)
                     .foregroundStyle(AppTheme.sage)
             }
 
@@ -413,7 +414,7 @@ struct VersusView: View {
                         .font(.system(size: 10, weight: .bold))
                     Text(S.versusCancel)
                         .font(AppTheme.mono(11, weight: .bold))
-                        .kerning(0.8)
+                        .adaptiveKerning(0.8)
                 }
                 .foregroundStyle(AppTheme.danger)
                 .frame(width: 200, height: 40)
@@ -438,7 +439,7 @@ struct VersusView: View {
 
             Text(S.matchFound)
                 .font(AppTheme.mono(12, weight: .bold))
-                .kerning(2.0)
+                .adaptiveKerning(2.0)
                 .foregroundStyle(AppTheme.sage)
 
             Spacer().frame(height: 28)
@@ -465,7 +466,7 @@ struct VersusView: View {
                 // VS badge
                 Text("VS")
                     .font(AppTheme.mono(24, weight: .black))
-                    .kerning(3.0)
+                    .adaptiveKerning(3.0)
                     .foregroundStyle(AppTheme.accentPrimary)
                     .shadow(color: AppTheme.accentPrimary.opacity(0.4), radius: 8, x: 0, y: 0)
 
@@ -493,7 +494,7 @@ struct VersusView: View {
             if let digit = countdownDigit {
                 Text(digit > 0 ? "\(digit)" : S.versusGo)
                     .font(AppTheme.mono(digit > 0 ? 72 : 42, weight: .black))
-                    .kerning(digit > 0 ? 0 : 2.0)
+                    .adaptiveKerning(digit > 0 ? 0 : 2.0)
                     .foregroundStyle(digit > 0 ? AppTheme.textPrimary : AppTheme.accentPrimary)
                     .contentTransition(.numericText())
                     .shadow(color: AppTheme.accentPrimary.opacity(0.5), radius: 12, x: 0, y: 0)
@@ -504,11 +505,11 @@ struct VersusView: View {
                         .tint(AppTheme.sage)
                     Text(S.secondRace)
                         .font(AppTheme.mono(12, weight: .bold))
-                        .kerning(1.5)
+                        .adaptiveKerning(1.5)
                         .foregroundStyle(AppTheme.accentPrimary)
                     Text(S.generatingBoard)
                         .font(AppTheme.mono(10, weight: .medium))
-                        .kerning(1.0)
+                        .adaptiveKerning(1.0)
                         .foregroundStyle(AppTheme.textSecondary)
                 }
             }
@@ -526,7 +527,7 @@ struct VersusView: View {
                         .font(.system(size: 10, weight: .bold))
                     Text(S.versusCancel)
                         .font(AppTheme.mono(11, weight: .bold))
-                        .kerning(0.8)
+                        .adaptiveKerning(0.8)
                 }
                 .foregroundStyle(AppTheme.danger)
                 .frame(width: 200, height: 40)
@@ -594,7 +595,7 @@ struct VersusView: View {
                         .font(.system(size: 9, weight: .bold))
                     Text(S.versusExit)
                         .font(AppTheme.mono(9, weight: .bold))
-                        .kerning(0.6)
+                        .adaptiveKerning(0.6)
                 }
                 .foregroundStyle(AppTheme.danger.opacity(0.8))
                 .padding(.horizontal, 12)
@@ -637,12 +638,12 @@ struct VersusView: View {
                 VStack(spacing: 4) {
                     Text("+\(versusV3VM.winScore) PTS")
                         .font(AppTheme.mono(22, weight: .black))
-                        .kerning(1.5)
+                        .adaptiveKerning(1.5)
                         .foregroundStyle(AppTheme.accentPrimary)
                     if versusV3VM.winStreakMultiplier > 1.0 {
                         Text("\(versusV3VM.currentStreak) STREAK \u{00D7}\(String(format: "%.1f", versusV3VM.winStreakMultiplier))")
                             .font(AppTheme.mono(10, weight: .bold))
-                            .kerning(1.0)
+                            .adaptiveKerning(1.0)
                             .foregroundStyle(AppTheme.sage)
                     }
                 }
@@ -664,7 +665,7 @@ struct VersusView: View {
                 VStack(spacing: 4) {
                     Text("VS")
                         .font(AppTheme.mono(12, weight: .black))
-                        .kerning(2.0)
+                        .adaptiveKerning(2.0)
                         .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
                     Rectangle()
                         .fill(AppTheme.stroke)
@@ -707,7 +708,7 @@ struct VersusView: View {
                             .tint(AppTheme.sage)
                         Text(S.waitingForOpponent)
                             .font(AppTheme.mono(10, weight: .bold))
-                            .kerning(1.0)
+                            .adaptiveKerning(1.0)
                             .foregroundStyle(AppTheme.textSecondary)
                     }
                 } else {
@@ -726,7 +727,7 @@ struct VersusView: View {
                                 .font(.system(size: 12, weight: .bold))
                             Text(S.versusRematch)
                                 .font(AppTheme.mono(13, weight: .bold))
-                                .kerning(1.0)
+                                .adaptiveKerning(1.0)
                         }
                         .foregroundStyle(AppTheme.backgroundPrimary)
                         .frame(width: 200, height: 46)
@@ -772,14 +773,15 @@ struct VersusView: View {
             // Name
             Text(name.uppercased())
                 .font(AppTheme.mono(9, weight: .bold))
-                .kerning(0.6)
+                .adaptiveKerning(0.6)
                 .foregroundStyle(AppTheme.textPrimary)
                 .lineLimit(1)
+                            .minimumScaleFactor(0.7)
 
             // Win/Loss badge
             Text(badgeText)
                 .font(AppTheme.mono(10, weight: .black))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
                 .foregroundStyle(badgeColor)
 
             // Moves count
@@ -814,12 +816,12 @@ struct VersusView: View {
 
                         Text("MYSTERY BOX")
                             .font(AppTheme.mono(14, weight: .black))
-                            .kerning(2.0)
+                            .adaptiveKerning(2.0)
                             .foregroundStyle(gold)
 
                         Text("TAP TO OPEN · \(VersusScoring.winStreak) WIN STREAK")
                             .font(AppTheme.mono(9, weight: .bold))
-                            .kerning(0.8)
+                            .adaptiveKerning(0.8)
                             .foregroundStyle(AppTheme.textSecondary)
                     }
                     .frame(maxWidth: .infinity)
@@ -876,12 +878,12 @@ struct VersusView: View {
 
             Text(type.label)
                 .font(AppTheme.mono(16, weight: .black))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
                 .foregroundStyle(c)
 
             Text("ADDED TO INVENTORY (\(VersusPowerUpInventory.items.count)/\(VersusPowerUpInventory.maxSlots))")
                 .font(AppTheme.mono(9, weight: .bold))
-                .kerning(0.5)
+                .adaptiveKerning(0.5)
                 .foregroundStyle(AppTheme.textSecondary)
         }
         .frame(maxWidth: .infinity)
@@ -899,7 +901,7 @@ struct VersusView: View {
         VStack(spacing: 8) {
             Text("INVENTORY FULL — DISCARD ONE")
                 .font(AppTheme.mono(9, weight: .black))
-                .kerning(1.0)
+                .adaptiveKerning(1.0)
                 .foregroundStyle(AppTheme.danger)
 
             ForEach(Array(VersusPowerUpInventory.items.enumerated()), id: \.offset) { idx, type in
@@ -940,7 +942,7 @@ struct VersusView: View {
             Spacer()
             Text(label)
                 .font(AppTheme.mono(8, weight: .bold))
-                .kerning(0.5)
+                .adaptiveKerning(0.5)
                 .foregroundStyle(AppTheme.danger)
         }
         .padding(.horizontal, 12)
@@ -955,11 +957,11 @@ struct VersusView: View {
         VStack(spacing: 8) {
             Text(S.versus)
                 .font(AppTheme.mono(28, weight: .black))
-                .kerning(4.0)
+                .adaptiveKerning(4.0)
                 .foregroundStyle(AppTheme.accentPrimary)
             Text(S.versusSubtitle)
                 .font(AppTheme.mono(11, weight: .medium))
-                .kerning(2.0)
+                .adaptiveKerning(2.0)
                 .foregroundStyle(AppTheme.sage)
         }
     }
@@ -974,9 +976,10 @@ struct VersusView: View {
 
             Text(name.uppercased())
                 .font(AppTheme.mono(10, weight: .bold))
-                .kerning(0.8)
+                .adaptiveKerning(0.8)
                 .foregroundStyle(AppTheme.textPrimary)
                 .lineLimit(1)
+                            .minimumScaleFactor(0.7)
         }
     }
 
@@ -1004,7 +1007,7 @@ struct VersusView: View {
                 .frame(width: 6, height: 6)
             Text(GKLocalPlayer.local.isAuthenticated ? S.gameCenterConnected : S.gameCenterRequired)
                 .font(AppTheme.mono(9, weight: .bold))
-                .kerning(0.6)
+                .adaptiveKerning(0.6)
                 .foregroundStyle(AppTheme.textSecondary)
         }
     }
@@ -1042,7 +1045,7 @@ struct VersusView: View {
             }
         }())
         .font(AppTheme.mono(22, weight: .black))
-        .kerning(2.0)
+        .adaptiveKerning(2.0)
         .foregroundStyle({
             switch matchState.localResult {
             case .win, .winByDisconnect: return AppTheme.accentPrimary
@@ -1079,7 +1082,7 @@ struct VersusView: View {
             }
         }())
         .font(AppTheme.mono(10, weight: .medium))
-        .kerning(0.8)
+        .adaptiveKerning(0.8)
         .foregroundStyle(AppTheme.textSecondary)
     }
 
@@ -1091,7 +1094,7 @@ struct VersusView: View {
         }) {
             Text(label ?? S.versusExit)
                 .font(AppTheme.mono(11, weight: .bold))
-                .kerning(0.8)
+                .adaptiveKerning(0.8)
                 .foregroundStyle(AppTheme.textSecondary)
                 .frame(width: 200, height: 40)
                 .background(Color.white.opacity(0.03))

@@ -28,7 +28,7 @@ struct VersusV3GameplayView: View {
                         .foregroundStyle(AppTheme.danger)
                     Text("SUDDEN DEATH")
                         .font(AppTheme.mono(10, weight: .black))
-                        .kerning(2.0)
+                        .adaptiveKerning(2.0)
                         .foregroundStyle(AppTheme.danger)
                 }
             } else {
@@ -38,7 +38,7 @@ struct VersusV3GameplayView: View {
                         .foregroundStyle(AppTheme.accentPrimary.opacity(0.5))
                     Text(S.versusReachTarget)
                         .font(AppTheme.mono(9, weight: .bold))
-                        .kerning(1.5)
+                        .adaptiveKerning(1.5)
                         .foregroundStyle(AppTheme.accentPrimary.opacity(0.6))
                 }
             }
@@ -165,9 +165,10 @@ struct VersusV3GameplayView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(matchState.localPlayerName.uppercased())
                             .font(AppTheme.mono(7, weight: .bold))
-                            .kerning(0.5)
+                            .adaptiveKerning(0.5)
                             .foregroundStyle(AppTheme.textPrimary)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         HStack(spacing: 4) {
                             Text(S.versusMovesLabel)
                                 .font(AppTheme.mono(7, weight: .bold))
@@ -185,7 +186,7 @@ struct VersusV3GameplayView: View {
                 // VS
                 Text("VS")
                     .font(AppTheme.mono(10, weight: .black))
-                    .kerning(2.0)
+                    .adaptiveKerning(2.0)
                     .foregroundStyle(AppTheme.accentPrimary.opacity(0.4))
 
                 Spacer()
@@ -195,9 +196,10 @@ struct VersusV3GameplayView: View {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(matchState.opponentDisplayName.uppercased())
                             .font(AppTheme.mono(7, weight: .bold))
-                            .kerning(0.5)
+                            .adaptiveKerning(0.5)
                             .foregroundStyle(AppTheme.textPrimary)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         HStack(spacing: 4) {
                             Text("\(vm.rivalProgressPercent)%")
                                 .font(AppTheme.mono(18, weight: .black))
@@ -263,7 +265,7 @@ struct VersusV3GameplayView: View {
                             .font(.system(size: 14, weight: .bold))
                         Text(type.label)
                             .font(AppTheme.mono(11, weight: .black))
-                            .kerning(0.8)
+                            .adaptiveKerning(0.8)
                     }
                     .foregroundStyle(c)
                     .padding(.horizontal, 16)

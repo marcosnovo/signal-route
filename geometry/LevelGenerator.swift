@@ -524,7 +524,12 @@ struct LevelGenerator {
         let si = rng.nextInt(4)
         let source = corners[si]
 
-        if level.numTargets == 2 {
+        if level.numTargets >= 3 {
+            let tgts = corners.enumerated()
+                .filter { i, _ in i != si }
+                .map { $0.element }
+            return (source, tgts)
+        } else if level.numTargets == 2 {
             let opposite = (si + 2) % 4
             let tgts = corners.enumerated()
                 .filter { i, _ in i != si && i != opposite }
@@ -765,9 +770,10 @@ struct LevelGenerator {
                 // If the initial seed produces a path that's too short, re-seed until it fits.
                 let minPathForCoverage = objType == .maxCoverage ? (gs * gs + 1) / 2 : 0
 
+                let minPathLen = diff == .expert ? 6 : (diff == .hard ? 5 : 3)
                 var minMoves = 0
                 var pathLen  = 0
-                for _ in 0..<20 {
+                for _ in 0..<50 {
                     let temp = Level(
                         id: id, seed: seed, maxMoves: 99, minimumRequiredMoves: 0,
                         difficulty: diff, gridSize: gs, levelType: type,
@@ -777,19 +783,32 @@ struct LevelGenerator {
                     let result = buildBoardInternal(for: temp)
                     minMoves = result.minMoves
                     pathLen  = result.solutionPathLength
-                    if pathLen >= minPathForCoverage { break }
-                    // Re-seed: rotate the seed to get a different board layout
-                    seed = seed &+ 0x9E3779B97F4A7C15 // golden-ratio increment
+                    if pathLen >= minPathForCoverage
+                        && pathLen >= minPathLen
+                        && (diff == .easy || minMoves > 1) { break }
+                    seed = seed &+ 0x9E3779B97F4A7C15
                 }
 
                 let maxMov = minMoves + movesBuffer(for: diff, minMoves: minMoves, levelId: id)
+
+                // Downgrade objectives that conflict with the actual path length.
+                let total = gs * gs
+                let finalObj: LevelObjectiveType
+                switch objType {
+                case .energySaving where pathLen > Int((Double(total) * 0.78).rounded(.up)):
+                    finalObj = .normal
+                case .maxCoverage where Float(pathLen) / Float(total) > 0.85:
+                    finalObj = .normal
+                default:
+                    finalObj = objType
+                }
 
                 catalogue.append(Level(
                     id: id, seed: seed,
                     maxMoves: maxMov, minimumRequiredMoves: minMoves,
                     difficulty: diff, gridSize: gs,
                     levelType: type, numTargets: nTargets, timeLimit: tl,
-                    objectiveType: objType, solutionPathLength: pathLen
+                    objectiveType: finalObj, solutionPathLength: pathLen
                 ))
                 id += 1
             }
@@ -809,8 +828,8 @@ struct LevelGenerator {
     /// Expert tier 4 (IDs 141–220):  42 s — endgame + Kuiper expert
     /// Kuiper deep   (IDs 221–255):  38 s — tight Kuiper
     /// Oort early    (IDs 256–285):  36 s — Oort Cloud entry
-    /// Oort mid      (IDs 286–300):  34 s — deep Oort
-    /// Oort endgame  (IDs 301–330):  30 s — final gauntlet
+    /// Oort mid      (IDs 286–300):  40 s — deep Oort (3-target boards)
+    /// Oort endgame  (IDs 301–330):  38 s — final gauntlet (3-target boards)
     private static func timeLimitSeconds(for id: Int, difficulty: DifficultyTier) -> Int? {
         switch difficulty {
         case .easy, .medium:
@@ -819,8 +838,8 @@ struct LevelGenerator {
             if id >= 181 { return 90 }
             return id >= 101 ? 95 : 110
         case .expert:
-            if id >= 301 { return 30 }
-            if id >= 286 { return 34 }
+            if id >= 301 { return 38 }
+            if id >= 286 { return 40 }
             if id >= 256 { return 36 }
             if id >= 221 { return 38 }
             if id >= 141 { return 42 }
@@ -909,23 +928,22 @@ struct LevelGenerator {
     ///
     /// Scales with path length so difficulty feels consistent regardless of board size.
     /// The `levelId` parameter applies an extra squeeze for the deepest endgame levels.
-    ///
-    /// Formula:  buffer = max(floor, floor(minMoves × ratio))
-    ///   Easy            — max(8,  min × 0.65)  very forgiving
-    ///   Medium          — max(4,  min × 0.45)  moderate pressure
-    ///   Hard            — max(2,  min × 0.26)  limited margin for error
-    ///   Expert          — max(1,  min × 0.15)  near-optimal required
-    ///   Endgame (≥151)  — max(1,  min × 0.08)  essentially perfect play
-    ///   Oort endgame (≥301) — max(1, min × 0.05)  near-perfect play
+    /// A mechanic-aware floor ensures timed/mechanic levels always have enough slack:
+    ///   autoDrift needs ≥ 4, fragile/chargeGate/oneWay/timed need ≥ 3, rotationCap ≥ 2.
     private static func movesBuffer(for difficulty: DifficultyTier, minMoves: Int, levelId: Int = 0) -> Int {
-        if levelId >= 301 { return max(1, Int(Double(minMoves) * 0.05)) }
-        if levelId >= 151 { return max(1, Int(Double(minMoves) * 0.08)) }
-        switch difficulty {
-        case .easy:   return max(8, Int(Double(minMoves) * 0.65))
-        case .medium: return max(4, Int(Double(minMoves) * 0.45))
-        case .hard:   return max(2, Int(Double(minMoves) * 0.26))
-        case .expert: return max(1, Int(Double(minMoves) * 0.15))
+        let base: Int
+        if levelId >= 301 { base = max(3, Int(Double(minMoves) * 0.08)) }
+        else if levelId >= 151 { base = max(3, Int(Double(minMoves) * 0.12)) }
+        else {
+            switch difficulty {
+            case .easy:   base = max(8, Int(Double(minMoves) * 0.65))
+            case .medium: base = max(4, Int(Double(minMoves) * 0.45))
+            case .hard:   base = max(3, Int(Double(minMoves) * 0.26))
+            case .expert: base = max(3, Int(Double(minMoves) * 0.15))
+            }
         }
+        if levelId >= 121 { return max(base, 4) }
+        return base
     }
 
     // MARK: - Intro board (handcrafted)

@@ -26,44 +26,48 @@ enum ShareImageRenderer {
     private struct Strings {
         let lang: AppLanguage
 
-        private func t(_ en: String, _ es: String, _ fr: String) -> String {
+        private func t(_ en: String, _ es: String, _ fr: String, _ ja: String? = nil) -> String {
             switch lang {
             case .en: return en
             case .es: return es
             case .fr: return fr
+            case .ja: return ja ?? en
             }
         }
 
         func missionComplete(_ id: Int) -> String {
             t("MISSION #\(id) COMPLETE",
               "MISIÓN #\(id) COMPLETADA",
-              "MISSION #\(id) TERMINÉE")
+              "MISSION #\(id) TERMINÉE",
+              "ミッション #\(id) 完了")
         }
 
         var missionQuality: String {
-            t("MISSION QUALITY", "CALIDAD DE MISIÓN", "QUALITÉ DE MISSION")
+            t("MISSION QUALITY", "CALIDAD DE MISIÓN", "QUALITÉ DE MISSION", "ミッション品質")
         }
 
-        var scoreLabel: String { t("SCORE", "PUNTOS", "SCORE") }
-        var movesLabel: String { t("MOVES", "MOVIMIENTOS", "COUPS") }
-        var rankLabel:  String { t("RANK",  "RANGO",       "RANG") }
+        var scoreLabel: String { t("SCORE", "PUNTOS", "SCORE", "スコア") }
+        var movesLabel: String { t("MOVES", "MOVIMIENTOS", "COUPS", "手数") }
+        var rankLabel:  String { t("RANK",  "RANGO",       "RANG",  "ランク") }
 
         var downloadCTA: String {
             t("Download on the App Store",
               "Descarga en la App Store",
-              "Télécharger sur l'App Store")
+              "Télécharger sur l'App Store",
+              "App Storeでダウンロード")
         }
 
-        var globalScore: String { t("GLOBAL SCORE", "PUNTUACIÓN GLOBAL", "SCORE GLOBAL") }
+        var globalScore: String { t("GLOBAL SCORE", "PUNTUACIÓN GLOBAL", "SCORE GLOBAL", "グローバルスコア") }
 
-        var yourScore: String { t("YOUR SCORE", "TU PUNTUACIÓN", "VOTRE SCORE") }
+        var yourScore: String { t("YOUR SCORE", "TU PUNTUACIÓN", "VOTRE SCORE", "あなたのスコア") }
 
-        var leaderboard: String { t("LEADERBOARD", "CLASIFICACIÓN", "CLASSEMENT") }
+        var leaderboard: String { t("LEADERBOARD", "CLASIFICACIÓN", "CLASSEMENT", "リーダーボード") }
 
         func topPercent(_ pct: Int, total: Int) -> String {
             t("TOP \(pct)%  ·  of \(total) players",
               "TOP \(pct)%  ·  de \(total) jugadores",
-              "TOP \(pct)%  ·  sur \(total) joueurs")
+              "TOP \(pct)%  ·  sur \(total) joueurs",
+              "TOP \(pct)%  ·  \(total)人中")
         }
     }
 

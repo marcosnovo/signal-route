@@ -60,9 +60,11 @@ struct Achievement: Identifiable, Hashable {
     let titleEN: String
     let titleES: String
     let titleFR: String
+    let titleJA: String
     let subtitleEN: String
     let subtitleES: String
     let subtitleFR: String
+    let subtitleJA: String
     let tier: AchievementTier
     let target: Int
     let metric: AchievementMetric

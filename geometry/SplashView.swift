@@ -53,7 +53,7 @@ struct SplashView: View {
                 Text(networkingCopy)
                     .font(AppTheme.mono(7, weight: .semibold))
                     .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
-                    .kerning(2)
+                    .adaptiveKerning(2)
                     .opacity(contentAppeared ? 1 : 0)
                     .padding(.bottom, 18)
 
@@ -89,7 +89,7 @@ struct SplashView: View {
             Text("SIGNAL VOID")
                 .font(AppTheme.mono(32, weight: .black))
                 .foregroundStyle(Color.white)
-                .kerning(5)
+                .adaptiveKerning(5)
 
             AppTheme.accentPrimary
                 .frame(width: 190, height: 1.5)
@@ -97,7 +97,7 @@ struct SplashView: View {
             Text("MISSION CONTROL INTERFACE")
                 .font(AppTheme.mono(8, weight: .semibold))
                 .foregroundStyle(AppTheme.textSecondary)
-                .kerning(3)
+                .adaptiveKerning(3)
         }
     }
 
@@ -109,6 +109,7 @@ struct SplashView: View {
         switch SettingsStore.shared.language {
         case .es: return "INICIALIZANDO RED"
         case .fr: return "INITIALISATION DU RÉSEAU"
+        case .ja: return "ネットワーク初期化中"
         case .en: return "INITIALIZING NETWORK"
         }
     }
@@ -301,7 +302,7 @@ private struct SignalProgressLine: View {
                             ? AppTheme.textSecondary
                             : AppTheme.textSecondary.opacity(0.30)
                     )
-                    .kerning(1.5)
+                    .adaptiveKerning(1.5)
                     .animation(.easeOut(duration: 0.25), value: isAudioReady)
 
                 Spacer()
@@ -313,7 +314,7 @@ private struct SignalProgressLine: View {
                             ? AppTheme.textSecondary
                             : AppTheme.textSecondary.opacity(0.30)
                     )
-                    .kerning(1.5)
+                    .adaptiveKerning(1.5)
                     .animation(.easeOut(duration: 0.25), value: isStoresReady)
             }
         }

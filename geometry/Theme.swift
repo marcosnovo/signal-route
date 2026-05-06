@@ -184,6 +184,22 @@ extension View {
     }
 }
 
+// MARK: - Adaptive Kerning (CJK-aware)
+
+struct AdaptiveKerningModifier: ViewModifier {
+    let value: CGFloat
+
+    func body(content: Content) -> some View {
+        content.kerning(SettingsStore.shared.language.isCJK ? 0 : value)
+    }
+}
+
+extension View {
+    func adaptiveKerning(_ value: CGFloat) -> some View {
+        modifier(AdaptiveKerningModifier(value: value))
+    }
+}
+
 // MARK: - TechLabel (small uppercase label)
 struct TechLabel: View {
     let text: String
@@ -193,6 +209,6 @@ struct TechLabel: View {
         Text(text)
             .font(AppTheme.mono(9, weight: .semibold))
             .foregroundStyle(color)
-            .kerning(1.5)
+            .adaptiveKerning(1.5)
     }
 }

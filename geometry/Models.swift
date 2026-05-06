@@ -855,8 +855,13 @@ struct Level: Identifiable {
     }
     /// Slack over the theoretical minimum. Reflects how forgiving the move budget is.
     var moveBuffer: Int     { maxMoves - minimumRequiredMoves }
-    /// Max allowed active nodes for energySaving levels (solution path + tolerance).
-    var energySavingLimit: Int { solutionPathLength + 2 }
+    /// Max allowed active nodes for energySaving levels (solution path + tolerance),
+    /// capped so the objective constrains strategy without becoming impossible.
+    var energySavingLimit: Int {
+        let total = gridSize * gridSize
+        let cap = Int((Double(total) * 0.80).rounded(.up))
+        return max(solutionPathLength, min(solutionPathLength + 2, cap))
+    }
 }
 
 // MARK: - SpatialRegion

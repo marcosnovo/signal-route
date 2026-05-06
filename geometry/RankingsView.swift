@@ -46,7 +46,7 @@ struct RankingsView: View {
                 Spacer()
                 Text(S.achievements)
                     .font(AppTheme.mono(12, weight: .bold))
-                    .kerning(1.5)
+                    .adaptiveKerning(1.5)
                     .foregroundStyle(light)
                 Spacer()
                 Color.clear.frame(width: 44, height: 44)

@@ -178,7 +178,7 @@ struct PaywallView: View {
                     BlinkingDot(color: accent)
                 }
                 Text(badgeLabel)
-                    .font(AppTheme.mono(7, weight: .bold)).kerning(1.5)
+                    .font(AppTheme.mono(7, weight: .bold)).adaptiveKerning(1.5)
                     .foregroundStyle(accent)
             }
             .padding(.horizontal, 10).padding(.vertical, 4)
@@ -188,14 +188,14 @@ struct PaywallView: View {
 
             // Title
             Text(titleText)
-                .font(AppTheme.mono(26, weight: .black)).kerning(0.8)
+                .font(AppTheme.mono(26, weight: .black)).adaptiveKerning(0.8)
                 .foregroundStyle(AppTheme.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(.top, 2)
 
             // Subtitle — single-line summary, no momentum/bridge copy
             Text(subtitleText)
-                .font(AppTheme.mono(10)).kerning(0.3)
+                .font(AppTheme.mono(10)).adaptiveKerning(0.3)
                 .foregroundStyle(sage.opacity(0.80))
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
@@ -230,7 +230,7 @@ struct PaywallView: View {
                 .foregroundStyle(accent)
                 .frame(width: 24)
             Text(label)
-                .font(AppTheme.mono(10, weight: .semibold)).kerning(0.4)
+                .font(AppTheme.mono(10, weight: .semibold)).adaptiveKerning(0.4)
                 .foregroundStyle(AppTheme.textPrimary)
             Spacer()
             Image(systemName: "checkmark")
@@ -257,7 +257,7 @@ struct PaywallView: View {
 
                 Button(action: applyDiscount) {
                     Text(applyLabel)
-                        .font(AppTheme.mono(9, weight: .black)).kerning(1)
+                        .font(AppTheme.mono(9, weight: .black)).adaptiveKerning(1)
                         .foregroundStyle(codeInput.isEmpty ? AppTheme.textSecondary : .black)
                         .padding(.horizontal, 14).padding(.vertical, 11)
                         .background(codeInput.isEmpty ? AppTheme.backgroundSecondary : accent)
@@ -280,12 +280,12 @@ struct PaywallView: View {
                         .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(discountFeedbackColor)
                     Text(discountFeedbackText)
-                        .font(AppTheme.mono(8, weight: .semibold)).kerning(0.5)
+                        .font(AppTheme.mono(8, weight: .semibold)).adaptiveKerning(0.5)
                         .foregroundStyle(discountFeedbackColor)
                     Spacer()
                     if case .valid(let code) = discountState {
                         Text(discountOffLabel(code.percentageOff))
-                            .font(AppTheme.mono(8, weight: .black)).kerning(1)
+                            .font(AppTheme.mono(8, weight: .black)).adaptiveKerning(1)
                             .foregroundStyle(AppTheme.success)
                     }
                 }
@@ -362,21 +362,27 @@ struct PaywallView: View {
         case (.unlocked,  .en):    return "Full access unlocked"
         case (.unlocked,  .es):    return "Acceso completo desbloqueado"
         case (.unlocked,  .fr):    return "Accès complet débloqué"
+        case (.unlocked,  .ja):    return "フルアクセス解放"
         case (.valid(let c), .en): return "\(c.code) — Code applied"
         case (.valid(let c), .es): return "\(c.code) — Código aplicado"
         case (.valid(let c), .fr): return "\(c.code) — Code appliqué"
+        case (.valid(let c), .ja): return "\(c.code) — コード適用済み"
         case (.invalid,   .en):    return "Invalid code"
         case (.invalid,   .es):    return "Código inválido"
         case (.invalid,   .fr):    return "Code invalide"
+        case (.invalid,   .ja):    return "無効なコード"
         case (.inactive,  .en):    return "Code not active"
         case (.inactive,  .es):    return "Código inactivo"
         case (.inactive,  .fr):    return "Code inactif"
+        case (.inactive,  .ja):    return "無効なコード"
         case (.expired,   .en):    return "Code expired"
         case (.expired,   .es):    return "Código expirado"
         case (.expired,   .fr):    return "Code expiré"
+        case (.expired,   .ja):    return "期限切れコード"
         case (.exhausted, .en):    return "Usage limit reached"
         case (.exhausted, .es):    return "Límite de usos alcanzado"
         case (.exhausted, .fr):    return "Limite d'utilisations atteinte"
+        case (.exhausted, .ja):    return "使用回数上限"
         }
     }
 
@@ -385,6 +391,7 @@ struct PaywallView: View {
         case .en: return "\(pct)% OFF"
         case .es: return "\(pct)% DTO."
         case .fr: return "\(pct)% RÉD."
+        case .ja: return "\(pct)%オフ"
         }
     }
 
@@ -418,7 +425,7 @@ struct PaywallView: View {
                                 .font(.system(size: 13, weight: .bold))
                         }
                         Text(upgradeLabel)
-                            .font(AppTheme.mono(12, weight: .bold)).kerning(2)
+                            .font(AppTheme.mono(12, weight: .bold)).adaptiveKerning(2)
                     }
                     .foregroundStyle(.white.opacity(isBusy ? 0 : 1))
                     if isBusy {
@@ -438,7 +445,7 @@ struct PaywallView: View {
 
             // ── CTA subtext ────────────────────────────────────────────────
             Text(ctaSubtext)
-                .font(AppTheme.mono(8)).kerning(0.4)
+                .font(AppTheme.mono(8)).adaptiveKerning(0.4)
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.55))
                 .multilineTextAlignment(.center)
                 .padding(.top, 6)
@@ -447,7 +454,7 @@ struct PaywallView: View {
             // ── Error message ──────────────────────────────────────────────
             if case .failed(let msg) = storeKit.purchaseState {
                 Text(msg)
-                    .font(AppTheme.mono(8)).kerning(0.3)
+                    .font(AppTheme.mono(8)).adaptiveKerning(0.3)
                     .foregroundStyle(AppTheme.danger.opacity(0.80))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8).padding(.top, 8)
@@ -459,9 +466,10 @@ struct PaywallView: View {
                 HStack(spacing: 0) {
                     Spacer(minLength: 0)
                     Text(dismissLabel)
-                        .font(AppTheme.mono(11, weight: .bold)).kerning(1.4)
+                        .font(AppTheme.mono(11, weight: .bold)).adaptiveKerning(1.4)
                         .foregroundStyle(sage.opacity(0.72))
                         .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         .minimumScaleFactor(0.85)
                     Spacer(minLength: 0)
                 }
@@ -479,7 +487,7 @@ struct PaywallView: View {
             // ── Temporal context hint ─────────────────────────────────────
             if showsResetHint {
                 Text(resetLabel)
-                    .font(AppTheme.mono(7)).kerning(0.4)
+                    .font(AppTheme.mono(7)).adaptiveKerning(0.4)
                     .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
                     .padding(.top, 8)
             }
@@ -497,9 +505,10 @@ struct PaywallView: View {
                         ProgressView().scaleEffect(0.65).tint(sage)
                     }
                     Text(restoreLabel)
-                        .font(AppTheme.mono(10, weight: .bold)).kerning(1.0)
+                        .font(AppTheme.mono(10, weight: .bold)).adaptiveKerning(1.0)
                         .foregroundStyle(sage.opacity(0.72))
                         .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         .minimumScaleFactor(0.85)
                     Spacer(minLength: 0)
                 }
@@ -527,18 +536,18 @@ struct PaywallView: View {
             HStack(spacing: 6) {
                 Text(original)
                     .strikethrough(true, color: .black.opacity(0.50))
-                    .font(AppTheme.mono(8)).kerning(0.4)
+                    .font(AppTheme.mono(8)).adaptiveKerning(0.4)
                     .foregroundStyle(.black.opacity(0.40))
                 Image(systemName: "arrow.right")
                     .font(.system(size: 7, weight: .bold))
                     .foregroundStyle(.black.opacity(0.55))
                 Text(discounted + " · " + unlimitedLabel)
-                    .font(AppTheme.mono(8, weight: .bold)).kerning(0.4)
+                    .font(AppTheme.mono(8, weight: .bold)).adaptiveKerning(0.4)
                     .foregroundStyle(.black.opacity(0.70))
             }
         } else if let price = storeKit.product?.displayPrice {
             Text(price + " · " + unlimitedLabel)
-                .font(AppTheme.mono(8)).kerning(0.4)
+                .font(AppTheme.mono(8)).adaptiveKerning(0.4)
                 .foregroundStyle(.black.opacity(0.50))
         }
     }
@@ -554,15 +563,19 @@ struct PaywallView: View {
         case (.postVictory,        .en): return "MISSION COMPLETE"
         case (.postVictory,        .es): return "MISIÓN COMPLETADA"
         case (.postVictory,        .fr): return "MISSION ACCOMPLIE"
+        case (.postVictory,        .ja): return "ミッション完了"
         case (.sectorExcitement,   .en): return "SECTOR UNLOCKED"
         case (.sectorExcitement,   .es): return "SECTOR DESBLOQUEADO"
         case (.sectorExcitement,   .fr): return "SECTEUR DÉBLOQUÉ"
+        case (.sectorExcitement,   .ja): return "セクター解放"
         case (.nextMissionBlocked, .en): return "SIGNAL LIMIT"
         case (.nextMissionBlocked, .es): return "LÍMITE DE SEÑAL"
         case (.nextMissionBlocked, .fr): return "LIMITE DE SIGNAL"
+        case (.nextMissionBlocked, .ja): return "シグナル制限"
         case (.homeSoftCTA,        .en): return "EXPLORE MORE"
         case (.homeSoftCTA,        .es): return "EXPLORA MÁS"
         case (.homeSoftCTA,        .fr): return "EXPLOREZ PLUS"
+        case (.homeSoftCTA,        .ja): return "もっと探索"
         }
     }
 
@@ -571,15 +584,19 @@ struct PaywallView: View {
         case (.postVictory,        .en): return "GREAT\nRUN"
         case (.postVictory,        .es): return "GRAN\nMISIÓN"
         case (.postVictory,        .fr): return "BELLE\nMISSION"
+        case (.postVictory,        .ja): return "素晴らしい\nミッション"
         case (.sectorExcitement,   .en): return "NEW\nDESTINATION"
         case (.sectorExcitement,   .es): return "NUEVO\nDESTINO"
         case (.sectorExcitement,   .fr): return "NOUVELLE\nDESTINATION"
+        case (.sectorExcitement,   .ja): return "新しい\n目的地"
         case (.nextMissionBlocked, .en): return "ACCESS\nLIMITED"
         case (.nextMissionBlocked, .es): return "ACCESO\nLIMITADO"
         case (.nextMissionBlocked, .fr): return "ACCÈS\nLIMITÉ"
+        case (.nextMissionBlocked, .ja): return "アクセス\n制限"
         case (.homeSoftCTA,        .en): return "THE FULL\nNETWORK"
         case (.homeSoftCTA,        .es): return "LA RED\nCOMPLETA"
         case (.homeSoftCTA,        .fr): return "LE RÉSEAU\nCOMPLET"
+        case (.homeSoftCTA,        .ja): return "完全な\nネットワーク"
         }
     }
 
@@ -591,30 +608,38 @@ struct PaywallView: View {
             case (.postVictory,        .en): return "You pushed through. The route stays open."
             case (.postVictory,        .es): return "Lo has logrado. Las rutas siguen abiertas."
             case (.postVictory,        .fr): return "Vous avez persévéré. Le réseau reste actif."
+            case (.postVictory,        .ja): return "やり遂げました。ルートは開いたままです。"
             case (.sectorExcitement,   .en): return "A new sector waits. Upgrade to explore at your pace."
             case (.sectorExcitement,   .es): return "Un sector te espera. Mejora a tu ritmo."
             case (.sectorExcitement,   .fr): return "Un secteur vous attend. Améliorez à votre rythme."
+            case (.sectorExcitement,   .ja): return "新しいセクターが待っています。自分のペースで探索しよう。"
             case (.nextMissionBlocked, .en): return "You're putting in the work. Come back tomorrow."
             case (.nextMissionBlocked, .es): return "Estás dando todo. Vuelve mañana."
             case (.nextMissionBlocked, .fr): return "Vous donnez le meilleur. Revenez demain."
+            case (.nextMissionBlocked, .ja): return "頑張っています。明日また来てください。"
             case (.homeSoftCTA,        .en): return "Unlock all sectors. No daily limits."
             case (.homeSoftCTA,        .es): return "Desbloquea todos los sectores. Sin límites."
             case (.homeSoftCTA,        .fr): return "Débloquez tous les secteurs. Sans limites."
+            case (.homeSoftCTA,        .ja): return "全セクターを解放。デイリー制限なし。"
             }
         }
         switch (context, settings.language) {
         case (.postVictory,        .en): return "Daily limit reached. Upgrade to keep going."
         case (.postVictory,        .es): return "Límite diario alcanzado. Mejora para continuar."
         case (.postVictory,        .fr): return "Limite atteinte. Améliorez pour continuer."
+        case (.postVictory,        .ja): return "デイリー制限に達しました。アップグレードして続けよう。"
         case (.sectorExcitement,   .en): return "New sector unlocked — daily limit reached."
         case (.sectorExcitement,   .es): return "Sector desbloqueado — límite diario alcanzado."
         case (.sectorExcitement,   .fr): return "Secteur débloqué — limite journalière atteinte."
+        case (.sectorExcitement,   .ja): return "新セクター解放 — デイリー制限に達しました。"
         case (.nextMissionBlocked, .en): return "Daily limit reached. Upgrade to continue."
         case (.nextMissionBlocked, .es): return "Límite diario alcanzado. Mejora para continuar."
         case (.nextMissionBlocked, .fr): return "Limite atteinte. Améliorez pour continuer."
+        case (.nextMissionBlocked, .ja): return "デイリー制限に達しました。アップグレードして続けよう。"
         case (.homeSoftCTA,        .en): return "Explore without daily limits."
         case (.homeSoftCTA,        .es): return "Explora sin límites diarios."
         case (.homeSoftCTA,        .fr): return "Explorez sans limite journalière."
+        case (.homeSoftCTA,        .ja): return "デイリー制限なしで探索しよう。"
         }
     }
 
@@ -639,6 +664,7 @@ struct PaywallView: View {
         case .en: return "Unlimited"
         case .es: return "Ilimitado"
         case .fr: return "Illimité"
+        case .ja: return "無制限"
         }
     }
 
@@ -648,12 +674,14 @@ struct PaywallView: View {
             case .en: return "NOT NOW"
             case .es: return "AHORA NO"
             case .fr: return "PAS MAINTENANT"
+            case .ja: return "今はしない"
             }
         }
         switch settings.language {
         case .en: return "CONTINUE TOMORROW"
         case .es: return "CONTINUAR MAÑANA"
         case .fr: return "CONTINUER DEMAIN"
+        case .ja: return "明日続ける"
         }
     }
 
@@ -666,6 +694,7 @@ struct PaywallView: View {
         case .en: return "Free missions reset in 24 hours"
         case .es: return "Las misiones gratuitas se reinician en 24 horas"
         case .fr: return "Les missions gratuites se réinitialisent dans 24 heures"
+        case .ja: return "無料ミッションは24時間でリセットされます"
         }
     }
 
@@ -676,6 +705,7 @@ struct PaywallView: View {
         case .en: return "Code"
         case .es: return "Código"
         case .fr: return "Code"
+        case .ja: return "コード"
         }
     }
 
@@ -684,6 +714,7 @@ struct PaywallView: View {
         case .en: return "APPLY"
         case .es: return "APLICAR"
         case .fr: return "APPLIQUER"
+        case .ja: return "適用"
         }
     }
 }

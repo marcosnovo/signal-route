@@ -290,7 +290,7 @@ struct DevMenuView: View {
                                 .font(.system(size: 11, weight: .bold))
                             Text(toast.message)
                                 .font(AppTheme.mono(10, weight: .bold))
-                                .kerning(0.5)
+                                .adaptiveKerning(0.5)
                         }
                         .foregroundStyle(toast.color)
                         .padding(.horizontal, 16).padding(.vertical, 10)
@@ -428,7 +428,7 @@ struct DevMenuView: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: icon).font(.system(size: 8, weight: .bold))
-                Text(label).font(AppTheme.mono(8, weight: .bold)).kerning(0.6)
+                Text(label).font(AppTheme.mono(8, weight: .bold)).adaptiveKerning(0.6)
             }
             .foregroundStyle(color)
             .padding(.horizontal, 9).padding(.vertical, 6)
@@ -472,7 +472,7 @@ struct DevMenuView: View {
                     .font(.system(size: 11, weight: isActive ? .bold : .medium))
                 Text(label)
                     .font(AppTheme.mono(7, weight: .bold))
-                    .kerning(0.6)
+                    .adaptiveKerning(0.6)
             }
             .foregroundStyle(fgColor)
             .frame(maxWidth: .infinity)
@@ -597,7 +597,7 @@ struct DevMenuView: View {
                         }) {
                             Text("RESET")
                                 .font(AppTheme.mono(9, weight: .bold))
-                                .kerning(0.8)
+                                .adaptiveKerning(0.8)
                                 .foregroundStyle(AppTheme.accentPrimary)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
                                 .overlay(
@@ -652,7 +652,7 @@ struct DevMenuView: View {
                                 .font(.system(size: 9, weight: .bold))
                             Text("PLAY DAILY CHALLENGE")
                                 .font(AppTheme.mono(9, weight: .bold))
-                                .kerning(0.8)
+                                .adaptiveKerning(0.8)
                         }
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -672,7 +672,7 @@ struct DevMenuView: View {
         VStack(spacing: 2) {
             Text(label)
                 .font(AppTheme.mono(6, weight: .regular))
-                .kerning(0.5)
+                .adaptiveKerning(0.5)
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.55))
             Text(value)
                 .font(AppTheme.mono(9, weight: .bold))
@@ -957,7 +957,7 @@ struct DevMenuView: View {
                         Text(rankLabel(for: devLevel))
                             .font(AppTheme.mono(9, weight: .semibold))
                             .foregroundStyle(AppTheme.accentPrimary)
-                            .kerning(1)
+                            .adaptiveKerning(1)
                     }
                 }
                 .padding(.leading, 16)
@@ -984,7 +984,7 @@ struct DevMenuView: View {
                     Image(systemName: "bolt.fill").font(.system(size: 10, weight: .bold))
                     Text("APPLY LEVEL JUMP  →  LVL \(devLevel)")
                         .font(AppTheme.mono(10, weight: .bold))
-                        .kerning(1.2)
+                        .adaptiveKerning(1.2)
                 }
                 .frame(maxWidth: .infinity).frame(height: 40)
                 .background(devLevel == profile.level
@@ -1353,7 +1353,7 @@ struct DevMenuView: View {
                     TechLabel(text: "HOME CTA", color: AppTheme.textSecondary)
                     HStack(spacing: 8) {
                         Image(systemName: "infinity").font(.system(size: 10, weight: .bold))
-                        Text("UNLIMITED ACCESS").font(AppTheme.mono(9, weight: .bold)).kerning(1.5)
+                        Text("UNLIMITED ACCESS").font(AppTheme.mono(9, weight: .bold)).adaptiveKerning(1.5)
                         Spacer()
                         Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
                     }
@@ -1370,7 +1370,7 @@ struct DevMenuView: View {
                     TechLabel(text: "POST-MISSION BANNER", color: AppTheme.textSecondary)
                     HStack(spacing: 8) {
                         Image(systemName: "infinity").font(.system(size: 10, weight: .bold))
-                        Text("CONTINUE WITHOUT LIMITS").font(AppTheme.mono(9, weight: .bold)).kerning(1.5)
+                        Text("CONTINUE WITHOUT LIMITS").font(AppTheme.mono(9, weight: .bold)).adaptiveKerning(1.5)
                         Spacer()
                         Text("UPGRADE").font(AppTheme.mono(8))
                         Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold))
@@ -1385,7 +1385,7 @@ struct DevMenuView: View {
                     TechLabel(text: "LOCKED SECTOR CTA", color: AppTheme.textSecondary)
                     HStack(spacing: 6) {
                         Image(systemName: "infinity").font(.system(size: 9, weight: .bold))
-                        Text("UNLIMITED ACCESS").font(AppTheme.mono(8, weight: .bold)).kerning(1.5)
+                        Text("UNLIMITED ACCESS").font(AppTheme.mono(8, weight: .bold)).adaptiveKerning(1.5)
                         Spacer()
                         Image(systemName: "chevron.right").font(.system(size: 7, weight: .bold))
                     }
@@ -1841,7 +1841,7 @@ struct DevMenuView: View {
                     showToast("\(trimmed) created (FULL UNLOCK)", style: .success)
                 }) {
                     Text("CREATE UNLOCK CODE")
-                        .font(AppTheme.mono(10, weight: .black)).kerning(1)
+                        .font(AppTheme.mono(10, weight: .black)).adaptiveKerning(1)
                         .foregroundStyle(newUnlockCodeText.isEmpty ? AppTheme.textSecondary : .black)
                         .frame(maxWidth: .infinity).frame(height: 40)
                         .background(newUnlockCodeText.isEmpty ? AppTheme.backgroundSecondary : AppTheme.success)
@@ -2124,7 +2124,7 @@ struct DevMenuView: View {
                     showToast("\(trimmed) created (\(newCodePct)% off)", style: .success)
                 }) {
                     Text("CREATE CODE")
-                        .font(AppTheme.mono(10, weight: .black)).kerning(1)
+                        .font(AppTheme.mono(10, weight: .black)).adaptiveKerning(1)
                         .foregroundStyle(newCodeText.isEmpty ? AppTheme.textSecondary : .black)
                         .frame(maxWidth: .infinity).frame(height: 40)
                         .background(newCodeText.isEmpty ? AppTheme.backgroundSecondary : AppTheme.success)
@@ -2309,7 +2309,7 @@ struct DevMenuView: View {
                 Text(status.label)
                     .font(AppTheme.mono(12, weight: .black))
                     .foregroundStyle(status.color)
-                    .kerning(1.5)
+                    .adaptiveKerning(1.5)
                 Spacer()
                 // Counts
                 TechLabel(
@@ -2455,7 +2455,7 @@ struct DevMenuView: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 9, weight: .semibold))
-                Text(label).font(AppTheme.mono(8, weight: .bold)).kerning(0.6)
+                Text(label).font(AppTheme.mono(8, weight: .bold)).adaptiveKerning(0.6)
             }
             .frame(maxWidth: .infinity).frame(height: 36)
             .foregroundStyle(color)
@@ -2547,7 +2547,7 @@ struct DevMenuView: View {
                     Text("GRANT PASS")
                         .font(AppTheme.mono(7, weight: .bold))
                         .foregroundStyle(planet.color.opacity(unlocked ? 1.0 : 0.40))
-                        .kerning(0.6)
+                        .adaptiveKerning(0.6)
                         .padding(.horizontal, 7).padding(.vertical, 3)
                         .overlay(
                             RoundedRectangle(cornerRadius: 2)
@@ -2568,7 +2568,7 @@ struct DevMenuView: View {
                 .font(.system(size: 6, weight: .bold))
             Text("PASS")
                 .font(AppTheme.mono(7, weight: .bold))
-                .kerning(0.5)
+                .adaptiveKerning(0.5)
         }
         .foregroundStyle(color)
         .padding(.horizontal, 6).padding(.vertical, 3)
@@ -2681,7 +2681,7 @@ struct DevMenuView: View {
             Text(label)
                 .font(AppTheme.mono(8, weight: .bold))
                 .foregroundStyle(active ? .black : AppTheme.textSecondary)
-                .kerning(0.8)
+                .adaptiveKerning(0.8)
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(active ? color : Color.clear)
                 .overlay(
@@ -2835,7 +2835,7 @@ struct DevMenuView: View {
                     .font(.system(size: 12, weight: .bold))
                 Text(r.isSolvable ? "SOLVABLE" : "NOT SOLVABLE")
                     .font(AppTheme.mono(11, weight: .black))
-                    .kerning(1.2)
+                    .adaptiveKerning(1.2)
                 if r.isTrivial {
                     Text("TRIVIAL")
                         .font(AppTheme.mono(7, weight: .bold))
@@ -2866,7 +2866,7 @@ struct DevMenuView: View {
                     // Objective badge
                     HStack(spacing: 3) {
                         Image(systemName: level.objectiveType.iconName).font(.system(size: 7))
-                        Text(level.objectiveType.rawValue.uppercased()).font(AppTheme.mono(7, weight: .bold)).kerning(0.4)
+                        Text(level.objectiveType.rawValue.uppercased()).font(AppTheme.mono(7, weight: .bold)).adaptiveKerning(0.4)
                     }
                     .foregroundStyle(level.objectiveType.accentColor)
                     .padding(.horizontal, 5).padding(.vertical, 2)
@@ -2932,7 +2932,7 @@ struct DevMenuView: View {
                         Image(systemName: "cpu").font(.system(size: 9, weight: .semibold))
                         Text("RUN DIJKSTRA SOLVER")
                             .font(AppTheme.mono(8, weight: .bold))
-                            .kerning(0.8)
+                            .adaptiveKerning(0.8)
                     }
                     .frame(maxWidth: .infinity).frame(height: 32)
                     .background(AppTheme.accentPrimary.opacity(0.08))
@@ -2995,7 +2995,7 @@ struct DevMenuView: View {
         Text(label)
             .font(AppTheme.mono(6, weight: .bold))
             .foregroundStyle(.black)
-            .kerning(0.3)
+            .adaptiveKerning(0.3)
             .padding(.horizontal, 5).padding(.vertical, 2)
             .background(color)
             .clipShape(RoundedRectangle(cornerRadius: 2))
@@ -3004,7 +3004,7 @@ struct DevMenuView: View {
     private func mechBadge(_ icon: String, _ label: String) -> some View {
         HStack(spacing: 3) {
             Image(systemName: icon).font(.system(size: 7))
-            Text(label).font(AppTheme.mono(6, weight: .bold)).kerning(0.4)
+            Text(label).font(AppTheme.mono(6, weight: .bold)).adaptiveKerning(0.4)
         }
         .foregroundStyle(AppTheme.sage)
         .padding(.horizontal, 5).padding(.vertical, 3)
@@ -3347,7 +3347,7 @@ struct DevMenuView: View {
                     Image(systemName: "play.fill").font(.system(size: 9, weight: .bold))
                     Text("REPLAY ONBOARDING NOW")
                         .font(AppTheme.mono(9, weight: .bold))
-                        .kerning(0.8)
+                        .adaptiveKerning(0.8)
                 }
                 .frame(maxWidth: .infinity).frame(height: 40)
                 .background(AppTheme.accentPrimary)
@@ -3369,7 +3369,7 @@ struct DevMenuView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             Text("RESET FLAG ONLY")
                                 .font(AppTheme.mono(8, weight: .bold))
-                                .kerning(0.8)
+                                .adaptiveKerning(0.8)
                             Text("intro appears on next cold launch")
                                 .font(AppTheme.mono(7))
                                 .foregroundStyle(AppTheme.textSecondary)
@@ -3570,7 +3570,7 @@ struct DevMenuView: View {
                          : AppTheme.accentPrimary
         return Button(action: { analysisIssueFilter = type }) {
             HStack(spacing: 4) {
-                Text(label).font(AppTheme.mono(8, weight: .bold)).kerning(0.5)
+                Text(label).font(AppTheme.mono(8, weight: .bold)).adaptiveKerning(0.5)
                 Text("(\(count))").font(AppTheme.mono(7))
             }
             .foregroundStyle(active ? .black : (count > 0 && type != nil ? color : AppTheme.textSecondary))
@@ -3752,7 +3752,7 @@ struct DevMenuView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "printer").font(.system(size: 9, weight: .bold))
                     Text("LOG FULL PATCH TO CONSOLE")
-                        .font(AppTheme.mono(9, weight: .bold)).kerning(0.8)
+                        .font(AppTheme.mono(9, weight: .bold)).adaptiveKerning(0.8)
                 }
                 .foregroundStyle(AppTheme.sage)
                 .frame(maxWidth: .infinity).padding(.vertical, 10)
@@ -3861,7 +3861,7 @@ struct DevMenuView: View {
                     }
                 }
                 .font(AppTheme.mono(9, weight: .bold))
-                .kerning(0.8)
+                .adaptiveKerning(0.8)
                 .frame(maxWidth: .infinity)
                 .frame(height: 44)
                 .foregroundStyle(isCheckingStartsSolved ? AppTheme.textSecondary : AppTheme.danger)
@@ -3989,7 +3989,7 @@ struct DevMenuView: View {
             HStack(spacing: 4) {
                 Text(filter.label)
                     .font(AppTheme.mono(8, weight: .bold))
-                    .kerning(0.6)
+                    .adaptiveKerning(0.6)
                 Text("(\(count))")
                     .font(AppTheme.mono(7))
             }
@@ -4015,7 +4015,7 @@ struct DevMenuView: View {
             VStack(spacing: 3) {
                 HStack(spacing: 4) {
                     Image(systemName: icon).font(.system(size: 9, weight: .semibold))
-                    Text(label).font(AppTheme.mono(9, weight: .bold)).kerning(0.8)
+                    Text(label).font(AppTheme.mono(9, weight: .bold)).adaptiveKerning(0.8)
                 }
                 Text(subtitle)
                     .font(AppTheme.mono(7))
@@ -4267,7 +4267,7 @@ struct DevMenuView: View {
                         Text(lang.rawValue.uppercased())
                             .font(AppTheme.mono(8, weight: .bold))
                             .foregroundStyle(previewLanguage == lang ? .black : AppTheme.textSecondary)
-                            .kerning(0.6)
+                            .adaptiveKerning(0.6)
                             .padding(.horizontal, 8).padding(.vertical, 4)
                             .background(previewLanguage == lang ? AppTheme.accentPrimary : Color.clear)
                             .overlay(
@@ -4349,7 +4349,7 @@ struct DevMenuView: View {
                         Image(systemName: "play.fill").font(.system(size: 7, weight: .bold))
                         Text("LAUNCH")
                             .font(AppTheme.mono(7, weight: .bold))
-                            .kerning(0.5)
+                            .adaptiveKerning(0.5)
                     }
                     .foregroundStyle(amber)
                     .padding(.horizontal, 7).padding(.vertical, 3)
@@ -4390,12 +4390,12 @@ struct DevMenuView: View {
                             Text(S.newMechanicUnlocked)
                                 .font(AppTheme.mono(8, weight: .bold))
                                 .foregroundStyle(amber)
-                                .kerning(1)
+                                .adaptiveKerning(1)
                         }
                         Text(S.mechanicTitle(mechanic))
                             .font(AppTheme.mono(14, weight: .black))
                             .foregroundStyle(AppTheme.textPrimary)
-                            .kerning(0.8)
+                            .adaptiveKerning(0.8)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
@@ -4418,7 +4418,7 @@ struct DevMenuView: View {
                     // CTA bar (non-interactive in preview)
                     Text(S.understood)
                         .font(AppTheme.mono(10, weight: .bold))
-                        .kerning(2)
+                        .adaptiveKerning(2)
                         .frame(maxWidth: .infinity)
                         .frame(height: 36)
                         .background(amber.opacity(0.20))
@@ -4469,7 +4469,7 @@ struct DevMenuView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text("PENDING QUEUE")
-                            .font(AppTheme.mono(8, weight: .black)).kerning(1.0)
+                            .font(AppTheme.mono(8, weight: .black)).adaptiveKerning(1.0)
                             .foregroundStyle(pendingIDs.isEmpty
                                              ? AppTheme.textSecondary.opacity(0.40)
                                              : AppTheme.accentPrimary)
@@ -4513,7 +4513,7 @@ struct DevMenuView: View {
                         .font(.system(size: 9))
                         .foregroundStyle(AppTheme.textSecondary.opacity(0.50))
                     Text("LAST SIMULATED")
-                        .font(AppTheme.mono(7, weight: .bold)).kerning(0.8)
+                        .font(AppTheme.mono(7, weight: .bold)).adaptiveKerning(0.8)
                         .foregroundStyle(AppTheme.textSecondary.opacity(0.50))
                     Text(lastID)
                         .font(AppTheme.mono(8, weight: .semibold))
@@ -4608,12 +4608,12 @@ struct DevMenuView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(AppTheme.accentPrimary)
                     Text("NARRATIVE QA")
-                        .font(AppTheme.mono(9, weight: .black)).kerning(1.2)
+                        .font(AppTheme.mono(9, weight: .black)).adaptiveKerning(1.2)
                         .foregroundStyle(AppTheme.textPrimary)
                     Spacer()
                     if let r = narrativeQAReport {
                         Text(r.isClean ? "PASS" : "\(r.errorCount)E \(r.warningCount)W")
-                            .font(AppTheme.mono(7, weight: .bold)).kerning(0.6)
+                            .font(AppTheme.mono(7, weight: .bold)).adaptiveKerning(0.6)
                             .foregroundStyle(r.isClean ? AppTheme.sage : AppTheme.danger)
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background((r.isClean ? AppTheme.sage : AppTheme.danger).opacity(0.12))
@@ -4904,12 +4904,12 @@ struct DevMenuView: View {
                     Button(action: { settings.language = lang }) {
                         VStack(spacing: 2) {
                             Text(lang.rawValue.uppercased())
-                                .font(AppTheme.mono(9, weight: .black)).kerning(1.2)
+                                .font(AppTheme.mono(9, weight: .black)).adaptiveKerning(1.2)
                                 .foregroundStyle(settings.language == lang
                                                  ? AppTheme.accentPrimary
                                                  : AppTheme.textSecondary.opacity(0.50))
                             Text(lang.displayName)
-                                .font(AppTheme.mono(6)).kerning(0.4)
+                                .font(AppTheme.mono(6)).adaptiveKerning(0.4)
                                 .foregroundStyle(settings.language == lang
                                                  ? AppTheme.accentPrimary.opacity(0.70)
                                                  : AppTheme.textSecondary.opacity(0.28))
@@ -4975,7 +4975,7 @@ struct DevMenuView: View {
             }) {
                 HStack(spacing: 8) {
                     Text("STORY ASSETS PREVIEW")
-                        .font(AppTheme.mono(9, weight: .black)).kerning(1.2)
+                        .font(AppTheme.mono(9, weight: .black)).adaptiveKerning(1.2)
                         .foregroundStyle(AppTheme.textPrimary)
 
                     Spacer()
@@ -4983,7 +4983,7 @@ struct DevMenuView: View {
                     // Warning badge if any beats have no image
                     if beatsWithNoImg > 0 {
                         Text("\(beatsWithNoImg) NO IMG")
-                            .font(AppTheme.mono(6, weight: .bold)).kerning(0.6)
+                            .font(AppTheme.mono(6, weight: .bold)).adaptiveKerning(0.6)
                             .foregroundStyle(Color.orange)
                             .padding(.horizontal, 5).padding(.vertical, 2)
                             .background(Color.orange.opacity(0.10))
@@ -4991,7 +4991,7 @@ struct DevMenuView: View {
                     }
 
                     Text("\(reviewed)/\(total)")
-                        .font(AppTheme.mono(8, weight: .bold)).kerning(0.8)
+                        .font(AppTheme.mono(8, weight: .bold)).adaptiveKerning(0.8)
                         .foregroundStyle(reviewed == total ? AppTheme.sage : AppTheme.textSecondary.opacity(0.50))
 
                     Image(systemName: showAssetPreview ? "chevron.up" : "chevron.down")
@@ -5053,7 +5053,7 @@ struct DevMenuView: View {
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(Color.orange)
                             Text("NO IMAGE")
-                                .font(AppTheme.mono(5, weight: .bold)).kerning(0.5)
+                                .font(AppTheme.mono(5, weight: .bold)).adaptiveKerning(0.5)
                                 .foregroundStyle(Color.orange)
                         }
                     }
@@ -5094,7 +5094,7 @@ struct DevMenuView: View {
                 ForEach(AppLanguage.allCases, id: \.self) { lang in
                     HStack(alignment: .top, spacing: 4) {
                         Text(lang.rawValue.uppercased())
-                            .font(AppTheme.mono(6, weight: .bold)).kerning(0.4)
+                            .font(AppTheme.mono(6, weight: .bold)).adaptiveKerning(0.4)
                             .foregroundStyle(accent.opacity(0.55))
                             .frame(width: 14, alignment: .leading)
                         Text(beat.displayBody(for: lang))
@@ -5175,7 +5175,7 @@ struct DevMenuView: View {
             Image(systemName: icon)
                 .font(.system(size: 7, weight: .bold))
             Text(label)
-                .font(AppTheme.mono(5, weight: .black)).kerning(0.4)
+                .font(AppTheme.mono(5, weight: .black)).adaptiveKerning(0.4)
         }
         .foregroundStyle(status == .ok ? color.opacity(0.50) : color)
         .padding(.horizontal, 4).padding(.vertical, 2)
@@ -5256,7 +5256,7 @@ struct DevMenuView: View {
     private func storySimBtn(_ label: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(AppTheme.mono(7, weight: .bold)).kerning(0.5)
+                .font(AppTheme.mono(7, weight: .bold)).adaptiveKerning(0.5)
                 .foregroundStyle(color)
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(color.opacity(0.09))
@@ -5278,11 +5278,11 @@ struct DevMenuView: View {
             }) {
                 HStack(spacing: 8) {
                     Text("STORY SEQUENCE TESTER")
-                        .font(AppTheme.mono(9, weight: .black)).kerning(1.2)
+                        .font(AppTheme.mono(9, weight: .black)).adaptiveKerning(1.2)
                         .foregroundStyle(AppTheme.textPrimary)
                     Spacer()
                     Text("SCENARIO · REPORT")
-                        .font(AppTheme.mono(6, weight: .bold)).kerning(0.8)
+                        .font(AppTheme.mono(6, weight: .bold)).adaptiveKerning(0.8)
                         .foregroundStyle(AppTheme.textSecondary.opacity(0.40))
                     Image(systemName: showSequenceTester ? "chevron.up" : "chevron.down")
                         .font(.system(size: 9, weight: .bold))
@@ -5559,7 +5559,7 @@ struct DevMenuView: View {
                     .frame(width: 5, height: 5)
 
                 Text(storyTriggerLabel(beat.trigger))
-                    .font(AppTheme.mono(6, weight: .bold)).kerning(0.8)
+                    .font(AppTheme.mono(6, weight: .bold)).adaptiveKerning(0.8)
                     .foregroundStyle(accent)
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(accent.opacity(0.12))
@@ -5580,7 +5580,7 @@ struct DevMenuView: View {
                         : AppTheme.textSecondary.opacity(0.25))
 
                 Text(isSeen ? "SEEN" : "UNSEEN")
-                    .font(AppTheme.mono(6, weight: .bold)).kerning(0.5)
+                    .font(AppTheme.mono(6, weight: .bold)).adaptiveKerning(0.5)
                     .foregroundStyle(isSeen ? AppTheme.textSecondary.opacity(0.35) : accent.opacity(0.75))
             }
             .padding(.horizontal, 14).padding(.top, 10)
@@ -5588,7 +5588,7 @@ struct DevMenuView: View {
             // ── Title + source ─────────────────────────────────────────────
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(beat.title)
-                    .font(AppTheme.mono(11, weight: .black)).kerning(1)
+                    .font(AppTheme.mono(11, weight: .black)).adaptiveKerning(1)
                     .foregroundStyle(isSeen ? AppTheme.textSecondary : AppTheme.textPrimary)
                 Text("· \(beat.source)")
                     .font(AppTheme.mono(7)).foregroundStyle(AppTheme.textSecondary.opacity(0.50))
@@ -5605,7 +5605,7 @@ struct DevMenuView: View {
             // ── Footer hint ────────────────────────────────────────────────
             if let hint = beat.footerHint {
                 Text(hint)
-                    .font(AppTheme.mono(7, weight: .bold)).kerning(0.8)
+                    .font(AppTheme.mono(7, weight: .bold)).adaptiveKerning(0.8)
                     .foregroundStyle(accent.opacity(isSeen ? 0.35 : 0.60))
                     .padding(.horizontal, 14).padding(.top, 3)
             }
@@ -5648,7 +5648,7 @@ struct DevMenuView: View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Image(systemName: icon).font(.system(size: 7, weight: .bold))
-                Text(label).font(AppTheme.mono(7, weight: .bold)).kerning(0.4)
+                Text(label).font(AppTheme.mono(7, weight: .bold)).adaptiveKerning(0.4)
             }
             .foregroundStyle(color)
             .padding(.horizontal, 8).padding(.vertical, 5)
@@ -5767,7 +5767,7 @@ struct DevMenuView: View {
                         Text("DANGER ZONE")
                             .font(AppTheme.mono(13, weight: .black))
                             .foregroundStyle(AppTheme.danger)
-                            .kerning(2)
+                            .adaptiveKerning(2)
                     }
                     Text("All actions are permanent and cannot be undone.\nA confirmation dialog will appear before any action executes.")
                         .font(AppTheme.mono(8))
@@ -5876,7 +5876,7 @@ struct DevMenuView: View {
                 Text(isActive ? "VERSUS MODE ACTIVE" : "VERSUS MODE OFF")
                     .font(AppTheme.mono(14, weight: .black))
                     .foregroundStyle(isActive ? AppTheme.success : AppTheme.textSecondary)
-                    .kerning(1.5)
+                    .adaptiveKerning(1.5)
 
                 if !gcOK {
                     HStack(spacing: 4) {
@@ -5911,7 +5911,7 @@ struct DevMenuView: View {
                         .font(.system(size: 14, weight: .bold))
                     Text(isActive ? "DEACTIVATE" : "ACTIVATE VERSUS")
                         .font(AppTheme.mono(13, weight: .bold))
-                        .kerning(1.5)
+                        .adaptiveKerning(1.5)
                 }
                 .foregroundStyle(isActive ? AppTheme.danger : .black)
                 .frame(maxWidth: .infinity)
@@ -5954,7 +5954,7 @@ struct DevMenuView: View {
                             .font(.system(size: 14, weight: .bold))
                         Text(isSearching ? "SEARCHING…" : "FIND MATCH")
                             .font(AppTheme.mono(12, weight: .bold))
-                            .kerning(1)
+                            .adaptiveKerning(1)
                     }
                     .foregroundStyle(canMatch ? AppTheme.accentPrimary : AppTheme.textSecondary.opacity(0.4))
                     .frame(maxWidth: .infinity)
@@ -5985,7 +5985,7 @@ struct DevMenuView: View {
                                 .font(.system(size: 11, weight: .bold))
                             Text(isSearching ? "CANCEL SEARCH" : "DISCONNECT")
                                 .font(AppTheme.mono(10, weight: .bold))
-                                .kerning(0.8)
+                                .adaptiveKerning(0.8)
                         }
                         .foregroundStyle(AppTheme.danger)
                         .frame(maxWidth: .infinity)
@@ -6051,7 +6051,7 @@ struct DevMenuView: View {
                     Text("ADVANCED")
                         .font(AppTheme.mono(9, weight: .bold))
                         .foregroundStyle(AppTheme.textSecondary)
-                        .kerning(1.5)
+                        .adaptiveKerning(1.5)
                     Spacer()
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
@@ -6333,7 +6333,7 @@ struct DevMenuView: View {
                             .font(.system(size: 10, weight: .bold))
                         Text("COPY TEST SUMMARY")
                             .font(AppTheme.mono(10, weight: .bold))
-                            .kerning(0.8)
+                            .adaptiveKerning(0.8)
                     }
                     .foregroundStyle(AppTheme.accentPrimary)
                     .frame(maxWidth: .infinity)
@@ -6453,7 +6453,7 @@ struct DevMenuView: View {
                     Text(title)
                         .font(AppTheme.mono(9, weight: .bold))
                         .foregroundStyle(color)
-                        .kerning(0.8)
+                        .adaptiveKerning(0.8)
                     Text(sub)
                         .font(AppTheme.mono(7))
                         .foregroundStyle(AppTheme.textSecondary)
@@ -6660,7 +6660,7 @@ private struct DevPassViewerOverlay: View {
                     Text(pass.planetName)
                         .font(AppTheme.mono(13, weight: .black))
                         .foregroundStyle(planet.color)
-                        .kerning(3)
+                        .adaptiveKerning(3)
                     TechLabel(text: "PLANET PASS  ·  \(pass.serialCode)", color: planet.color.opacity(0.60))
                 }
                 .padding(.bottom, 24)
@@ -6710,7 +6710,7 @@ private struct DevPassViewerOverlay: View {
                 HStack(spacing: 4) {
                     Image(systemName: "info.circle").font(.system(size: 8))
                     Text("DEV PASS VIEWER  ·  TAP TO DISMISS")
-                        .font(AppTheme.mono(7)).kerning(0.4)
+                        .font(AppTheme.mono(7)).adaptiveKerning(0.4)
                 }
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.35))
 
@@ -6786,7 +6786,7 @@ private struct DevMechanicPreviewCard: View {
                     Text(S.mechanicTitle(mechanic))
                         .font(AppTheme.mono(20, weight: .black))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .kerning(1)
+                        .adaptiveKerning(1)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
@@ -6814,7 +6814,7 @@ private struct DevMechanicPreviewCard: View {
                 Button(action: onDismiss) {
                     Text(S.understood)
                         .font(AppTheme.mono(12, weight: .bold))
-                        .kerning(2)
+                        .adaptiveKerning(2)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
                         .background(amber)
@@ -6827,7 +6827,7 @@ private struct DevMechanicPreviewCard: View {
                         .font(.system(size: 8))
                     Text("DEV PREVIEW  ·  \(language.rawValue.uppercased())")
                         .font(AppTheme.mono(7))
-                        .kerning(0.5)
+                        .adaptiveKerning(0.5)
                 }
                 .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
                 .padding(.vertical, 6)

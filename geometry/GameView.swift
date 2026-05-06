@@ -478,7 +478,7 @@ struct GameView: View {
                 Text(vm.currentLevel.displayName)
                     .font(AppTheme.mono(12, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
-                    .kerning(1)
+                    .adaptiveKerning(1)
                 TechLabel(text: vm.currentLevel.difficulty.fullLabel,
                           color: vm.currentLevel.difficulty.color)
             }
@@ -608,7 +608,7 @@ struct GameView: View {
                 Text(S.objectiveText(type: vm.currentLevel.objectiveType, targets: vm.targetsTotal))
                     .font(AppTheme.mono(10, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
-                    .kerning(0.5)
+                    .adaptiveKerning(0.5)
                 Spacer()
             }
             .padding(.horizontal, 20)
@@ -852,6 +852,7 @@ private struct HUDMetric: View {
                 .monospacedDigit()
                 .minimumScaleFactor(0.7)
                 .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                 .contentTransition(.opacity)
         }
         .frame(maxWidth: .infinity)
@@ -901,19 +902,19 @@ struct MissionOverlay: View {
                         Text(won ? S.networkRestored : S.signalLost)
                             .font(AppTheme.mono(won ? 22 : 28, weight: .black))
                             .foregroundStyle(AppTheme.textPrimary)
-                            .kerning(won ? 1 : 2)
+                            .adaptiveKerning(won ? 1 : 2)
                         if !won {
                             TechLabel(text: S.failureCauseLabel(vm.failureCause),
                                       color: AppTheme.danger.opacity(0.75))
                             Text(S.failureCauseHint(vm.failureCause))
                                 .font(.system(size: 9, weight: .regular))
                                 .foregroundStyle(AppTheme.sage.opacity(0.60))
-                                .kerning(0.5)
+                                .adaptiveKerning(0.5)
                             if vm.consecutiveFailures >= 2 {
                                 Text(S.frustrationMessage(failures: vm.consecutiveFailures))
                                     .font(AppTheme.mono(9, weight: .semibold))
                                     .foregroundStyle(AppTheme.accentPrimary.opacity(0.80))
-                                    .kerning(1.5)
+                                    .adaptiveKerning(1.5)
                                     .padding(.top, 2)
                             }
                         }
@@ -961,7 +962,7 @@ struct MissionOverlay: View {
                                     .font(.system(size: 11, weight: .bold))
                                 Text(won ? S.retryLevel : S.retryLabel)
                                     .font(AppTheme.mono(won ? 12 : 14, weight: .bold))
-                                    .kerning(1.5)
+                                    .adaptiveKerning(1.5)
                             }
                             .frame(maxWidth: .infinity)
                             .frame(height: won ? 48 : 64)
@@ -980,7 +981,7 @@ struct MissionOverlay: View {
                                     .font(.system(size: 11, weight: .bold))
                                 Text(S.shareResult)
                                     .font(AppTheme.mono(11, weight: .bold))
-                                    .kerning(1.5)
+                                    .adaptiveKerning(1.5)
                             }
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
@@ -994,7 +995,7 @@ struct MissionOverlay: View {
                         Text(S.returnToBase)
                             .font(AppTheme.mono(11))
                             .foregroundStyle(AppTheme.textSecondary)
-                            .kerning(1)
+                            .adaptiveKerning(1)
                             .frame(maxWidth: .infinity)
                             .frame(height: 44)
                     }
@@ -1065,7 +1066,7 @@ struct IntroWinOverlay: View {
                     Text(S.signalRouted)
                         .font(AppTheme.mono(24, weight: .black))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .kerning(1)
+                        .adaptiveKerning(1)
                     TechLabel(text: S.networkOnline, color: AppTheme.accentSecondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -1093,7 +1094,7 @@ struct IntroWinOverlay: View {
                     HStack(spacing: 10) {
                         Text(S.accessGranted)
                             .font(AppTheme.mono(12, weight: .bold))
-                            .kerning(2)
+                            .adaptiveKerning(2)
                         Image(systemName: "arrow.right")
                             .font(.system(size: 11, weight: .bold))
                     }
@@ -1168,7 +1169,7 @@ struct OnboardingTutorialOverlay: View {
                             Text(S.tutorialSignalSource)
                                 .font(AppTheme.mono(9, weight: .bold))
                                 .foregroundStyle(AppTheme.accentPrimary)
-                                .kerning(0.5)
+                                .adaptiveKerning(0.5)
                         }
 
                         // Arrow
@@ -1192,7 +1193,7 @@ struct OnboardingTutorialOverlay: View {
                             Text(S.tutorialTargetRelay)
                                 .font(AppTheme.mono(9, weight: .bold))
                                 .foregroundStyle(AppTheme.success)
-                                .kerning(0.5)
+                                .adaptiveKerning(0.5)
                         }
                     }
 
@@ -1212,7 +1213,7 @@ struct OnboardingTutorialOverlay: View {
                             .font(.system(size: 12, weight: .medium))
                         Text(S.tutorialTapHint)
                             .font(AppTheme.mono(10, weight: .bold))
-                            .kerning(1)
+                            .adaptiveKerning(1)
                     }
                     .foregroundStyle(AppTheme.textSecondary)
                 }
@@ -1230,7 +1231,7 @@ struct OnboardingTutorialOverlay: View {
                     HStack(spacing: 10) {
                         Text(S.tutorialBeginMission)
                             .font(AppTheme.mono(12, weight: .bold))
-                            .kerning(2)
+                            .adaptiveKerning(2)
                         Image(systemName: "arrow.right")
                             .font(.system(size: 11, weight: .bold))
                     }
@@ -1282,7 +1283,7 @@ struct IntroFailOverlay: View {
                     Text(S.routingFailed)
                         .font(AppTheme.mono(24, weight: .black))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .kerning(1)
+                        .adaptiveKerning(1)
                     TechLabel(text: S.networkDisconnected, color: AppTheme.danger.opacity(0.80))
                 }
                 .frame(maxWidth: .infinity)
@@ -1298,7 +1299,7 @@ struct IntroFailOverlay: View {
                         .font(AppTheme.mono(11, weight: .regular))
                         .foregroundStyle(AppTheme.textSecondary)
                         .multilineTextAlignment(.center)
-                        .kerning(0.5)
+                        .adaptiveKerning(0.5)
                         .padding(.horizontal, 8)
                 }
                 .frame(maxWidth: .infinity)
@@ -1316,7 +1317,7 @@ struct IntroFailOverlay: View {
                             .font(.system(size: 11, weight: .bold))
                         Text(S.retryMission)
                             .font(AppTheme.mono(12, weight: .bold))
-                            .kerning(2)
+                            .adaptiveKerning(2)
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
@@ -1392,7 +1393,7 @@ struct MechanicUnlockView: View {
                     Text(S.mechanicTitle(mechanic))
                         .font(AppTheme.mono(20, weight: .black))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .kerning(1)
+                        .adaptiveKerning(1)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
@@ -1420,7 +1421,7 @@ struct MechanicUnlockView: View {
                 Button(action: onDismiss) {
                     Text(S.understood)
                         .font(AppTheme.mono(12, weight: .bold))
-                        .kerning(2)
+                        .adaptiveKerning(2)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
                         .background(amber)
@@ -1473,7 +1474,7 @@ struct DailyChallengeConfirmOverlay: View {
                     Text(S.dailyChallengeReady)
                         .font(AppTheme.mono(20, weight: .black))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .kerning(1)
+                        .adaptiveKerning(1)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
@@ -1501,7 +1502,7 @@ struct DailyChallengeConfirmOverlay: View {
                 Button(action: onPlay) {
                     Text(S.dailyChallengePlay)
                         .font(AppTheme.mono(12, weight: .bold))
-                        .kerning(2)
+                        .adaptiveKerning(2)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
                         .background(amber)
@@ -1515,7 +1516,7 @@ struct DailyChallengeConfirmOverlay: View {
                     Text(S.dailyChallengeNotReady)
                         .font(AppTheme.mono(11))
                         .foregroundStyle(AppTheme.textSecondary)
-                        .kerning(1)
+                        .adaptiveKerning(1)
                         .frame(maxWidth: .infinity)
                         .frame(height: 44)
                 }
@@ -1711,7 +1712,7 @@ struct MilestoneView: View {
                     Text(S.signalEstablished)
                         .font(AppTheme.mono(22, weight: .black))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .kerning(1.5)
+                        .adaptiveKerning(1.5)
                 }
                 .opacity(titleRevealed ? 1 : 0)
                 .offset(y: titleRevealed ? 0 : 10)
@@ -1721,7 +1722,7 @@ struct MilestoneView: View {
                     Text(S.missionProgress(completedCount, totalCount))
                         .font(AppTheme.mono(12, weight: .semibold))
                         .foregroundStyle(AppTheme.accentSecondary)
-                        .kerning(2)
+                        .adaptiveKerning(2)
                         .monospacedDigit()
 
                     GeometryReader { g in

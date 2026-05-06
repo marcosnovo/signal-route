@@ -152,7 +152,7 @@ struct SelfQAView: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Image(systemName: icon).font(.system(size: 9, weight: .bold))
-                Text(label).font(AppTheme.mono(9, weight: .bold)).kerning(0.5)
+                Text(label).font(AppTheme.mono(9, weight: .bold)).adaptiveKerning(0.5)
             }
             .foregroundStyle(color)
             .frame(maxWidth: .infinity)
@@ -248,7 +248,7 @@ struct QAResultRow: View {
                     Text(result.name)
                         .font(AppTheme.mono(8, weight: .bold))
                         .foregroundStyle(AppTheme.textPrimary)
-                        .kerning(0.3)
+                        .adaptiveKerning(0.3)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(result.detail)
@@ -275,7 +275,7 @@ struct QAResultRow: View {
                                     .font(.system(size: 7))
                                 Text("JUMP TO L\(String(format: "%03d", levelID))")
                                     .font(AppTheme.mono(7, weight: .bold))
-                                    .kerning(0.4)
+                                    .adaptiveKerning(0.4)
                             }
                             .foregroundStyle(AppTheme.accentPrimary)
                         }

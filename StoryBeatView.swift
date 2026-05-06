@@ -126,7 +126,7 @@ struct StoryBeatView: View {
                     Text(beat.displaySource(for: settings.language))
                         .font(AppTheme.mono(7, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.68))
-                        .kerning(1.0)
+                        .adaptiveKerning(1.0)
                 }
                 .padding(.horizontal, 16).padding(.bottom, 10)
             }
@@ -144,12 +144,12 @@ struct StoryBeatView: View {
             Text(S.incomingTransmission)
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(accentColor.opacity(0.70))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
             Spacer()
             Text(beat.displaySource(for: settings.language))
                 .font(AppTheme.mono(7, weight: .semibold))
                 .foregroundStyle(AppTheme.textSecondary)
-                .kerning(0.8)
+                .adaptiveKerning(0.8)
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
         .background(accentColor.opacity(0.06))
@@ -164,7 +164,7 @@ struct StoryBeatView: View {
             Text(S.storyTriggerLabel(beat.trigger))
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(accentColor)
-                .kerning(1.2)
+                .adaptiveKerning(1.2)
                 .padding(.horizontal, 7).padding(.vertical, 3)
                 .background(accentColor.opacity(0.12))
                 .overlay(
@@ -177,7 +177,7 @@ struct StoryBeatView: View {
             Text(beat.displayTitle(for: settings.language))
                 .font(AppTheme.mono(24, weight: .black))
                 .foregroundStyle(Color.white)
-                .kerning(3)
+                .adaptiveKerning(3)
                 .fixedSize(horizontal: false, vertical: true)
 
             // Body — typewriter reveal.
@@ -206,7 +206,7 @@ struct StoryBeatView: View {
                     Text(S.storyFooterHint(hint))
                         .font(AppTheme.mono(8, weight: .bold))
                         .foregroundStyle(accentColor.opacity(0.70))
-                        .kerning(1.0)
+                        .adaptiveKerning(1.0)
                 }
                 .opacity(isTyping ? 0 : 1)
                 .animation(.easeIn(duration: 0.28), value: isTyping)
@@ -224,7 +224,7 @@ struct StoryBeatView: View {
             HStack(spacing: 6) {
                 Text(S.continueAction)
                     .font(AppTheme.mono(10, weight: .bold))
-                    .kerning(2)
+                    .adaptiveKerning(2)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 8, weight: .bold))
             }
@@ -414,12 +414,12 @@ struct StoryModal: View {
             Text(S.incomingTransmission)
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(accent.opacity(0.70))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
             Spacer()
             Text(beat.displaySource(for: settings.language))
                 .font(AppTheme.mono(7, weight: .semibold))
                 .foregroundStyle(AppTheme.textSecondary)
-                .kerning(0.8)
+                .adaptiveKerning(0.8)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -436,7 +436,7 @@ struct StoryModal: View {
             Text(S.storyTriggerLabel(beat.trigger))
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(accent)
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(accent.opacity(0.18))
                 .overlay(
@@ -449,7 +449,7 @@ struct StoryModal: View {
             Text(beat.displayTitle(for: settings.language))
                 .font(AppTheme.mono(24, weight: .black))
                 .foregroundStyle(.white)
-                .kerning(2.5)
+                .adaptiveKerning(2.5)
                 .fixedSize(horizontal: false, vertical: true)
 
             // Body — typewriter effect.
@@ -478,7 +478,7 @@ struct StoryModal: View {
                     Text(S.storyFooterHint(hint))
                         .font(AppTheme.mono(8, weight: .bold))
                         .foregroundStyle(accent.opacity(0.80))
-                        .kerning(1.2)
+                        .adaptiveKerning(1.2)
                 }
                 .opacity(isTyping ? 0 : 1)
                 .animation(.easeIn(duration: 0.28), value: isTyping)
@@ -515,7 +515,7 @@ struct StoryModal: View {
             HStack(spacing: 8) {
                 Text(ctaLabel)
                     .font(AppTheme.mono(11, weight: .bold))
-                    .kerning(2)
+                    .adaptiveKerning(2)
                 Image(systemName: ctaIcon)
                     .font(.system(size: 9, weight: .bold))
             }
@@ -657,7 +657,7 @@ private struct AnimatedImageFrame: View {
                 Text(source)
                     .font(AppTheme.mono(7, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.68))
-                    .kerning(1.0)
+                    .adaptiveKerning(1.0)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 14)

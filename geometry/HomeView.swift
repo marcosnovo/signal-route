@@ -179,7 +179,7 @@ struct HomeView: View {
                             HStack(spacing: 10) {
                                 Text(S.initializeTraining)
                                     .font(AppTheme.mono(12, weight: .bold))
-                                    .kerning(2)
+                                    .adaptiveKerning(2)
                                 Image(systemName: "arrow.right")
                                     .font(.system(size: 11, weight: .bold))
                             }
@@ -263,7 +263,7 @@ struct HomeView: View {
                 Text(level.difficulty.fullLabel)
                     .font(AppTheme.mono(7, weight: .bold))
                     .foregroundStyle(level.difficulty.color)
-                    .kerning(1.5)
+                    .adaptiveKerning(1.5)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .overlay(
@@ -289,7 +289,7 @@ struct HomeView: View {
             Text(S.objectiveText(type: level.objectiveType, targets: level.numTargets))
                 .font(AppTheme.mono(10))
                 .foregroundStyle(AppTheme.sage.opacity(0.78))
-                .kerning(1.0)
+                .adaptiveKerning(1.0)
                 .padding(.top, 6)
 
             // Campaign progress — bar + live percentage readout
@@ -332,7 +332,7 @@ struct HomeView: View {
                         ))
                         .font(AppTheme.mono(8))
                         .foregroundStyle(AppTheme.sage.opacity(0.58))
-                        .kerning(0.8)
+                        .adaptiveKerning(0.8)
                     }
                 }
             }
@@ -373,7 +373,7 @@ struct HomeView: View {
                     let s = Int(secs) % 60
                     Text(String(format: "%02d:%02d:%02d", h, m, s))
                         .font(AppTheme.mono(10, weight: .black))
-                        .kerning(0.6)
+                        .adaptiveKerning(0.6)
                         .foregroundStyle(AppTheme.sage.opacity(0.5))
                         .monospacedDigit()
                 }
@@ -397,9 +397,10 @@ struct HomeView: View {
                         .foregroundStyle(AppTheme.accentPrimary)
                     Text(S.dailyChallenge)
                         .font(AppTheme.mono(8, weight: .bold))
-                        .kerning(0.6)
+                        .adaptiveKerning(0.6)
                         .foregroundStyle(AppTheme.textPrimary)
                         .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         .minimumScaleFactor(0.7)
                 }
                 .frame(maxWidth: .infinity, minHeight: 50)
@@ -430,7 +431,7 @@ struct HomeView: View {
                     .foregroundStyle(AppTheme.sage)
                 Text(S.versus)
                     .font(AppTheme.mono(8, weight: .bold))
-                    .kerning(0.8)
+                    .adaptiveKerning(0.8)
                     .foregroundStyle(AppTheme.sage.opacity(0.82))
             }
             .frame(maxWidth: .infinity, minHeight: 50)
@@ -451,7 +452,7 @@ struct HomeView: View {
                 .font(.system(size: 9, weight: .semibold))
             Text(S.dailyChallengeCompleted)
                 .font(AppTheme.mono(8, weight: .bold))
-                .kerning(0.8)
+                .adaptiveKerning(0.8)
             Text("·")
             TimelineView(.periodic(from: .now, by: 1)) { _ in
                 let secs = max(0, DailyChallengeConfig.secondsUntilNext)
@@ -460,7 +461,7 @@ struct HomeView: View {
                 let s = Int(secs) % 60
                 Text(S.nextIn(String(format: "%02d:%02d:%02d", h, m, s)))
                     .font(AppTheme.mono(8))
-                    .kerning(0.6)
+                    .adaptiveKerning(0.6)
             }
         }
         .foregroundStyle(AppTheme.sage.opacity(0.38))
@@ -472,7 +473,7 @@ struct HomeView: View {
             HStack(spacing: 12) {
                 Text(label)
                     .font(AppTheme.mono(15, weight: .black))
-                    .kerning(3)
+                    .adaptiveKerning(3)
                 Image(systemName: "arrow.right")
                     .font(.system(size: 13, weight: .bold))
             }
@@ -518,13 +519,14 @@ struct HomeView: View {
                 // Label
                 Text(isAuth ? S.leaderboard : S.connectForLeaderboard)
                     .font(AppTheme.mono(11, weight: .bold))
-                    .kerning(1.8)
+                    .adaptiveKerning(1.8)
                     .foregroundStyle(
                         isAuth
                             ? AppTheme.sage.opacity(0.82)
                             : AppTheme.textSecondary.opacity(0.52)
                     )
                     .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     .minimumScaleFactor(0.85)
 
                 Spacer(minLength: 0)
@@ -582,7 +584,7 @@ struct HomeView: View {
                             .font(.system(size: 13, weight: .bold))
                         Text(S.unlockUnlimitedAccess)
                             .font(AppTheme.mono(12, weight: .black))
-                            .kerning(1.5)
+                            .adaptiveKerning(1.5)
                     }
                     .frame(width: 260, height: 58)
                     .background(AppTheme.accentPrimary)
@@ -602,7 +604,7 @@ struct HomeView: View {
                         // Cooldown cleared — show dim placeholder while checkExpiry fires
                         Text(S.play)
                             .font(AppTheme.mono(15, weight: .black))
-                            .kerning(3)
+                            .adaptiveKerning(3)
                             .foregroundStyle(AppTheme.textSecondary.opacity(0.32))
                             .onAppear { entitlement.checkExpiry() }
                     } else {
@@ -610,7 +612,7 @@ struct HomeView: View {
                             Text(S.availableIn.uppercased())
                                 .font(AppTheme.mono(7, weight: .bold))
                                 .foregroundStyle(AppTheme.textSecondary.opacity(0.58))
-                                .kerning(2)
+                                .adaptiveKerning(2)
                             Text(formatCooldown(remaining))
                                 .font(AppTheme.mono(20, weight: .black))
                                 .foregroundStyle(AppTheme.textSecondary.opacity(0.72))
@@ -638,7 +640,7 @@ struct HomeView: View {
             ))
             .font(AppTheme.mono(8))
             .foregroundStyle(AppTheme.sage.opacity(0.58))
-            .kerning(0.8)
+            .adaptiveKerning(0.8)
         }
     }
 
@@ -676,7 +678,7 @@ struct HomeView: View {
                             .font(.system(size: 7, weight: .semibold))
                         Text(S.unlockUnlimitedAccess)
                             .font(AppTheme.mono(7, weight: .bold))
-                            .kerning(0.5)
+                            .adaptiveKerning(0.5)
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.system(size: 6, weight: .semibold))
@@ -739,7 +741,7 @@ struct HomeView: View {
                         Text(planet.difficulty.fullLabel)
                             .font(AppTheme.mono(7, weight: .bold))
                             .foregroundStyle(planet.color.opacity(0.80))
-                            .kerning(0.8)
+                            .adaptiveKerning(0.8)
                     }
                     .padding(.leading, 18)
                     .padding(.trailing, 12)
@@ -759,13 +761,14 @@ struct HomeView: View {
                             .font(AppTheme.mono(17, weight: .black))
                             .foregroundStyle(.white)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                             .minimumScaleFactor(0.68)
                             .tracking(-0.3)
 
                         Text(S.zoneBrief(planet.missionBrief))
                             .font(AppTheme.mono(8))
                             .foregroundStyle(planet.color.opacity(0.82))
-                            .kerning(0.5)
+                            .adaptiveKerning(0.5)
                             .padding(.top, 2)
 
                         Spacer(minLength: 6)
@@ -800,7 +803,7 @@ struct HomeView: View {
                             Text(isEarned ? "UNLOCKED" : "ACTIVE")
                                 .font(AppTheme.mono(7, weight: .bold))
                                 .foregroundStyle(statusColor.opacity(0.85))
-                                .kerning(0.5)
+                                .adaptiveKerning(0.5)
                             Spacer()
                             HStack(spacing: 3) {
                                 TechLabel(text: S.viewPass,
@@ -859,7 +862,7 @@ struct HomeView: View {
                         Text("\(pct)%")
                             .font(AppTheme.mono(7, weight: .bold))
                             .foregroundStyle(AppTheme.accentPrimary.opacity(0.90))
-                            .kerning(0.5)
+                            .adaptiveKerning(0.5)
                             .monospacedDigit()
                     }
                     .padding(.leading, 14)
@@ -890,7 +893,7 @@ struct HomeView: View {
                         Text(S.missionsCompletedShort)
                             .font(AppTheme.mono(7))
                             .foregroundStyle(AppTheme.textSecondary.opacity(0.60))
-                            .kerning(0.3)
+                            .adaptiveKerning(0.3)
                             .padding(.top, 1)
                             .transaction { $0.animation = nil }
 
@@ -926,7 +929,7 @@ struct HomeView: View {
                             Text(S.viewFullMap)
                                 .font(AppTheme.mono(7, weight: .bold))
                                 .foregroundStyle(AppTheme.accentPrimary.opacity(0.92))
-                                .kerning(0.8)
+                                .adaptiveKerning(0.8)
                             Spacer()
                             Image(systemName: "arrow.right")
                                 .font(.system(size: 8, weight: .bold))
@@ -973,7 +976,7 @@ struct HomeView: View {
                         .font(.system(size: 12, weight: .bold))
                     Text("CONFIG")
                         .font(AppTheme.mono(9, weight: .bold))
-                        .kerning(0.8)
+                        .adaptiveKerning(0.8)
                 }
                 .foregroundStyle(AppTheme.textPrimary.opacity(0.75))
                 .padding(.horizontal, 12)
@@ -1110,7 +1113,7 @@ struct AllClearCard: View {
             Text(S.allMissionsCleared)
                 .font(AppTheme.mono(13, weight: .bold))
                 .foregroundStyle(Color(hex: "141414"))
-                .kerning(2)
+                .adaptiveKerning(2)
             Text(S.allMissionsClearedSub(count: LevelGenerator.levels.count))
                 .font(AppTheme.mono(10))
                 .foregroundStyle(.black.opacity(0.48))
@@ -1150,7 +1153,7 @@ struct TrainingCard: View {
                 Text(S.required)
                     .font(AppTheme.mono(8, weight: .bold))
                     .foregroundStyle(AppTheme.accentPrimary)
-                    .kerning(1)
+                    .adaptiveKerning(1)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 4)
                     .overlay(
@@ -1233,6 +1236,7 @@ private struct PlayerBlock: View {
                     .font(AppTheme.mono(11, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                 HStack(spacing: 5) {
                     Circle()
                         .fill(AppTheme.success)
@@ -1241,7 +1245,7 @@ private struct PlayerBlock: View {
                     Text("GC  ·  ONLINE")
                         .font(AppTheme.mono(7))
                         .foregroundStyle(AppTheme.textSecondary.opacity(0.60))
-                        .kerning(0.5)
+                        .adaptiveKerning(0.5)
                 }
             }
         }
@@ -1266,7 +1270,7 @@ private struct PlayerBlock: View {
                 Text("TAP TO CONNECT")
                     .font(AppTheme.mono(7))
                     .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
-                    .kerning(0.5)
+                    .adaptiveKerning(0.5)
             }
         }
     }
@@ -1394,6 +1398,7 @@ struct AstronautProgressCard: View {
                             .foregroundStyle(.white)
                             .tracking(-0.5)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                             .minimumScaleFactor(0.55)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1477,6 +1482,7 @@ struct AstronautProgressCard: View {
                 .foregroundStyle(.white)
                 .monospacedDigit()
                 .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                 .minimumScaleFactor(0.70)
         }
         .frame(maxWidth: .infinity)
@@ -1614,7 +1620,7 @@ struct PlanetTicketView: View {
                             .font(.system(size: 11, weight: revealed ? .bold : .regular))
                         Text(S.shareProgress)
                             .font(AppTheme.mono(12, weight: .bold))
-                            .kerning(2)
+                            .adaptiveKerning(2)
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
@@ -1760,7 +1766,7 @@ struct PlanetTicketView: View {
                         Text(copies[loadingPhase % copies.count])
                             .font(AppTheme.mono(8, weight: .semibold))
                             .foregroundStyle(AppTheme.textSecondary)
-                            .kerning(1.5)
+                            .adaptiveKerning(1.5)
                             .id(loadingPhase)
                             .transition(.opacity)
 
@@ -1996,7 +2002,7 @@ private struct PlayCTAButton: View {
             HStack {
                 Text(label)
                     .font(AppTheme.mono(18, weight: .black))
-                    .kerning(4)
+                    .adaptiveKerning(4)
                 Spacer()
                 Image(systemName: "arrow.right")
                     .font(.system(size: 16, weight: .bold))
@@ -2094,7 +2100,7 @@ struct MapPreviewBlock: View {
                         Text(S.viewFullMap)
                             .font(AppTheme.mono(8, weight: .bold))
                             .foregroundStyle(AppTheme.accentPrimary.opacity(0.80))
-                            .kerning(1)
+                            .adaptiveKerning(1)
                         Image(systemName: "arrow.right")
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(AppTheme.accentPrimary.opacity(0.70))
@@ -2182,12 +2188,12 @@ struct MapPreviewBlock: View {
                     Text(S.missionsCompleted(done: completed, total: total))
                         .font(AppTheme.mono(7))
                         .foregroundStyle(AppTheme.textSecondary.opacity(0.42))
-                        .kerning(0.8)
+                        .adaptiveKerning(0.8)
                     Spacer()
                     Text("\(completionPct)% COMPLETE")
                         .font(AppTheme.mono(7, weight: .bold))
                         .foregroundStyle(AppTheme.accentPrimary.opacity(0.60))
-                        .kerning(1)
+                        .adaptiveKerning(1)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -2240,8 +2246,8 @@ private struct GeoTitle: View {
     @ViewBuilder
     private var letters: some View {
         HStack(spacing: 0) {
-            Text("GEOMET").kerning(5)
-            Text("R").kerning(5)
+            Text("GEOMET").adaptiveKerning(5)
+            Text("R").adaptiveKerning(5)
                 .rotationEffect(.degrees(rTilt))
             Text("Y")
         }
@@ -2491,7 +2497,7 @@ struct LeaderboardPickerOverlay: View {
             Spacer()
             Text(S.leaderboardPickerTitle)
                 .font(AppTheme.mono(12, weight: .bold))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
                 .foregroundStyle(light)
             Spacer()
             Button(action: { SoundManager.play(.tapPrimary); gcManager.openChallenges() }) {
@@ -2523,7 +2529,7 @@ struct LeaderboardPickerOverlay: View {
         }) {
             Text(label)
                 .font(AppTheme.mono(10, weight: active ? .bold : .medium))
-                .kerning(0.8)
+                .adaptiveKerning(0.8)
                 .foregroundStyle(active ? light : muted.opacity(0.6))
                 .padding(.vertical, 8)
                 .frame(maxWidth: .infinity)
@@ -2581,7 +2587,7 @@ struct LeaderboardPickerOverlay: View {
                                                     .font(.system(size: 9, weight: .bold))
                                                 Text(S.shareLabel)
                                                     .font(AppTheme.mono(8, weight: .bold))
-                                                    .kerning(1)
+                                                    .adaptiveKerning(1)
                                             }
                                             .foregroundStyle(sage)
                                             .padding(.horizontal, 10)
@@ -2630,7 +2636,7 @@ struct LeaderboardPickerOverlay: View {
                         .font(.system(size: 12, weight: .bold))
                     Text(S.inviteFriends)
                         .font(AppTheme.mono(11, weight: .bold))
-                        .kerning(1)
+                        .adaptiveKerning(1)
                     if gcManager.activeChallengeCount > 0 {
                         Text("\(gcManager.activeChallengeCount)")
                             .font(AppTheme.mono(9, weight: .black))
@@ -2677,8 +2683,9 @@ struct LeaderboardPickerOverlay: View {
         }) {
             Text(label)
                 .font(AppTheme.mono(10, weight: .bold))
-                .kerning(0.5)
+                .adaptiveKerning(0.5)
                 .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                 .minimumScaleFactor(0.7)
                 .foregroundStyle(active ? ink : light)
                 .padding(.vertical, 10)
@@ -2708,8 +2715,9 @@ struct LeaderboardPickerOverlay: View {
         }) {
             Text(label)
                 .font(AppTheme.mono(8, weight: .bold))
-                .kerning(0.3)
+                .adaptiveKerning(0.3)
                 .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                 .minimumScaleFactor(0.6)
                 .foregroundStyle(active ? ink : muted)
                 .padding(.horizontal, 10)
@@ -2781,6 +2789,7 @@ struct LeaderboardPickerOverlay: View {
                         .font(.system(size: 96, weight: .heavy))
                         .foregroundStyle(orange)
                         .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         .minimumScaleFactor(0.4)
                 }
 
@@ -2790,6 +2799,7 @@ struct LeaderboardPickerOverlay: View {
                         .tracking(-0.8)
                         .foregroundStyle(ink)
                         .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         .minimumScaleFactor(0.7)
 
                     if pct > 0 {
@@ -2848,6 +2858,7 @@ struct LeaderboardPickerOverlay: View {
                 .font(AppTheme.mono(13, weight: isLocal ? .bold : .medium))
                 .foregroundStyle(isLocal ? orange : light)
                 .lineLimit(1)
+                            .minimumScaleFactor(0.7)
 
             if isLocal {
                 Text(S.leaderboardYou)
@@ -2931,12 +2942,14 @@ struct LeaderboardPickerOverlay: View {
                     .font(AppTheme.mono(11, weight: ach.isCompleted ? .bold : .medium))
                     .foregroundStyle(ach.isCompleted ? light : muted.opacity(0.6))
                     .lineLimit(1)
+                            .minimumScaleFactor(0.7)
 
                 HStack(spacing: 6) {
                     Text(ach.descriptionText)
                         .font(AppTheme.mono(8, weight: .medium))
                         .foregroundStyle(muted.opacity(0.5))
                         .lineLimit(1)
+                            .minimumScaleFactor(0.7)
 
                     if ach.maximumPoints > 0 {
                         Text(S.achievementPoints(ach.maximumPoints))
@@ -2980,7 +2993,7 @@ struct LeaderboardPickerOverlay: View {
                             .font(.system(size: 11, weight: .bold))
                         Text(S.achievements)
                             .font(AppTheme.mono(10, weight: .semibold))
-                            .kerning(0.5)
+                            .adaptiveKerning(0.5)
                     }
                     .foregroundStyle(muted)
                 }
@@ -3101,9 +3114,10 @@ struct ChallengeFlowOverlay: View {
             Spacer()
             Text(S.challengeSelectTitle)
                 .font(AppTheme.mono(12, weight: .bold))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
                 .foregroundStyle(light)
                 .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                 .minimumScaleFactor(0.7)
             Spacer()
             Color.clear.frame(width: 44, height: 44)
@@ -3159,6 +3173,7 @@ struct ChallengeFlowOverlay: View {
                         .tracking(1.5)
                         .foregroundStyle(ink.opacity(0.5))
                         .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                 }
                 Spacer()
                 if def.hasActive {
@@ -3168,7 +3183,7 @@ struct ChallengeFlowOverlay: View {
                             .frame(width: 5, height: 5)
                         Text(S.challengeActive)
                             .font(AppTheme.mono(7, weight: .bold))
-                            .kerning(0.5)
+                            .adaptiveKerning(0.5)
                             .foregroundStyle(orange)
                     }
                     .padding(.horizontal, 6)
@@ -3521,7 +3536,7 @@ private struct AchievementCard3D: View {
                     .font(.system(size: 10, weight: .semibold))
                 Text(S.achievementCompleted)
                     .font(AppTheme.mono(7, weight: .bold))
-                    .kerning(1)
+                    .adaptiveKerning(1)
             }
             .foregroundStyle(orange)
         } else if ach.percentComplete > 0 {
@@ -3534,7 +3549,7 @@ private struct AchievementCard3D: View {
                     .font(.system(size: 9, weight: .medium))
                 Text(S.achievementLocked)
                     .font(AppTheme.mono(7, weight: .bold))
-                    .kerning(1)
+                    .adaptiveKerning(1)
             }
             .foregroundStyle(.white.opacity(0.28))
         }

@@ -34,7 +34,7 @@ struct PlayerSimulationView: View {
                         .font(.system(size: 9, weight: .bold))
                     Text("RUN PLAYER SIMULATION")
                         .font(AppTheme.mono(9, weight: .bold))
-                        .kerning(0.5)
+                        .adaptiveKerning(0.5)
                 }
                 .foregroundStyle(AppTheme.accentPrimary)
                 .frame(maxWidth: .infinity)
@@ -284,7 +284,7 @@ struct SimStepRow: View {
                 Text(step.name)
                     .font(AppTheme.mono(8, weight: .bold))
                     .foregroundStyle(AppTheme.textPrimary)
-                    .kerning(0.3)
+                    .adaptiveKerning(0.3)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(step.detail)

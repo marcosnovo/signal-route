@@ -65,7 +65,7 @@ struct MissionClearanceView: View {
             Text(S.missionControlEncryptedLink)
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(AppTheme.accentPrimary.opacity(0.65))
-                .kerning(1.2)
+                .adaptiveKerning(1.2)
             Spacer()
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
@@ -79,7 +79,7 @@ struct MissionClearanceView: View {
             Text(S.clearanceGranted)
                 .font(AppTheme.mono(7, weight: .bold))
                 .foregroundStyle(AppTheme.accentPrimary)
-                .kerning(1.2)
+                .adaptiveKerning(1.2)
                 .padding(.horizontal, 7).padding(.vertical, 3)
                 .background(AppTheme.accentPrimary.opacity(0.12))
                 .overlay(
@@ -92,7 +92,7 @@ struct MissionClearanceView: View {
             Text(S.missionReadyTitle)
                 .font(AppTheme.mono(24, weight: .black))
                 .foregroundStyle(Color.white)
-                .kerning(3)
+                .adaptiveKerning(3)
 
             // Body
             Text(S.clearedForFirstMission)
@@ -108,7 +108,7 @@ struct MissionClearanceView: View {
                 Text(S.mission1EarthOrbit)
                     .font(AppTheme.mono(8, weight: .bold))
                     .foregroundStyle(AppTheme.accentPrimary.opacity(0.70))
-                    .kerning(1.0)
+                    .adaptiveKerning(1.0)
             }
         }
         .padding(.horizontal, 18)
@@ -123,7 +123,7 @@ struct MissionClearanceView: View {
                     .font(.system(size: 10, weight: .bold))
                 Text(S.launchMission)
                     .font(AppTheme.mono(10, weight: .bold))
-                    .kerning(2)
+                    .adaptiveKerning(2)
             }
             .foregroundStyle(Color.black)
             .frame(maxWidth: .infinity)

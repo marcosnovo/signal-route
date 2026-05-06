@@ -299,13 +299,13 @@ private struct SectorCard: View {
                         .foregroundStyle(displayState == .locked
                                          ? AppTheme.textSecondary.opacity(0.40)
                                          : AppTheme.textPrimary)
-                        .kerning(1)
+                        .adaptiveKerning(1)
                     Text(S.zoneBrief(region.subtitle))
                         .font(AppTheme.mono(9, weight: .regular))
                         .foregroundStyle(displayState == .locked
                                          ? AppTheme.textSecondary.opacity(0.30)
                                          : region.accentColor.opacity(0.72))
-                        .kerning(2)
+                        .adaptiveKerning(2)
                 }
 
                 Spacer()
@@ -394,7 +394,7 @@ private struct SectorCard: View {
                 Text("\(total) \(S.missionsCount)")
                     .font(AppTheme.mono(9, weight: .bold))
                     .foregroundStyle(AppTheme.textSecondary.opacity(0.50))
-                    .kerning(1)
+                    .adaptiveKerning(1)
             }
         }
     }
@@ -470,7 +470,7 @@ private struct SectorCard: View {
                     .font(.system(size: 9, weight: .bold))
                 Text(S.unlimitedAccess)
                     .font(AppTheme.mono(8, weight: .bold))
-                    .kerning(1.5)
+                    .adaptiveKerning(1.5)
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 7, weight: .bold))
@@ -613,7 +613,7 @@ struct MissionCell: View {
                         Text(S.next)
                             .font(AppTheme.mono(6, weight: .bold))
                             .foregroundStyle(AppTheme.accentPrimary)
-                            .kerning(0.5)
+                            .adaptiveKerning(0.5)
                     } else {
                         Color.clear.frame(height: 8)
                     }

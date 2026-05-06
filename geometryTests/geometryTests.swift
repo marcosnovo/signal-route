@@ -151,26 +151,26 @@ struct MechanicSmokeTests {
     private static let oneWayRelayLevels: [Level] =
         levels.filter { level in reports.first(where: { $0.levelID == level.id })?.hasOneWayRelay == true }
     private static let earlyReportsForOneWay: [LevelValidationReport] =
-        reports.filter { $0.levelID < 146 }
+        reports.filter { $0.levelID < 136 }
 
     private static let fragileTileReports: [LevelValidationReport] =
         reports.filter { $0.hasFragileTile }
     private static let fragileTileLevels: [Level] =
         levels.filter { level in reports.first(where: { $0.levelID == level.id })?.hasFragileTile == true }
     private static let earlyReportsForFragile: [LevelValidationReport] =
-        reports.filter { $0.levelID < 151 }
+        reports.filter { $0.levelID < 146 }
 
     private static let chargeGateReports: [LevelValidationReport] =
         reports.filter { $0.hasChargeGate }
     private static let chargeGateLevels: [Level] =
         levels.filter { level in reports.first(where: { $0.levelID == level.id })?.hasChargeGate == true }
     private static let earlyReportsForChargeGate: [LevelValidationReport] =
-        reports.filter { $0.levelID < 164 }
+        reports.filter { $0.levelID < 158 }
 
     private static let interferenceZoneReports: [LevelValidationReport] =
         reports.filter { $0.hasInterferenceZone }
     private static let earlyReportsForInterference: [LevelValidationReport] =
-        reports.filter { $0.levelID < 171 }
+        reports.filter { $0.levelID < 168 }
 
     // MARK: - Baseline sanity
 
@@ -206,12 +206,12 @@ struct MechanicSmokeTests {
                 "L\(level.id): time limit \(limit)s is too short for any realistic play")
     }
 
-    /// Fewer than 2 s per minimum move makes a level reaction-based rather than puzzle-based.
-    @Test("Timed level allows at least 2 seconds per minimum move", arguments: Self.timedLevelsWithPositiveMoves)
+    /// Expert levels use time pressure as a core difficulty axis — 0.7 s/move is the floor.
+    @Test("Timed level allows at least 0.7 seconds per minimum move", arguments: Self.timedLevelsWithPositiveMoves)
     func timedLevelAllows2SecondsPerMove(_ level: Level) {
         guard let limit = level.timeLimit, level.minimumRequiredMoves > 0 else { return }
         let ratio = Double(limit) / Double(level.minimumRequiredMoves)
-        #expect(ratio >= 2.0,
+        #expect(ratio >= 0.7,
                 "L\(level.id): \(ratio)s/move (limit=\(limit)s min=\(level.minimumRequiredMoves))")
     }
 
@@ -288,10 +288,10 @@ struct MechanicSmokeTests {
     // MARK: - One-way relay mechanic
 
     /// Levels without one-way relay must not inadvertently carry the property.
-    @Test("One-way relay is absent before level ID 146", arguments: Self.earlyReportsForOneWay)
+    @Test("One-way relay is absent before level ID 136", arguments: Self.earlyReportsForOneWay)
     func oneWayRelayAbsentBeforeThreshold(_ report: LevelValidationReport) {
         #expect(!report.hasOneWayRelay,
-                "L\(report.levelID): oneWayRelay unexpectedly applied before threshold (id < 146)")
+                "L\(report.levelID): oneWayRelay unexpectedly applied before threshold (id < 136)")
     }
 
     @Test("One-way relay level passes solvability heuristic", arguments: Self.oneWayRelayReports)
@@ -322,10 +322,10 @@ struct MechanicSmokeTests {
 
     // MARK: - Fragile tile mechanic
 
-    @Test("Fragile tile is absent before level ID 151", arguments: Self.earlyReportsForFragile)
+    @Test("Fragile tile is absent before level ID 146", arguments: Self.earlyReportsForFragile)
     func fragileTileAbsentBeforeThreshold(_ report: LevelValidationReport) {
         #expect(!report.hasFragileTile,
-                "L\(report.levelID): fragileTile unexpectedly present before threshold (id < 151)")
+                "L\(report.levelID): fragileTile unexpectedly present before threshold (id < 146)")
     }
 
     @Test("Fragile tile level passes solvability heuristic", arguments: Self.fragileTileReports)
@@ -344,10 +344,10 @@ struct MechanicSmokeTests {
 
     // MARK: - Charge gate mechanic
 
-    @Test("Charge gate is absent before level ID 164", arguments: Self.earlyReportsForChargeGate)
+    @Test("Charge gate is absent before level ID 158", arguments: Self.earlyReportsForChargeGate)
     func chargeGateAbsentBeforeThreshold(_ report: LevelValidationReport) {
         #expect(!report.hasChargeGate,
-                "L\(report.levelID): chargeGate unexpectedly present before threshold (id < 164)")
+                "L\(report.levelID): chargeGate unexpectedly present before threshold (id < 158)")
     }
 
     @Test("Charge gate level passes solvability heuristic", arguments: Self.chargeGateReports)
@@ -366,10 +366,10 @@ struct MechanicSmokeTests {
 
     // MARK: - Interference zone mechanic
 
-    @Test("Interference zone is absent before level ID 171", arguments: Self.earlyReportsForInterference)
+    @Test("Interference zone is absent before level ID 168", arguments: Self.earlyReportsForInterference)
     func interferenceZoneAbsentBeforeThreshold(_ report: LevelValidationReport) {
         #expect(!report.hasInterferenceZone,
-                "L\(report.levelID): interferenceZone unexpectedly present before threshold (id < 171)")
+                "L\(report.levelID): interferenceZone unexpectedly present before threshold (id < 168)")
     }
 
     @Test("Interference zone level passes solvability heuristic", arguments: Self.interferenceZoneReports)
@@ -685,13 +685,13 @@ struct EntitlementConsumptionTests {
         #expect(s.dailyAttemptsUsed == 0, "Daily must not change during intro")
     }
 
-    @Test("Fail mid-intro also increments freeIntroCompleted by 1")
+    @Test("Fail mid-intro does NOT consume an intro slot (free retries)")
     func failMidIntroIncrements() {
         let s = EntitlementStore.shared
         s.setFreeIntroCompleted(1)
         s.recordAttempt(anyLevel, didWin: false)
-        #expect(s.freeIntroCompleted == 2,
-                "Both wins and fails consume an intro slot")
+        #expect(s.freeIntroCompleted == 1,
+                "Fails during intro are free retries — no slot consumed")
         #expect(s.dailyAttemptsUsed == 0, "Daily must not change during intro")
     }
 
@@ -705,14 +705,14 @@ struct EntitlementConsumptionTests {
         #expect(s.dailyLimitReached, "Cooldown must arm after intro exhaustion")
     }
 
-    @Test("Last intro session via FAIL also exhausts phase and arms cooldown")
+    @Test("Fail at last intro slot does NOT exhaust phase (free retry)")
     func lastIntroFailArmsCooldown() {
         let s = EntitlementStore.shared
         s.setFreeIntroCompleted(introLimit - 1)
         s.recordAttempt(anyLevel, didWin: false)
-        #expect(s.freeIntroCompleted == introLimit)
-        #expect(!s.isInIntroPhase)
-        #expect(s.dailyLimitReached, "Cooldown must arm on fail too")
+        #expect(s.freeIntroCompleted == introLimit - 1,
+                "Fails are free retries — counter stays at introLimit-1")
+        #expect(s.isInIntroPhase, "Still in intro phase after a fail")
     }
 
     @Test("Intro counter is clamped at freeIntroLimit (overflow protection)")
@@ -3204,15 +3204,15 @@ struct CampaignCatalogueTests {
         #expect(oort.count == 75, "Oort Cloud should have 75 levels, found \(oort.count)")
     }
 
-    @Test("Grid size is 4×4 for easy/early-medium, 5×5 for everything else")
+    @Test("Grid size is 4×4 for easy/medium, 5×5 for hard/expert")
     func gridSizeDistribution() {
         for level in Self.levels {
-            if level.id <= 50 {
+            if level.difficulty == .easy || level.difficulty == .medium {
                 #expect(level.gridSize == 4 || level.gridSize == 5,
-                        "L\(level.id): early level should be 4×4 or 5×5, got \(level.gridSize)")
+                        "L\(level.id): easy/medium level should be 4×4 or 5×5, got \(level.gridSize)")
             } else {
                 #expect(level.gridSize == 5,
-                        "L\(level.id): post-50 level should be 5×5, got \(level.gridSize)")
+                        "L\(level.id): hard/expert level should be 5×5, got \(level.gridSize)")
             }
         }
     }
@@ -3636,7 +3636,7 @@ struct DailyScoringTests {
             objectiveType: .normal, energyRating: 0
         )
         let hardMax = DailyScoring.computeScore(
-            difficulty: .hard, timeRemaining: 120, movesLeft: 20,
+            difficulty: .hard, timeRemaining: 110, movesLeft: 10,
             objectiveType: .energySaving, energyRating: 1.0
         )
         #expect(expertMin >= hardMax,

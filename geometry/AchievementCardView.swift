@@ -234,7 +234,7 @@ struct AchievementCardView: View {
         .overlay(alignment: .topTrailing) {
             Text(achievement.tier.label)
                 .font(AppTheme.mono(8, weight: .semibold))
-                .kerning(1.5)
+                .adaptiveKerning(1.5)
                 .foregroundStyle(.white.opacity(0.7))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
@@ -303,7 +303,7 @@ struct AchievementCardView: View {
             }
             Text(label)
                 .font(AppTheme.mono(7, weight: .semibold))
-                .kerning(1)
+                .adaptiveKerning(1)
                 .foregroundStyle(.white.opacity(0.30))
         }
     }
@@ -353,7 +353,7 @@ struct AchievementCardView: View {
                 .font(.system(size: 12, weight: .bold))
             Text(S.achievementCompleted)
                 .font(AppTheme.mono(9, weight: .bold))
-                .kerning(1)
+                .adaptiveKerning(1)
         }
         .foregroundStyle(accent)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -365,7 +365,7 @@ struct AchievementCardView: View {
                 .font(.system(size: 10, weight: .medium))
             Text(S.achievementLocked)
                 .font(AppTheme.mono(9, weight: .bold))
-                .kerning(1)
+                .adaptiveKerning(1)
         }
         .foregroundStyle(.white.opacity(0.20))
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -377,6 +377,7 @@ struct AchievementCardView: View {
         switch settings.language {
         case .es: achievement.titleES
         case .fr: achievement.titleFR
+        case .ja: achievement.titleJA
         default:  achievement.titleEN
         }
     }
@@ -385,6 +386,7 @@ struct AchievementCardView: View {
         switch settings.language {
         case .es: achievement.subtitleES
         case .fr: achievement.subtitleFR
+        case .ja: achievement.subtitleJA
         default:  achievement.subtitleEN
         }
     }

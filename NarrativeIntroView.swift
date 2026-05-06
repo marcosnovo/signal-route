@@ -25,6 +25,7 @@ struct NarrativeIntroView: View {
         switch settings.language {
         case .es: return panelsES
         case .fr: return panelsFR
+        case .ja: return panelsJA
         default:  return panelsEN
         }
     }
@@ -113,6 +114,34 @@ struct NarrativeIntroView: View {
          accentHex: "4B70DD"),
     ] }
 
+    private var panelsJA: [(sentences: [String], accentHex: String)] { [
+        (sentences: ["人類はかつてないほど",
+                     "遠くまで旅できるようになった。",
+                     "",
+                     "距離はもはや障壁ではない。",
+                     "安定性こそが課題だ。"],
+         accentHex: "4DB87A"),
+        (sentences: ["すべてのステーション、ゲート、",
+                     "軌道回廊は脆弱なエネルギーシステムに依存している。",
+                     "",
+                     "たった一つのルーティング障害が",
+                     "ミッション全体を停止させうる。"],
+         accentHex: "D4A055"),
+        (sentences: ["あなたは飛ぶためにここにいるのではない。",
+                     "",
+                     "ネットワークを復旧するためにここにいる。",
+                     "",
+                     "あなたの技術力が",
+                     "人類の到達距離を決める。"],
+         accentHex: "7EC8E3"),
+        (sentences: ["精密さを証明せよ。",
+                     "ランクを勝ち取れ。",
+                     "",
+                     "人類を宇宙の深淵へと導く",
+                     "ルートを解放せよ。"],
+         accentHex: "4B70DD"),
+    ] }
+
     // ── State ─────────────────────────────────────────────────────────────
 
     @State private var currentPanel:     Int  = 0
@@ -162,7 +191,7 @@ struct NarrativeIntroView: View {
                         Text(S.skip)
                             .font(AppTheme.mono(8, weight: .semibold))
                             .foregroundStyle(AppTheme.textSecondary.opacity(0.45))
-                            .kerning(1.5)
+                            .adaptiveKerning(1.5)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 18)   // 44pt minimum touch target
                     }
@@ -184,7 +213,7 @@ struct NarrativeIntroView: View {
                                     i == 0 ? Color.white : Color.white.opacity(0.82)
                                 )
                                 .multilineTextAlignment(.center)
-                                .kerning(0.4)
+                                .adaptiveKerning(0.4)
                                 .opacity(i < visibleSentences ? 1 : 0)
                                 .animation(.easeIn(duration: 0.5), value: visibleSentences)
                         }
@@ -216,7 +245,7 @@ struct NarrativeIntroView: View {
                             Text(isLastPanel ? S.begin : S.continueAction)
                                 .font(AppTheme.mono(8, weight: .bold))
                                 .foregroundStyle(accentColor)
-                                .kerning(1.5)
+                                .adaptiveKerning(1.5)
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 7, weight: .bold))
                                 .foregroundStyle(accentColor)
