@@ -28,6 +28,7 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
     // ── GK objects ───────────────────────────────────────────────────────
     private var currentMatch: GKMatch?
     private var searchTask: Task<Void, Never>?
+    private var matchStateCancellable: AnyCancellable?
 
     /// Callback fired when the shared level is ready (seed exchanged).
     /// VM builds the board in response, then calls `sendBoardReady()`.
@@ -60,6 +61,9 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
 
     private override init() {
         super.init()
+        matchStateCancellable = matchState.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
         loadLocalPlayerInfo()
     }
 
@@ -186,7 +190,22 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
         #if DEBUG
         print("[Versus] Sent boardReady (remote=\(matchState.remoteBoardReady))")
         #endif
-        if matchState.bothBoardReady { handleBothBoardReady() }
+        if matchState.bothBoardReady {
+            handleBothBoardReady()
+        } else if !isSoloTest {
+            // Retry until remote side acknowledges
+            Task {
+                for attempt in 1...3 {
+                    try? await Task.sleep(for: .seconds(2))
+                    guard matchState.phase == .matched,
+                          !matchState.remoteBoardReady else { break }
+                    #if DEBUG
+                    print("[Versus] Retrying .boardReady (attempt \(attempt))")
+                    #endif
+                    send(.boardReady)
+                }
+            }
+        }
     }
 
     /// Request a same-opponent rematch after a game ends.
@@ -301,14 +320,30 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
         #endif
 
         if isHost {
-            // Generate seed and send .ready to guest
             let seed = UInt64.random(in: 1...UInt64.max)
             let config = VersusLevelConfig.v3(difficulty: .medium)
             matchState.sharedSeed   = seed
             matchState.sharedConfig = config
-            send(.ready(payload: VersusReadyPayload(seed: seed, config: config)))
-            VersusTestHarness.shared.logSeedSent(seed)
-            // Host builds board immediately — VM will call sendBoardReady() when done
+
+            // Small delay so guest's delegate is wired before we send
+            Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard matchState.phase == .matched else { return }
+                send(.ready(payload: VersusReadyPayload(seed: seed, config: config)))
+                VersusTestHarness.shared.logSeedSent(seed)
+
+                // Retry up to 3 times if guest hasn't acknowledged (no boardReady yet)
+                for attempt in 1...3 {
+                    try? await Task.sleep(for: .seconds(2))
+                    guard matchState.phase == .matched,
+                          !matchState.remoteBoardReady else { break }
+                    #if DEBUG
+                    print("[Versus] Retrying .ready (attempt \(attempt))")
+                    #endif
+                    send(.ready(payload: VersusReadyPayload(seed: seed, config: config)))
+                }
+            }
+
             onLevelReady?(seed, config)
         }
         // Guest waits for .ready message → onLevelReady fires there
@@ -449,18 +484,18 @@ extension VersusMatchmakingManager: GKMatchDelegate {
     private func handleReceivedMessage(_ message: VersusMessage) {
         switch message {
         case .ready(let payload):
-            // Guest receives seed from host (also fires on rematch round)
             guard !matchState.isHost else { return }  // host ignores .ready
+            guard matchState.sharedSeed == 0 else { return }  // ignore duplicate
             matchState.sharedSeed   = payload.seed
             matchState.sharedConfig = payload.config
             VersusTestHarness.shared.logSeedReceived(payload.seed)
             #if DEBUG
             print("[Versus] Received seed=\(payload.seed) from host")
             #endif
-            // Guest builds board — VM calls sendBoardReady() when done
             onLevelReady?(payload.seed, payload.config)
 
         case .boardReady:
+            guard !matchState.remoteBoardReady else { return }  // ignore duplicate
             matchState.remoteBoardReady = true
             VersusTestHarness.shared.logRemoteBoardReady()
             onRemoteBoardReady?()

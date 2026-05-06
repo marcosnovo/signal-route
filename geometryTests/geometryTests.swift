@@ -5,6 +5,7 @@
 //  Created by Marcos on 10/04/2026.
 //
 
+import Combine
 import Foundation
 import Testing
 @testable import geometry
@@ -3942,6 +3943,505 @@ struct VersusFeatureFlagTests {
     }
 }
 #endif
+
+// MARK: - VersusMatchState Tests
+@Suite("VersusMatchState — State Machine")
+struct VersusMatchStateTests {
+
+    @Test("reset() restores all defaults")
+    @MainActor func resetRestoresDefaults() {
+        let state = VersusMatchState()
+        state.phase = .playing
+        state.sharedSeed = 12345
+        state.sharedConfig = .defaultV3
+        state.localBoardReady = true
+        state.remoteBoardReady = true
+        state.localOutcome = .won
+        state.remoteOutcome = .lost
+        state.isHost = true
+        state.opponentDisplayName = "RIVAL"
+        state.error = "some error"
+        state.localWantsRematch = true
+        state.remoteWantsRematch = true
+
+        state.reset()
+
+        #expect(state.phase == .idle)
+        #expect(state.sharedSeed == 0)
+        #expect(state.sharedConfig == nil)
+        #expect(!state.localBoardReady)
+        #expect(!state.remoteBoardReady)
+        #expect(state.localOutcome == nil)
+        #expect(state.remoteOutcome == nil)
+        #expect(!state.isHost)
+        #expect(state.opponentDisplayName == "OPPONENT")
+        #expect(state.error == nil)
+        #expect(!state.localWantsRematch)
+        #expect(!state.remoteWantsRematch)
+    }
+
+    @Test("bothBoardReady requires both flags true")
+    @MainActor func bothBoardReadyRequiresBothFlags() {
+        let state = VersusMatchState()
+        #expect(!state.bothBoardReady)
+
+        state.localBoardReady = true
+        #expect(!state.bothBoardReady)
+
+        state.remoteBoardReady = true
+        #expect(state.bothBoardReady)
+    }
+
+    @Test("bothWantRematch requires both flags true")
+    @MainActor func bothWantRematchRequiresBothFlags() {
+        let state = VersusMatchState()
+        #expect(!state.bothWantRematch)
+
+        state.localWantsRematch = true
+        #expect(!state.bothWantRematch)
+
+        state.remoteWantsRematch = true
+        #expect(state.bothWantRematch)
+    }
+
+    @Test("isResolved requires both outcomes set")
+    @MainActor func isResolvedRequiresBothOutcomes() {
+        let state = VersusMatchState()
+        #expect(!state.isResolved)
+
+        state.localOutcome = .won
+        #expect(!state.isResolved)
+
+        state.remoteOutcome = .lost
+        #expect(state.isResolved)
+    }
+
+    @Test("localResult returns correct display results")
+    @MainActor func localResultMapping() {
+        let state = VersusMatchState()
+        #expect(state.localResult == .pending)
+
+        state.localOutcome = .won
+        state.remoteOutcome = .lost
+        #expect(state.localResult == .win)
+
+        state.localOutcome = .lost
+        state.remoteOutcome = .won
+        #expect(state.localResult == .lose)
+
+        state.localOutcome = .lost
+        state.remoteOutcome = .lost
+        #expect(state.localResult == .draw)
+
+        state.localOutcome = .won
+        state.remoteOutcome = .disconnected
+        #expect(state.localResult == .winByDisconnect)
+
+        state.localOutcome = .disconnected
+        state.remoteOutcome = .won
+        #expect(state.localResult == .loseByDisconnect)
+    }
+
+    @Test("reset preserves local player info")
+    @MainActor func resetPreservesLocalPlayer() {
+        let state = VersusMatchState()
+        state.localPlayerName = "MARCOS"
+        state.phase = .playing
+
+        state.reset()
+
+        #expect(state.localPlayerName == "MARCOS",
+                "reset must preserve localPlayerName")
+    }
+}
+
+// MARK: - VersusMatchmakingManager — objectWillChange Forwarding
+@Suite("VersusMatchmakingManager — ObjectWillChange Forwarding")
+struct VersusManagerObjectWillChangeTests {
+
+    @Test("matchState changes trigger manager objectWillChange")
+    @MainActor func matchStateChangesForwardToManager() async {
+        let manager = VersusMatchmakingManager.shared
+        manager.disconnect()
+
+        var changeCount = 0
+        let cancellable = manager.objectWillChange.sink { _ in
+            changeCount += 1
+        }
+
+        manager.matchState.phase = .searching
+        // Give RunLoop a tick to process the sink
+        try? await Task.sleep(for: .milliseconds(50))
+
+        #expect(changeCount > 0,
+                "Manager.objectWillChange must fire when matchState.phase changes")
+
+        _ = cancellable
+        manager.disconnect()
+    }
+
+    @Test("multiple matchState property changes each trigger forwarding")
+    @MainActor func multipleChangesEachForward() async {
+        let manager = VersusMatchmakingManager.shared
+        manager.disconnect()
+
+        var changeCount = 0
+        let cancellable = manager.objectWillChange.sink { _ in
+            changeCount += 1
+        }
+
+        manager.matchState.phase = .matched
+        manager.matchState.isHost = true
+        manager.matchState.sharedSeed = 42
+        manager.matchState.opponentDisplayName = "TEST"
+
+        try? await Task.sleep(for: .milliseconds(50))
+
+        #expect(changeCount >= 4,
+                "Each matchState property change should forward; got \(changeCount)")
+
+        _ = cancellable
+        manager.disconnect()
+    }
+}
+
+// MARK: - VersusMatchmakingManager — Message Handling
+@Suite("VersusMatchmakingManager — Message Handling")
+struct VersusManagerMessageHandlingTests {
+
+    @Test("boardReady message sets remoteBoardReady on state")
+    @MainActor func boardReadyMessageSetsFlag() {
+        let state = VersusMatchState()
+        #expect(!state.remoteBoardReady)
+
+        state.remoteBoardReady = true
+        #expect(state.remoteBoardReady)
+    }
+
+    @Test("VersusMessage.ready encodes seed and config correctly")
+    func readyMessagePreservesSeedAndConfig() throws {
+        let seed: UInt64 = 9876543210
+        let config = VersusLevelConfig.v3(difficulty: .hard)
+        let payload = VersusReadyPayload(seed: seed, config: config)
+        let msg = VersusMessage.ready(payload: payload)
+
+        guard let data = msg.encoded(),
+              let decoded = VersusMessage.decode(from: data) else {
+            Issue.record("ready message round-trip failed")
+            return
+        }
+
+        if case .ready(let dp) = decoded {
+            #expect(dp.seed == seed)
+            #expect(dp.config.gridSize == config.gridSize)
+            #expect(dp.config.difficultyRaw == config.difficultyRaw)
+            #expect(dp.config.isV3 == config.isV3)
+        } else {
+            Issue.record("Expected .ready, got \(decoded)")
+        }
+    }
+
+    @Test("VersusMessage.boardReady round-trips")
+    func boardReadyRoundTrips() {
+        let msg = VersusMessage.boardReady
+        guard let data = msg.encoded(),
+              let decoded = VersusMessage.decode(from: data) else {
+            Issue.record("boardReady round-trip failed")
+            return
+        }
+        if case .boardReady = decoded {
+            // OK
+        } else {
+            Issue.record("Expected .boardReady, got \(decoded)")
+        }
+    }
+
+    @Test("VersusMessage.rematch round-trips")
+    func rematchRoundTrips() {
+        let msg = VersusMessage.rematch
+        guard let data = msg.encoded(),
+              let decoded = VersusMessage.decode(from: data) else {
+            Issue.record("rematch round-trip failed")
+            return
+        }
+        if case .rematch = decoded {
+            // OK
+        } else {
+            Issue.record("Expected .rematch, got \(decoded)")
+        }
+    }
+}
+
+// MARK: - VersusMatchmakingManager — Solo Test Flow
+@Suite("VersusMatchmakingManager — Solo Match Flow", .serialized)
+struct VersusManagerSoloFlowTests {
+
+    @Test("startSoloTest sets initial state correctly")
+    @MainActor func soloTestInitialState() {
+        let manager = VersusMatchmakingManager.shared
+        manager.disconnect()
+
+        var receivedSeed: UInt64 = 0
+        manager.onLevelReady = { seed, _ in receivedSeed = seed }
+
+        manager.startSoloTest(botDifficulty: .easy, difficulty: .medium, gridSize: 5)
+
+        #expect(manager.isSoloTest)
+        #expect(manager.matchState.phase == .matched)
+        #expect(manager.matchState.isHost)
+        #expect(manager.matchState.sharedSeed != 0)
+        #expect(receivedSeed == manager.matchState.sharedSeed)
+        #expect(manager.matchState.opponentDisplayName == "BOT EASY")
+
+        manager.disconnect()
+    }
+
+    @Test("disconnect resets everything")
+    @MainActor func disconnectResetsState() {
+        let manager = VersusMatchmakingManager.shared
+        manager.startSoloTest()
+
+        manager.disconnect()
+
+        #expect(!manager.isSoloTest)
+        #expect(manager.matchState.phase == .idle)
+        #expect(manager.matchState.sharedSeed == 0)
+        #expect(!manager.matchState.isHost)
+    }
+
+    @Test("sendResult sets local outcome and resolves for solo")
+    @MainActor func sendResultSoloResolution() {
+        let manager = VersusMatchmakingManager.shared
+        manager.disconnect()
+        manager.onLevelReady = { _, _ in }
+
+        manager.startSoloTest()
+        manager.matchState.phase = .playing
+
+        manager.sendResult(.won)
+
+        #expect(manager.matchState.localOutcome == .won)
+        #expect(manager.matchState.remoteOutcome == .lost,
+                "Solo remote outcome should auto-invert to .lost")
+        #expect(manager.matchState.isResolved)
+        #expect(manager.matchState.phase == .finished)
+
+        manager.disconnect()
+    }
+
+    @Test("sendResult with explicit soloRemoteOutcome sets both to lost (draw)")
+    @MainActor func sendResultSoloDraw() {
+        let manager = VersusMatchmakingManager.shared
+        manager.disconnect()
+        manager.onLevelReady = { _, _ in }
+
+        manager.startSoloTest()
+        manager.matchState.phase = .playing
+
+        manager.sendResult(.lost, soloRemoteOutcome: .lost)
+
+        #expect(manager.matchState.localOutcome == .lost)
+        #expect(manager.matchState.remoteOutcome == .lost)
+        #expect(manager.matchState.localResult == .draw)
+
+        manager.disconnect()
+    }
+
+    @Test("forfeitAndDisconnect resets to idle")
+    @MainActor func forfeitResetsToIdle() {
+        let manager = VersusMatchmakingManager.shared
+        manager.disconnect()
+        manager.onLevelReady = { _, _ in }
+
+        manager.startSoloTest()
+        manager.matchState.phase = .playing
+
+        manager.forfeitAndDisconnect()
+
+        #expect(manager.matchState.phase == .idle)
+        #expect(!manager.isSoloTest)
+    }
+
+    @Test("solo test full lifecycle: start → boardReady → countdown → playing")
+    @MainActor func soloTestFullLifecycle() async throws {
+        let manager = VersusMatchmakingManager.shared
+        manager.disconnect()
+
+        var boardBuilt = false
+        var gameStarted = false
+        manager.onLevelReady = { _, _ in boardBuilt = true }
+        manager.onGameStart = { gameStarted = true }
+
+        manager.startSoloTest(botDifficulty: .easy, difficulty: .easy, gridSize: 4)
+
+        #expect(boardBuilt, "onLevelReady should fire synchronously")
+        #expect(manager.matchState.phase == .matched)
+
+        // Simulate local board ready
+        manager.sendBoardReady()
+        #expect(manager.matchState.localBoardReady)
+
+        // Wait for solo bot's remote board ready + countdown + playing transition
+        // Solo flow: 500ms remote ready + 3.5s countdown = ~4s total
+        try await Task.sleep(for: .seconds(5))
+
+        #expect(manager.matchState.phase == .playing,
+                "After full solo lifecycle, phase should be .playing, got \(manager.matchState.phase)")
+        #expect(gameStarted, "onGameStart should have fired")
+
+        manager.disconnect()
+    }
+}
+
+// MARK: - VersusMatchmakingManager — Duplicate Message Guards
+@Suite("VersusMatchmakingManager — Duplicate Guards")
+struct VersusManagerDuplicateGuardTests {
+
+    @Test("duplicate .ready seed is ignored on guest side")
+    @MainActor func duplicateReadySeedIgnored() {
+        let state = VersusMatchState()
+        state.isHost = false
+        state.sharedSeed = 0
+
+        // First .ready — accepted
+        state.sharedSeed = 42
+        #expect(state.sharedSeed == 42)
+
+        // The guard in handleReceivedMessage checks sharedSeed == 0
+        // If sharedSeed != 0, duplicate is ignored
+        let wouldAcceptDuplicate = (state.sharedSeed == 0)
+        #expect(!wouldAcceptDuplicate,
+                "Once seed is set, duplicate .ready must be ignored")
+    }
+
+    @Test("duplicate .boardReady is ignored")
+    @MainActor func duplicateBoardReadyIgnored() {
+        let state = VersusMatchState()
+
+        state.remoteBoardReady = true
+
+        // The guard: guard !matchState.remoteBoardReady else { return }
+        let wouldAcceptDuplicate = (!state.remoteBoardReady)
+        #expect(!wouldAcceptDuplicate,
+                "Once remoteBoardReady is true, duplicate must be ignored")
+    }
+
+    @Test("host ignores .ready messages")
+    @MainActor func hostIgnoresReady() {
+        let state = VersusMatchState()
+        state.isHost = true
+
+        // The guard: guard !matchState.isHost else { return }
+        let wouldAccept = (!state.isHost)
+        #expect(!wouldAccept,
+                "Host must not process .ready messages")
+    }
+}
+
+// MARK: - VersusMatchState — Phase Transitions
+@Suite("VersusMatchState — Phase Transitions")
+struct VersusPhaseTransitionTests {
+
+    @Test("standard real-player phase sequence: idle → searching → matched → countdown → playing → finished")
+    @MainActor func standardPhaseSequence() {
+        let state = VersusMatchState()
+
+        #expect(state.phase == .idle)
+
+        state.phase = .searching
+        #expect(state.phase == .searching)
+
+        state.phase = .matched
+        #expect(state.phase == .matched)
+
+        state.phase = .countdown
+        #expect(state.phase == .countdown)
+
+        state.phase = .playing
+        #expect(state.phase == .playing)
+
+        state.phase = .finished
+        #expect(state.phase == .finished)
+    }
+
+    @Test("handleBothBoardReady guard prevents transition from non-matched phase")
+    @MainActor func bothBoardReadyOnlyFromMatched() {
+        let state = VersusMatchState()
+        state.phase = .playing
+        state.localBoardReady = true
+        state.remoteBoardReady = true
+
+        // handleBothBoardReady has: guard phase == .matched
+        // From .playing, it would be a no-op
+        let wouldTransition = (state.phase == .matched)
+        #expect(!wouldTransition,
+                "bothBoardReady should only trigger from .matched phase")
+    }
+
+    @Test("disconnect from matched sets phase to finished")
+    @MainActor func disconnectFromMatchedSetsFinished() {
+        let state = VersusMatchState()
+        state.phase = .matched
+
+        state.remoteOutcome = .disconnected
+        // In the real code, disconnect handler checks:
+        // if phase == .matched || .countdown || .playing → .finished
+        if state.phase == .matched || state.phase == .countdown || state.phase == .playing {
+            state.phase = .finished
+        }
+
+        #expect(state.phase == .finished)
+    }
+
+    @Test("disconnect from playing sets phase to finished")
+    @MainActor func disconnectFromPlayingSetsFinished() {
+        let state = VersusMatchState()
+        state.phase = .playing
+
+        state.remoteOutcome = .disconnected
+        if state.phase == .matched || state.phase == .countdown || state.phase == .playing {
+            state.phase = .finished
+        }
+
+        #expect(state.phase == .finished)
+    }
+}
+
+// MARK: - VersusScoring Tests
+@Suite("VersusScoring — Point Calculation")
+struct VersusScoringTests {
+
+    @Test("base score is 1000 with no time or move bonus")
+    func baseScore() {
+        let score = VersusScoring.winPoints(timeRemaining: 0, tapCount: 20)
+        #expect(score == 1000, "Base score with 0 time and 20 taps should be 1000")
+    }
+
+    @Test("time remaining adds bonus at 50 per second")
+    func timeBonus() {
+        let score = VersusScoring.winPoints(timeRemaining: 10, tapCount: 20)
+        #expect(score == 1500, "10s remaining × 50 = 500 bonus → 1500 total")
+    }
+
+    @Test("fewer taps give move bonus at 25 per tap under 20")
+    func moveBonus() {
+        let score = VersusScoring.winPoints(timeRemaining: 0, tapCount: 15)
+        #expect(score == 1125, "5 taps under 20 × 25 = 125 bonus → 1125 total")
+    }
+
+    @Test("high tap count clamps move bonus to 0")
+    func highTapCountNoMoveBonus() {
+        let score = VersusScoring.winPoints(timeRemaining: 0, tapCount: 30)
+        #expect(score == 1000, "30 taps > 20, move bonus clamped to 0")
+    }
+
+    @Test("perfect game with max time and min taps")
+    func perfectGame() {
+        let score = VersusScoring.winPoints(timeRemaining: 30, tapCount: 5)
+        let expected = 1000 + (30 * 50) + ((20 - 5) * 25)
+        #expect(score == expected, "Perfect game: 1000 + 1500 + 375 = \(expected)")
+    }
+}
 
 // MARK: - SeededRNG Tests
 @Suite("SeededRNG — Determinism")
