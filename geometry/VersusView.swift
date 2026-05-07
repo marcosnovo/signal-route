@@ -35,6 +35,9 @@ struct VersusView: View {
     @State private var selectedDifficulty: DifficultyTier = .medium
     @State private var selectedGridSize: Int = 5
 
+    // Result overlay (slides up over frozen board)
+    @State private var showResultOverlay = false
+
     // Mystery box
     @State private var mysteryBoxOpened = false
     @State private var mysteryBoxReward: VersusPowerUpType? = nil
@@ -55,11 +58,15 @@ struct VersusView: View {
             case .playing:
                 versusGameplay
             case .finished:
-                if versusV3VM.showingWinAnimation {
-                    versusGameplay
-                } else {
-                    versusResult
-                }
+                versusGameplay
+                    .allowsHitTesting(false)
+            }
+
+            // Result overlay — slides up over frozen board
+            if showResultOverlay {
+                versusResultOverlay
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(5)
             }
 
             // Error toast overlay
@@ -74,6 +81,20 @@ struct VersusView: View {
             }
         }
         .animation(.easeInOut(duration: 0.35), value: matchState.phase)
+        .animation(.easeInOut(duration: 0.4), value: showResultOverlay)
+        .onChange(of: matchState.phase) { _, newPhase in
+            if newPhase == .finished && !versusV3VM.showingWinAnimation {
+                presentResultWithDelay()
+            }
+            if newPhase == .matched {
+                showResultOverlay = false
+            }
+        }
+        .onChange(of: versusV3VM.showingWinAnimation) { _, showing in
+            if !showing && matchState.phase == .finished {
+                presentResultWithDelay()
+            }
+        }
         .onDisappear {
             versusV3VM.tearDown()
         }
@@ -547,13 +568,15 @@ struct VersusView: View {
             } else if newPhase != .countdown {
                 countdownDigit = nil
             }
-            // Timeout: if stuck in .matched for 15s, show error
             if newPhase == .matched {
                 Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(15))
-                    if matchState.phase == .matched {
-                        matchState.error = S.versusConnectionTimeout
-                    }
+                    try? await Task.sleep(for: .seconds(12))
+                    guard matchState.phase == .matched else { return }
+                    matchState.error = S.versusConnectionTimeout
+                    HapticsManager.heavy()
+                    try? await Task.sleep(for: .seconds(3))
+                    guard matchState.phase == .matched else { return }
+                    versusManager.disconnect()
                 }
             }
         }
@@ -576,6 +599,25 @@ struct VersusView: View {
             try? await Task.sleep(for: .milliseconds(700))
             guard matchState.phase == .countdown else { return }
             withAnimation { countdownDigit = 0 } // GO!
+        }
+    }
+
+    private func presentResultWithDelay() {
+        guard !showResultOverlay else { return }
+        let localWon: Bool = {
+            switch matchState.localResult {
+            case .win, .winByDisconnect: return true
+            default: return false
+            }
+        }()
+        // Wins show immediately (after win animation); losses get a brief pause
+        let delay: Duration = localWon ? .milliseconds(200) : .milliseconds(1200)
+        Task { @MainActor in
+            try? await Task.sleep(for: delay)
+            guard matchState.phase == .finished else { return }
+            withAnimation(.easeOut(duration: 0.4)) {
+                showResultOverlay = true
+            }
         }
     }
 
@@ -611,9 +653,9 @@ struct VersusView: View {
         }
     }
 
-    // MARK: - Result
+    // MARK: - Result Overlay
 
-    private var versusResult: some View {
+    private var versusResultOverlay: some View {
         let localWon: Bool? = {
             switch matchState.localResult {
             case .win, .winByDisconnect: return true
@@ -622,125 +664,156 @@ struct VersusView: View {
             }
         }()
 
+        let accentColor: Color = {
+            guard let won = localWon else { return AppTheme.sage }
+            return won ? AppTheme.accentPrimary : AppTheme.danger
+        }()
+
         return VStack(spacing: 0) {
-            Spacer()
+            // Dimmed top area (tap to dismiss — future use)
+            Color.black.opacity(0.4)
+                .frame(height: 80)
 
-            // Result title
-            resultIcon
-                .padding(.bottom, 12)
-            resultTitle
-                .padding(.bottom, 6)
-            resultReason
-                .padding(.bottom, 12)
+            // Card that slides up
+            VStack(spacing: 16) {
+                // Drag indicator
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppTheme.textSecondary.opacity(0.3))
+                    .frame(width: 36, height: 4)
+                    .padding(.top, 10)
 
-            // Score + streak (winner only)
-            if localWon == true && versusV3VM.winScore > 0 {
-                VStack(spacing: 4) {
-                    Text("+\(versusV3VM.winScore) PTS")
-                        .font(AppTheme.mono(22, weight: .black))
-                        .adaptiveKerning(1.5)
-                        .foregroundStyle(AppTheme.accentPrimary)
-                    if versusV3VM.winStreakMultiplier > 1.0 {
-                        Text("\(versusV3VM.currentStreak) STREAK \u{00D7}\(String(format: "%.1f", versusV3VM.winStreakMultiplier))")
-                            .font(AppTheme.mono(10, weight: .bold))
-                            .adaptiveKerning(1.0)
-                            .foregroundStyle(AppTheme.sage)
-                    }
-                }
-                .padding(.bottom, 20)
-            }
+                // Result icon + title
+                resultIcon
+                resultTitle
+                resultReason
 
-            // Face-off card: player LEFT, opponent RIGHT
-            HStack(spacing: 0) {
-                // Local player — always left
-                resultPlayerColumn(
-                    avatar: localPlayerAvatar,
-                    name: matchState.localPlayerName,
-                    won: localWon,
-                    moves: versusV3VM.localTapCount,
-                    accentColor: localWon == true ? AppTheme.accentPrimary : AppTheme.danger
-                )
-
-                // VS separator
-                VStack(spacing: 4) {
-                    Text("VS")
-                        .font(AppTheme.mono(12, weight: .black))
-                        .adaptiveKerning(2.0)
-                        .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
-                    Rectangle()
-                        .fill(AppTheme.stroke)
-                        .frame(width: 0.5, height: 24)
-                }
-                .frame(width: 40)
-
-                // Opponent — always right
-                resultPlayerColumn(
-                    avatar: matchState.opponentAvatar,
-                    name: matchState.opponentDisplayName,
-                    won: localWon.map { !$0 },
-                    moves: versusV3VM.remoteTapCount,
-                    accentColor: localWon == false ? AppTheme.accentPrimary : AppTheme.danger
-                )
-            }
-            .padding(.vertical, 20)
-            .padding(.horizontal, 16)
-            .background(AppTheme.surface.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(AppTheme.stroke, lineWidth: 0.5)
-            )
-            .padding(.horizontal, 28)
-
-            // Mystery box — every 3 consecutive wins
-            if localWon == true && VersusFeatureFlag.isPowerUpsEnabled {
-                mysteryBoxSection
-                    .padding(.top, 16)
-            }
-
-            Spacer()
-
-            // Rematch (same opponent) — only if opponent didn't disconnect
-            if matchState.localResult != .winByDisconnect && matchState.localResult != .loseByDisconnect {
-                if matchState.localWantsRematch {
-                    VStack(spacing: 10) {
-                        ProgressView()
-                            .tint(AppTheme.sage)
-                        Text(S.waitingForOpponent)
-                            .font(AppTheme.mono(10, weight: .bold))
-                            .adaptiveKerning(1.0)
-                            .foregroundStyle(AppTheme.textSecondary)
-                    }
-                } else {
-                    Button(action: {
-                        SoundManager.play(.tapPrimary)
-                        HapticsManager.medium()
-                        VersusAnalytics.shared.trackRematchRequested()
-                        versusV3VM.resetForRematch()
-                        mysteryBoxOpened = false
-                        mysteryBoxReward = nil
-                        showDiscardPicker = false
-                        versusManager.sendRematch()
-                    }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 12, weight: .bold))
-                            Text(S.versusRematch)
-                                .font(AppTheme.mono(13, weight: .bold))
+                // Score + streak (winner only)
+                if localWon == true && versusV3VM.winScore > 0 {
+                    VStack(spacing: 4) {
+                        Text("+\(versusV3VM.winScore) PTS")
+                            .font(AppTheme.mono(22, weight: .black))
+                            .adaptiveKerning(1.5)
+                            .foregroundStyle(AppTheme.accentPrimary)
+                        if versusV3VM.winStreakMultiplier > 1.0 {
+                            Text("\(versusV3VM.currentStreak) STREAK \u{00D7}\(String(format: "%.1f", versusV3VM.winStreakMultiplier))")
+                                .font(AppTheme.mono(10, weight: .bold))
                                 .adaptiveKerning(1.0)
+                                .foregroundStyle(AppTheme.sage)
                         }
-                        .foregroundStyle(AppTheme.backgroundPrimary)
-                        .frame(width: 200, height: 46)
-                        .background(AppTheme.accentPrimary)
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                     }
-                    .breathingCTA()
                 }
-            }
 
-            closeButton(label: S.backToHome)
+                // Face-off card
+                HStack(spacing: 0) {
+                    resultPlayerColumn(
+                        avatar: localPlayerAvatar,
+                        name: matchState.localPlayerName,
+                        won: localWon,
+                        moves: versusV3VM.localTapCount,
+                        accentColor: localWon == true ? AppTheme.accentPrimary : AppTheme.danger
+                    )
+
+                    VStack(spacing: 4) {
+                        Text("VS")
+                            .font(AppTheme.mono(12, weight: .black))
+                            .adaptiveKerning(2.0)
+                            .foregroundStyle(AppTheme.textSecondary.opacity(0.4))
+                        Rectangle()
+                            .fill(AppTheme.stroke)
+                            .frame(width: 0.5, height: 24)
+                    }
+                    .frame(width: 40)
+
+                    resultPlayerColumn(
+                        avatar: matchState.opponentAvatar,
+                        name: matchState.opponentDisplayName,
+                        won: localWon.map { !$0 },
+                        moves: versusV3VM.remoteTapCount,
+                        accentColor: localWon == false ? AppTheme.accentPrimary : AppTheme.danger
+                    )
+                }
+                .padding(.vertical, 16)
+                .padding(.horizontal, 16)
+                .background(AppTheme.surface.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .strokeBorder(AppTheme.stroke, lineWidth: 0.5)
+                )
+                .padding(.horizontal, 20)
+
+                // Mystery box
+                if localWon == true && VersusFeatureFlag.isPowerUpsEnabled {
+                    mysteryBoxSection
+                }
+
+                Spacer().frame(height: 4)
+
+                // Actions
+                if matchState.localResult != .winByDisconnect && matchState.localResult != .loseByDisconnect {
+                    if matchState.localWantsRematch {
+                        VStack(spacing: 10) {
+                            ProgressView()
+                                .tint(AppTheme.sage)
+                            Text(S.waitingForOpponent)
+                                .font(AppTheme.mono(10, weight: .bold))
+                                .adaptiveKerning(1.0)
+                                .foregroundStyle(AppTheme.textSecondary)
+                        }
+                    } else {
+                        Button(action: {
+                            SoundManager.play(.tapPrimary)
+                            HapticsManager.medium()
+                            VersusAnalytics.shared.trackRematchRequested()
+                            showResultOverlay = false
+                            versusV3VM.resetForRematch()
+                            mysteryBoxOpened = false
+                            mysteryBoxReward = nil
+                            showDiscardPicker = false
+                            versusManager.sendRematch()
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text(S.versusRematch)
+                                    .font(AppTheme.mono(13, weight: .bold))
+                                    .adaptiveKerning(1.0)
+                            }
+                            .foregroundStyle(AppTheme.backgroundPrimary)
+                            .frame(width: 200, height: 46)
+                            .background(AppTheme.accentPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                        }
+                        .breathingCTA()
+                    }
+                }
+
+                Button(action: {
+                    showResultOverlay = false
+                    versusManager.disconnect()
+                    onDismiss()
+                }) {
+                    Text(S.backToHome)
+                        .font(AppTheme.mono(11, weight: .bold))
+                        .adaptiveKerning(0.8)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .padding(.vertical, 10)
+                }
+
+                Spacer().frame(height: 8)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(AppTheme.backgroundPrimary)
+                    .shadow(color: .black.opacity(0.3), radius: 20, y: -4)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(accentColor.opacity(0.3), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 20))
         }
-        .padding()
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     /// A single player column in the result face-off card.

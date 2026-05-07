@@ -48,6 +48,8 @@ final class VersusMatchState: ObservableObject {
     // ── Board-ready sync ────────────────────────────────────────────────
     @Published var localBoardReady:    Bool = false
     @Published var remoteBoardReady:   Bool = false
+    var localBoardHash:  UInt64 = 0
+    var remoteBoardHash: UInt64 = 0
 
     // ── Rematch ──────────────────────────────────────────────────────────
     @Published var localWantsRematch:  Bool = false
@@ -103,6 +105,8 @@ final class VersusMatchState: ObservableObject {
         remoteOutcome       = nil
         localBoardReady     = false
         remoteBoardReady    = false
+        localBoardHash      = 0
+        remoteBoardHash     = 0
         localWantsRematch   = false
         remoteWantsRematch  = false
         opponentDisplayName = "OPPONENT"

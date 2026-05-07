@@ -378,6 +378,30 @@ enum VersusBoardGenerator {
         return tile
     }
 
+    /// FNV-1a hash of the board layout for cross-device verification.
+    static func boardHash(_ grid: [[Tile]]) -> UInt64 {
+        var h: UInt64 = 14695981039346656037
+        for row in grid {
+            for tile in row {
+                let typeOrd: UInt64 = switch tile.type {
+                case .straight: 0
+                case .curve: 1
+                case .tShape: 2
+                case .cross: 3
+                }
+                let roleOrd: UInt64 = switch tile.role {
+                case .source: 0
+                case .target: 1
+                case .relay: 2
+                case .none: 3
+                }
+                h ^= typeOrd &+ UInt64(tile.rotation) &* 7 &+ roleOrd &* 31
+                h &*= 1099511628211
+            }
+        }
+        return h
+    }
+
     private static func neighborPos(_ r: Int, _ c: Int, _ dir: Direction) -> (Int, Int) {
         switch dir {
         case .north: return (r - 1, c)

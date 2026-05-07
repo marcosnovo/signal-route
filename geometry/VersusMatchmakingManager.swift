@@ -183,17 +183,17 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
     }
 
     /// Signal that the local board has been generated and is ready for play.
-    func sendBoardReady() {
+    func sendBoardReady(boardHash: UInt64 = 0) {
         matchState.localBoardReady = true
-        send(.boardReady)
+        matchState.localBoardHash = boardHash
+        send(.boardReady(hash: boardHash))
         VersusTestHarness.shared.logLocalBoardReady()
         #if DEBUG
-        print("[Versus] Sent boardReady (remote=\(matchState.remoteBoardReady))")
+        print("[Versus] Sent boardReady hash=\(boardHash) (remote=\(matchState.remoteBoardReady))")
         #endif
         if matchState.bothBoardReady {
-            handleBothBoardReady()
+            verifyBoardHashAndProceed()
         } else if !isSoloTest {
-            // Retry until remote side acknowledges
             Task {
                 for attempt in 1...3 {
                     try? await Task.sleep(for: .seconds(2))
@@ -202,7 +202,7 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
                     #if DEBUG
                     print("[Versus] Retrying .boardReady (attempt \(attempt))")
                     #endif
-                    send(.boardReady)
+                    send(.boardReady(hash: boardHash))
                 }
             }
         }
@@ -351,6 +351,20 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
 
     // MARK: - Private — Board-ready sync
 
+    private func verifyBoardHashAndProceed() {
+        let local = matchState.localBoardHash
+        let remote = matchState.remoteBoardHash
+        if local != 0 && remote != 0 && local != remote {
+            #if DEBUG
+            print("[Versus] ⚠️ BOARD HASH MISMATCH — local=\(local) remote=\(remote)")
+            #endif
+            matchState.error = "Board sync error — please retry"
+            matchState.phase = .finished
+            return
+        }
+        handleBothBoardReady()
+    }
+
     /// Called when both sides have confirmed board generation.
     /// Starts the countdown, then transitions to .playing and fires onGameStart.
     private func handleBothBoardReady() {
@@ -382,6 +396,8 @@ final class VersusMatchmakingManager: NSObject, ObservableObject {
         matchState.remoteOutcome      = nil
         matchState.localBoardReady    = false
         matchState.remoteBoardReady   = false
+        matchState.localBoardHash     = 0
+        matchState.remoteBoardHash    = 0
         matchState.localWantsRematch  = false
         matchState.remoteWantsRematch = false
         matchState.phase              = .matched
@@ -494,15 +510,16 @@ extension VersusMatchmakingManager: GKMatchDelegate {
             #endif
             onLevelReady?(payload.seed, payload.config)
 
-        case .boardReady:
+        case .boardReady(let hash):
             guard !matchState.remoteBoardReady else { return }  // ignore duplicate
             matchState.remoteBoardReady = true
+            matchState.remoteBoardHash = hash
             VersusTestHarness.shared.logRemoteBoardReady()
             onRemoteBoardReady?()
             #if DEBUG
-            print("[Versus] Remote board ready (local=\(matchState.localBoardReady))")
+            print("[Versus] Remote board ready hash=\(hash) (local=\(matchState.localBoardReady))")
             #endif
-            if matchState.bothBoardReady { handleBothBoardReady() }
+            if matchState.bothBoardReady { verifyBoardHashAndProceed() }
 
         case .action(let action):
             onRemoteAction?(action)

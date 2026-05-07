@@ -12,6 +12,8 @@ struct VersusV3GameplayView: View {
     @EnvironmentObject private var settings: SettingsStore
     private var S: AppStrings { AppStrings(lang: settings.language) }
 
+    @State private var dangerPulse = false
+
     var body: some View {
         VStack(spacing: 0) {
             // Timer + objective
@@ -142,9 +144,24 @@ struct VersusV3GameplayView: View {
                 .background(AppTheme.backgroundSecondary)
                 .overlay(
                     RoundedRectangle(cornerRadius: AppTheme.cardRadius)
-                        .strokeBorder(AppTheme.sage.opacity(0.18), lineWidth: 0.5)
+                        .strokeBorder(
+                            vm.rivalDanger
+                                ? AppTheme.danger.opacity(dangerPulse ? 0.7 : 0.25)
+                                : AppTheme.sage.opacity(0.18),
+                            lineWidth: vm.rivalCritical ? 2.5 : (vm.rivalDanger ? 1.5 : 0.5)
+                        )
+                        .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: dangerPulse)
+                )
+                .shadow(
+                    color: vm.rivalCritical
+                        ? AppTheme.danger.opacity(dangerPulse ? 0.35 : 0.1)
+                        : .clear,
+                    radius: 12
                 )
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cardRadius))
+                .onChange(of: vm.rivalDanger) { _, isDanger in
+                    dangerPulse = isDanger
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }

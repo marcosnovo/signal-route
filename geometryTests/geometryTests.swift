@@ -2960,6 +2960,28 @@ struct VersusBoardGeneratorTests {
         #expect(targets.count >= 1, "Board must have at least 1 target")
     }
 
+    @Test("Board hash is deterministic — same seed produces same hash")
+    func boardHashDeterministic() {
+        let config = makeConfig()
+        let seed: UInt64 = 123456789
+        let board1 = VersusBoardGenerator.buildBoard(seed: seed, config: config)
+        let board2 = VersusBoardGenerator.buildBoard(seed: seed, config: config)
+        let hash1 = VersusBoardGenerator.boardHash(board1)
+        let hash2 = VersusBoardGenerator.boardHash(board2)
+        #expect(hash1 == hash2, "Same board must produce same hash")
+        #expect(hash1 != 0, "Hash should be non-zero for a real board")
+    }
+
+    @Test("Different boards produce different hashes")
+    func boardHashDifferentBoards() {
+        let config = makeConfig()
+        let board1 = VersusBoardGenerator.buildBoard(seed: 111, config: config)
+        let board2 = VersusBoardGenerator.buildBoard(seed: 999, config: config)
+        let hash1 = VersusBoardGenerator.boardHash(board1)
+        let hash2 = VersusBoardGenerator.boardHash(board2)
+        #expect(hash1 != hash2, "Different boards should produce different hashes")
+    }
+
     @Test("Board generation works across all grid sizes", arguments: [4, 5, 6])
     func boardGenerationAllSizes(size: Int) {
         let config = makeConfig(gridSize: size)

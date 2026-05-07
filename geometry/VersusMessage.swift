@@ -8,8 +8,8 @@ import Foundation
 enum VersusMessage: Codable {
     /// Host → Guest: shared seed + level configuration.
     case ready(payload: VersusReadyPayload)
-    /// Both → Both: local board generation complete. Game starts when both received.
-    case boardReady
+    /// Both → Both: local board generation complete. Carries board hash for verification.
+    case boardReady(hash: UInt64 = 0)
     /// Either → Either: a tile tap the local player just performed.
     case action(payload: VersusAction)
     /// Either → Either: periodic snapshot of the sender's board state.

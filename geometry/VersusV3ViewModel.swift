@@ -142,6 +142,12 @@ final class VersusV3ViewModel: ObservableObject {
     @Published var ghostCol: Int = -1
     private var ghostClearTask: Task<Void, Never>?
 
+    // MARK: - Rival Danger
+
+    @Published var rivalDanger: Bool = false
+    @Published var rivalCritical: Bool = false
+    private var lastDangerThreshold: Int = 0
+
     // MARK: - Power-ups
 
     @Published var isTimerFrozen: Bool = false
@@ -164,6 +170,7 @@ final class VersusV3ViewModel: ObservableObject {
 
     private var timerCancellable: AnyCancellable?
     private var botCancellable: AnyCancellable?
+    private(set) var localBoardHash: UInt64 = 0
     private var gameEnded = false
     private var overtimeUsed = false
     private var botProgressTimer: AnyCancellable?
@@ -185,6 +192,7 @@ final class VersusV3ViewModel: ObservableObject {
         }
         matchManager.onRemoteState = { [weak self] snapshot in
             self?.matchManager.matchState.remoteSnapshot = snapshot
+            self?.checkRivalDanger()
         }
         matchManager.onRemoteResult = { [weak self] outcome in
             self?.handleRemoteResult(outcome)
@@ -202,6 +210,7 @@ final class VersusV3ViewModel: ObservableObject {
         gridSize = config.gridSize
         let board = VersusBoardGenerator.buildBoard(seed: seed, config: config)
         tiles = board
+        localBoardHash = VersusBoardGenerator.boardHash(board)
 
         localTapCount = 0
         remoteTapCount = 0
@@ -211,8 +220,12 @@ final class VersusV3ViewModel: ObservableObject {
         timeRemaining = Self.gameDuration(for: gridSize)
         botEnergizedFake = 0
 
+        #if DEBUG
+        print("[Versus] Board built — seed=\(seed) hash=\(localBoardHash)")
+        #endif
+
         propagateEnergy()
-        matchManager.sendBoardReady()
+        matchManager.sendBoardReady(boardHash: localBoardHash)
     }
 
     private func handleGameStart() {
@@ -442,8 +455,11 @@ final class VersusV3ViewModel: ObservableObject {
             }
         } else {
             VersusScoring.recordLoss()
+            SoundManager.play(.lose)
+            HapticsManager.heavy()
         }
 
+        winner = localWon ? .p1 : .p2
         matchManager.sendResult(localWon ? .won : .lost)
 
         VersusAnalytics.shared.trackMatchCompleted(
@@ -690,6 +706,23 @@ final class VersusV3ViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Rival Danger Detection
+
+    private func checkRivalDanger() {
+        let percent = rivalProgressPercent
+        let wasDanger = rivalDanger
+
+        rivalDanger = percent >= 65
+        rivalCritical = percent >= 85
+
+        if !wasDanger && rivalDanger {
+            HapticsManager.heavy()
+        } else if percent >= 85 && lastDangerThreshold < 85 {
+            HapticsManager.heavy()
+        }
+        lastDangerThreshold = percent
+    }
+
     // MARK: - Helpers
 
     private func neighborPos(_ r: Int, _ c: Int, _ dir: Direction) -> (Int, Int) {
@@ -728,6 +761,9 @@ final class VersusV3ViewModel: ObservableObject {
         showingWinAnimation = false
         ghostRow = -1
         ghostCol = -1
+        rivalDanger = false
+        rivalCritical = false
+        lastDangerThreshold = 0
         isTimerFrozen = false
         rushFlash = false
         activePowerUps = []
